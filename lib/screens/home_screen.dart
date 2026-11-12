@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
+import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
   final AgentController controller;
@@ -228,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: Column(
         children: [
+          LucyAvatar(state: widget.controller.state),
           // Status bar
           _buildStatusBar(colorScheme),
 
