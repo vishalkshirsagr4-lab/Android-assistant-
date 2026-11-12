@@ -74,20 +74,20 @@ class LucyActivityStore {
   }
 
   String _safeSummary(String value) {
-    var cleaned = value.replaceAll(RegExp(r'\\s+'), ' ').trim();
-
-    // Redact common credential, authentication and one-time-code formats.
-    final sensitivePatterns = <RegExp>[
-      RegExp(r'(?i)(password|passwd|passcode|otp|pin|api[_ -]?key|token|secret)\\s*[:=]\\s*[^\\s,;]+'),
-      RegExp(r'(?i)bearer\\s+[a-z0-9._~+/-]+=*'),
+    var cleaned = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final patterns = <RegExp>[
+      RegExp(
+        r'(password|passwd|passcode|otp|pin|api[_ -]?key|token|secret)\s*[:=]\s*[^\s,;]+',
+        caseSensitive: false,
+      ),
+      RegExp(r'bearer\s+[a-z0-9._~+/-]+=*', caseSensitive: false),
       RegExp(r'AIza[0-9A-Za-z_-]{20,}', caseSensitive: false),
       RegExp(r'xai-[0-9A-Za-z_-]{12,}', caseSensitive: false),
-      RegExp(r'\\b\\d{4,8}\\b'),
+      RegExp(r'\b\d{4,8}\b'),
     ];
-    for (final pattern in sensitivePatterns) {
+    for (final pattern in patterns) {
       cleaned = cleaned.replaceAll(pattern, '[redacted]');
     }
-
     if (cleaned.length <= 180) return cleaned;
     return '${cleaned.substring(0, 177)}...';
   }
