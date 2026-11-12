@@ -229,28 +229,69 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: LucyAvatar(state: widget.controller.state),
+          // Lucy is the full-screen visual focus. Status and conversation
+          // cards float above the avatar so voice and chat remain accessible.
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                LucyAvatar(state: widget.controller.state),
+                Positioned(
+                  top: 10,
+                  left: 12,
+                  right: 12,
+                  child: _buildStatusBar(colorScheme),
+                ),
+                if (widget.controller.conversation.isNotEmpty)
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 12,
+                    height: MediaQuery.sizeOf(context).height * 0.22,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface.withOpacity(0.82),
+                          border: Border.all(
+                            color: colorScheme.outline.withOpacity(0.18),
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: _buildConversationList(colorScheme),
+                      ),
+                    ),
+                  )
+                else
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: 22,
+                    child: IgnorePointer(
+                      child: Text(
+                        'I’m here. What shall we do?',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colorScheme.onSurface.withOpacity(0.72),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          shadows: [
+                            Shadow(
+                              color: colorScheme.surface,
+                              blurRadius: 12,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
-          // Status bar
-          _buildStatusBar(colorScheme),
 
-          // Conversation list
-          Expanded(
-            child: widget.controller.conversation.isEmpty
-                ? _buildEmptyState(colorScheme)
-                : _buildConversationList(colorScheme),
-          ),
-
-          // Current transcript
+          // Current transcript and microphone controls remain unchanged.
           if (widget.controller.currentTranscript?.isNotEmpty == true)
             _buildTranscriptBar(colorScheme),
-
-          // Bottom bar with mic button
           _buildBottomBar(colorScheme),
         ],
       ),
