@@ -76,7 +76,7 @@ class AgentController extends ChangeNotifier {
   bool get isActive => _isActive;
 
   int _listenRetryCount = 0;
-  static const int _maxListenRetries = 3;
+  bool _listenRestartScheduled = false;
 
   static const int _maxStepsPerCommand = 50;
   static const Duration _uiPollInterval = Duration(milliseconds: 120);
@@ -183,43 +183,24 @@ class AgentController extends ChangeNotifier {
     };
 
     _voiceService.onListeningDone = () {
-      if (_state == AgentState.listening &&
-          _currentTranscript?.isEmpty == true) {
-        if (_isActive) {
-          _listenRetryCount++;
-          if (_listenRetryCount > _maxListenRetries) {
-            print(
-              'Listening retry limit reached ($_maxListenRetries). Stopping.',
-            );
-            _listenRetryCount = 0;
-            _statusMessage = 'Listening timed out. Tap to restart.';
-            _setState(AgentState.idle);
-            _isActive = false;
-            notifyListeners();
-            return;
-          }
-          Future.delayed(const Duration(seconds: 2), () {
-            if (_isActive && _state == AgentState.listening) {
-              _startListening();
-            }
-          });
-        }
-      } else {
-        _listenRetryCount = 0;
-      }
+      if (!_isActive || _state != AgentState.listening) return;
+      _listenRetryCount++;
+      _scheduleListeningRestart();
     };
 
     _voiceService.onError = (error) {
-      print('Voice error: $error');
-      if (_isActive && _state == AgentState.listening) {
-        if (error == 'error_busy' || error == 'error_client') {
-          // Avoid infinite loops if Android STT client is busy or STT dead.
-          return;
-        }
-        Future.delayed(const Duration(seconds: 1), () {
-          if (_isActive) _startListening();
-        });
+      debugPrint('Lucy speech recognition error: $error');
+      if (!_isActive || _state != AgentState.listening) return;
+      final normalized = error.toLowerCase();
+      if (normalized.contains('permission') ||
+          normalized.contains('not_available') ||
+          normalized.contains('recognizer_not_found')) {
+        _statusMessage = 'Microphone or speech service unavailable. Check permissions and retry.';
+        unawaited(stopAgent());
+        return;
       }
+      _listenRetryCount++;
+      _scheduleListeningRestart();
     };
   }
 
@@ -321,6 +302,7 @@ class AgentController extends ChangeNotifier {
 
   Future<void> stopAgent() async {
     _isActive = false;
+    _listenRestartScheduled = false;
     _cancelRequested = false;
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
@@ -335,6 +317,20 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _scheduleListeningRestart() {
+    if (!_isActive || _listenRestartScheduled) return;
+    _listenRestartScheduled = true;
+    final seconds = (1 << (_listenRetryCount.clamp(0, 5))).clamp(2, 30);
+    _statusMessage = 'Speech session ended. Reconnecting in $seconds seconds...';
+    notifyListeners();
+    Future.delayed(Duration(seconds: seconds), () {
+      _listenRestartScheduled = false;
+      if (_isActive && _state == AgentState.listening) {
+        unawaited(_startListening());
+      }
+    });
+  }
+
   Future<void> _startListening() async {
     if (!_isActive) return;
     _setState(AgentState.listening);
@@ -342,9 +338,15 @@ class AgentController extends ChangeNotifier {
     _currentTranscript = '';
     notifyListeners();
 
-    await _voiceService.startListening(
+    final started = await _voiceService.startListening(
       localeId: VoiceService.sttLocaleFor(_currentLang),
     );
+    if (!started && _isActive) {
+      _listenRetryCount++;
+      _scheduleListeningRestart();
+    } else if (started) {
+      _listenRetryCount = 0;
+    }
   }
 
   /// Main handler: user says something → agent loop begins.
