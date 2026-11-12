@@ -19,6 +19,16 @@ button:active{background:#51458c}
 #loading small{color:#aaa6c2;line-height:1.45;max-width:270px}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.170.0",
+    "three/": "https://esm.sh/three@0.170.0/",
+    "@pixiv/three-vrm": "https://esm.sh/@pixiv/three-vrm@3.3.0?external=three",
+    "@pixiv/three-vrm-animation": "https://esm.sh/@pixiv/three-vrm-animation@3.3.0?external=three,@pixiv/three-vrm"
+  }
+}
+</script>
 </head>
 <body>
 <div id="stage"></div>
@@ -50,15 +60,14 @@ window.setAssistantState=function(state){
   // Dynamic imports ensure network/module errors are caught and shown instead
   // of leaving the screen stuck on the loading message forever.
   const [THREE,GLTF,VRM,VRMA]=await Promise.all([
-   import('https://esm.sh/three@0.170.0'),
-   import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js?external=three'),
-   import('https://esm.sh/@pixiv/three-vrm@3.3.0?external=three'),
-   import('https://esm.sh/@pixiv/three-vrm-animation@3.3.0?external=three,@pixiv/three-vrm')
+   import('three'),
+   import('three/examples/jsm/loaders/GLTFLoader.js'),
+   import('@pixiv/three-vrm'),
+   import('@pixiv/three-vrm-animation')
   ]);
   const host=document.getElementById('stage');
   const scene=new THREE.Scene();
   const camera=new THREE.PerspectiveCamera(30,1,.1,100);
-  camera.position.set(0,1.25,3.35);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
   renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -98,8 +107,14 @@ window.setAssistantState=function(state){
   if(!vrm)throw new Error('VRM model did not contain an avatar.');
   VRM.VRMUtils.rotateVRM0(vrm);
   scene.add(vrm.scene);
-  vrm.scene.position.set(0,-.95,0);
   vrm.scene.rotation.y=Math.PI;
+  scene.add(vrm.scene);
+  const avatarBounds=new THREE.Box3().setFromObject(vrm.scene);
+  const avatarSize=avatarBounds.getSize(new THREE.Vector3());
+  const avatarCenter=avatarBounds.getCenter(new THREE.Vector3());
+  const verticalFit=avatarSize.y/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)));
+  camera.position.set(avatarCenter.x, avatarCenter.y + avatarSize.y*0.035, avatarCenter.z + verticalFit*1.12);
+  camera.lookAt(avatarCenter.x, avatarCenter.y, avatarCenter.z);
   mixer=new THREE.AnimationMixer(vrm.scene);
   await playClip('idle_loop');
   loading.style.display='none';
@@ -111,7 +126,11 @@ window.setAssistantState=function(state){
     vrm.update(delta);
     if(vrm.expressionManager){
      const talking=status.textContent==='Speaking';
-     vrm.expressionManager.setValue('aa',talking?(0.12+Math.abs(Math.sin(now/95))*.25):0);
+     const mouth= talking ? (0.12 + Math.abs(Math.sin(now/72))*0.48 + Math.abs(Math.sin(now/137))*0.18) : 0;
+     vrm.expressionManager.setValue('aa',Math.min(mouth,0.82));
+     const blinkCycle=now%4300;
+     const blink=blinkCycle>4050 ? Math.sin((blinkCycle-4050)/250*Math.PI) : 0;
+     vrm.expressionManager.setValue('blink',Math.max(0,blink));
     }
    }
    renderer.render(scene,camera);
