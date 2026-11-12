@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen>
   final TextEditingController _apiKeyController = TextEditingController();
   final AppUpdateService _appUpdateService = AppUpdateService();
   bool _updateCheckStarted = false;
+  DateTime? _lastUpdateCheckAt;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -52,7 +53,13 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _checkForAppUpdate() async {
     if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
+    final now = DateTime.now();
+    if (_lastUpdateCheckAt != null &&
+        now.difference(_lastUpdateCheckAt!) < const Duration(minutes: 5)) {
+      return;
+    }
     _updateCheckStarted = true;
+    _lastUpdateCheckAt = now;
     try {
       final update = await _appUpdateService.checkForUpdate();
       if (!mounted || update == null) return;
@@ -110,8 +117,11 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       );
-    } catch (_) {
-      // Update checks are optional; keep Lucy usable when offline or GitHub is unavailable.
+    } catch (error) {
+      // Keep Lucy usable offline, but allow another check after a later resume.
+      debugPrint('Lucy update check failed: $error');
+    } finally {
+      _updateCheckStarted = false;
     }
   }
 
@@ -120,6 +130,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
       unawaited(_appUpdateService.resumePendingInstall());
+      // Retry release checks after returning online or from Android settings.
+      unawaited(_checkForAppUpdate());
     }
   }
 
