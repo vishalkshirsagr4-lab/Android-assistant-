@@ -167,9 +167,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _saveApiKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('gemini_api_key', key);
-    widget.controller.configureAi(key);
+    await widget.controller.configureAi(key);
+    _apiKeyController.clear();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gemini key saved securely on this device.')),
+      );
+    }
   }
 
   void _onControllerUpdate() {
