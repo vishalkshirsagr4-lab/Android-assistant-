@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'grok_service.dart';
 
 /// Represents a single action the AI wants to perform.
@@ -64,6 +65,8 @@ class AiService {
   GenerativeModel? _model;
   ChatSession? _chat;
   String? _apiKey;
+  static const _secureStorage = FlutterSecureStorage();
+  static const _geminiKeyName = 'lucy_gemini_api_key';
   bool _useGrok = false;
   final GrokService _grokService = GrokService();
 
@@ -150,15 +153,44 @@ RESPONSE FORMAT (strict JSON, one action only):
 }
 ''';
 
-  void configure(String apiKey) {
-    _apiKey = apiKey;
+  Future<void> configure(String apiKey) async {
+    final normalizedKey = apiKey.trim();
+    if (normalizedKey.isEmpty) throw ArgumentError('Gemini API key cannot be empty.');
+    await _secureStorage.write(key: _geminiKeyName, value: normalizedKey);
+    _apiKey = normalizedKey;
     _model = GenerativeModel(
       model: 'gemini-3.1-flash-lite-preview',
-      apiKey: apiKey,
+      apiKey: normalizedKey,
       generationConfig: GenerationConfig(responseMimeType: 'application/json'),
       systemInstruction: Content.system(_systemPrompt),
     );
     _chat = _model!.startChat();
+  }
+
+  Future<void> restoreConfiguration({String? legacyKey}) async {
+    var key = await _secureStorage.read(key: _geminiKeyName);
+    if ((key == null || key.isEmpty) && legacyKey != null && legacyKey.trim().isNotEmpty) {
+      key = legacyKey.trim();
+      await _secureStorage.write(key: _geminiKeyName, value: key);
+    }
+    if (key != null && key.isNotEmpty) {
+      final normalizedKey = key;
+      _apiKey = normalizedKey;
+      _model = GenerativeModel(
+        model: 'gemini-3.1-flash-lite-preview',
+        apiKey: normalizedKey,
+        generationConfig: GenerationConfig(responseMimeType: 'application/json'),
+        systemInstruction: Content.system(_systemPrompt),
+      );
+      _chat = _model!.startChat();
+    }
+  }
+
+  Future<void> clearGeminiKey() async {
+    await _secureStorage.delete(key: _geminiKeyName);
+    _apiKey = null;
+    _model = null;
+    _chat = null;
   }
 
   /// Send a message with an optional screenshot, screen size, and UI tree.
