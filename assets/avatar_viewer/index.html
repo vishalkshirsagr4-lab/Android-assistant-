@@ -2,148 +2,124 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#111225">
 <style>
-:root{color-scheme:dark}
-*{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% 42%,#292344 0%,#171827 48%,#10121d 100%);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-#stage{position:absolute;inset:0}
-#stage canvas{display:block;width:100%;height:100%}
-#topbar{position:absolute;left:14px;right:14px;top:12px;display:flex;justify-content:flex-end;gap:7px;z-index:2}
-button{border:1px solid #8d83ca88;background:#211f36dd;color:#f7f5ff;border-radius:20px;padding:8px 13px;font-size:12px;font-weight:600;letter-spacing:.1px}
-button:active{background:#51458c}
-#status{position:absolute;left:14px;bottom:12px;color:#f1efff;background:#211f36e8;border:1px solid #8d83ca66;border-radius:20px;padding:8px 13px;font-size:12px;font-weight:600;z-index:2}
-#loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#e8e4ff;font-size:13px;text-align:center;padding:22px;z-index:1}
-#loading .spinner{width:25px;height:25px;border:2px solid #77709a;border-top-color:#d7c8ff;border-radius:50%;animation:spin .8s linear infinite}
-#loading.error .spinner{display:none}
-#loading small{color:#aaa6c2;line-height:1.45;max-width:270px}
-@keyframes spin{to{transform:rotate(360deg)}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% 35%,#34305a 0%,#1c1c34 48%,#10121f 100%);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+#stage{position:absolute;inset:0}canvas{display:block;width:100%;height:100%;touch-action:pan-y}
+#topbar{position:absolute;top:12px;right:12px;display:flex;gap:7px;z-index:2}
+button{border:1px solid #aaa0ed88;background:#24213ddd;color:#fff;border-radius:22px;padding:8px 13px;font-size:12px;font-weight:650}
+button:active{background:#6556a8}
+#status{position:absolute;left:14px;bottom:14px;color:#f4f0ff;background:#211f36e8;border:1px solid #a79ae966;border-radius:20px;padding:8px 13px;font-size:12px;font-weight:650}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#eeeaff;font-size:13px}
+#loading.hidden{display:none}
+#loading.error{display:flex;flex-direction:column;text-align:center;padding:24px;color:#eeeaff}
+#loading small{display:block;color:#bcb6d7;line-height:1.5;margin-top:8px;max-width:290px}
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.0/lib/three-vrm.module.min.js",
-    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3.3.0/lib/three-vrm-animation.module.js"
-  }
-}
-</script>
 </head>
 <body>
-<div id="stage"></div>
-<div id="loading"><div class="spinner"></div><span id="loading-title">Preparing Lucy…</span><small id="loading-detail">Loading the 3D character and animations</small></div>
-<div id="topbar">
-<button onclick="playClip('greeting')">Wave</button>
-<button onclick="playClip('dance')">Dance</button>
-<button onclick="playClip('peaceSign')">Peace</button>
-</div>
+<div id="stage"><canvas id="avatar"></canvas></div>
+<div id="loading">Preparing Lucy's 3D avatar…</div>
+<div id="topbar"><button onclick="playClip('greeting')">Wave</button><button onclick="playClip('dance')">Dance</button><button onclick="playClip('peaceSign')">Peace</button></div>
 <div id="status">Ready</div>
 <script>
-const loading=document.getElementById('loading');
-const loadingTitle=document.getElementById('loading-title');
-const loadingDetail=document.getElementById('loading-detail');
-const status=document.getElementById('status');
-function showError(message){
- loading.classList.add('error');
- loadingTitle.textContent='Lucy avatar could not load';
- loadingDetail.textContent=message+' You can still use voice controls. Check your internet connection and reopen the screen.';
-}
-let playClip=()=>{};
-window.playClip=(name)=>playClip(name);
-window.setAssistantState=function(state){
- const labels={idle:'Ready',listening:'Listening',capturing:'Viewing screen',analyzing:'Thinking',speaking:'Speaking',executingAction:'Working',waitingConfirmation:'Needs confirmation'};
- status.textContent=labels[state]||'Ready';
-};
-(async()=>{
- try{
-  // Dynamic imports ensure network/module errors are caught and shown instead
-  // of leaving the screen stuck on the loading message forever.
-  let THREE,GLTF,VRM,VRMA;
-  try {
-   [THREE,GLTF,VRM,VRMA]=await Promise.all([
-    import('three'),
-    import('three/addons/loaders/GLTFLoader.js'),
-    import('@pixiv/three-vrm'),
-    import('@pixiv/three-vrm-animation')
-   ]);
-  } catch (moduleError) {
-   throw new Error('Could not download the 3D rendering libraries. Open Lucy with a working internet connection, then try again. Details: '+(moduleError?.message||moduleError));
-  }
-  const host=document.getElementById('stage');
-  const scene=new THREE.Scene();
-  const camera=new THREE.PerspectiveCamera(30,1,.1,100);
-  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
-  renderer.outputColorSpace=THREE.SRGBColorSpace;
-  host.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight(0xffffff,0x45405f,2));
-  const key=new THREE.DirectionalLight(0xffffff,2.2);key.position.set(1,2,3);scene.add(key);
-  const fill=new THREE.PointLight(0x8278ff,18,8);fill.position.set(-1,1.5,1.5);scene.add(fill);
-  const loader=new GLTF.GLTFLoader();
-  loader.register(parser=>new VRM.VRMLoaderPlugin(parser));
-  loader.register(parser=>new VRMA.VRMAnimationLoaderPlugin(parser));
-  let vrm=null,mixer=null,currentAction=null,lastTime=0;
-  const clipCache=new Map();
-  function resize(){
-   const w=host.clientWidth||innerWidth,h=host.clientHeight||220;
-   renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
-  }
-  new ResizeObserver(resize).observe(host);resize();
-  async function loadClip(name){
-   if(clipCache.has(name))return clipCache.get(name);
-   const gltf=await loader.loadAsync('../amica/animations/'+name+'.vrma');
-   const animation=gltf.userData.vrmAnimations?.[0];
-   if(!animation)throw new Error('Animation not found: '+name);
-   const clip=VRMA.createVRMAnimationClip(animation,vrm);
-   clipCache.set(name,clip);return clip;
-  }
-  playClip=async(name)=>{
-   if(!vrm||!mixer)return;
-   try{
-    const clip=await loadClip(name);
-    if(currentAction)currentAction.fadeOut(.2);
-    currentAction=mixer.clipAction(clip);
-    currentAction.reset().fadeIn(.2).play();
-   }catch(error){console.warn('Animation unavailable: '+name,error);}
-  };
-  const gltf=await loader.loadAsync('../amica/vrm/AvatarSample_A.vrm');
-  vrm=gltf.userData.vrm;
-  if(!vrm)throw new Error('VRM model did not contain an avatar.');
-  VRM.VRMUtils.rotateVRM0(vrm);
-  vrm.scene.rotation.y=Math.PI;
-  scene.add(vrm.scene);
-  const avatarBounds=new THREE.Box3().setFromObject(vrm.scene);
-  const avatarSize=avatarBounds.getSize(new THREE.Vector3());
-  const avatarCenter=avatarBounds.getCenter(new THREE.Vector3());
-  const verticalFit=avatarSize.y/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)));
-  camera.position.set(avatarCenter.x, avatarCenter.y + avatarSize.y*0.035, avatarCenter.z + verticalFit*1.12);
-  camera.lookAt(avatarCenter.x, avatarCenter.y, avatarCenter.z);
-  mixer=new THREE.AnimationMixer(vrm.scene);
-  await playClip('idle_loop');
-  loading.style.display='none';
-  function animate(now){
-   requestAnimationFrame(animate);
-   const delta=lastTime?Math.min((now-lastTime)/1000,.05):0;lastTime=now;
-   if(mixer)mixer.update(delta);
-   if(vrm){
-    vrm.update(delta);
-    if(vrm.expressionManager){
-     const talking=status.textContent==='Speaking';
-     const mouth= talking ? (0.12 + Math.abs(Math.sin(now/72))*0.48 + Math.abs(Math.sin(now/137))*0.18) : 0;
-     vrm.expressionManager.setValue('aa',Math.min(mouth,0.82));
-     const blinkCycle=now%4300;
-     const blink=blinkCycle>4050 ? Math.sin((blinkCycle-4050)/250*Math.PI) : 0;
-     vrm.expressionManager.setValue('blink',Math.max(0,blink));
-    }
-   }
-   renderer.render(scene,camera);
-  }
-  requestAnimationFrame(animate);
- }catch(error){
-  console.error('Lucy 3D avatar initialization failed:',error);
-  showError(error?.message||'A 3D component failed to initialize.');
+/* Lucy's original procedural 3D character.
+   All geometry, materials, lighting and animation are generated locally.
+   No CDN, WebView network request, VRM file or external JavaScript library. */
+(()=>{
+'use strict';
+const canvas=document.getElementById('avatar'),loading=document.getElementById('loading'),status=document.getElementById('status');
+const gl=canvas.getContext('webgl',{alpha:true,antialias:true,powerPreference:'low-power'});
+if(!gl){loading.className='error';loading.innerHTML='3D graphics are unavailable on this device.<small>Your voice assistant still works. Enable Android System WebView and hardware acceleration, then reopen Lucy.</small>';return;}
+const vs=`
+attribute vec3 aPosition; attribute vec3 aNormal;
+uniform mat4 uMVP; uniform mat4 uModel; uniform vec3 uColor;
+varying vec3 vColor;
+void main(){vec3 n=normalize(mat3(uModel)*aNormal);vec3 light=normalize(vec3(-.35,.8,1.0));float d=max(dot(n,light),0.0);float rim=pow(1.0-max(dot(n,vec3(0.0,0.0,1.0)),0.0),2.0)*.16;vColor=uColor*(.55+d*.58+rim);gl_Position=uMVP*vec4(aPosition,1.0);}
+`;
+const fs=`precision mediump float;varying vec3 vColor;void main(){gl_FragColor=vec4(vColor,1.0);}`;
+function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
+const program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error('Could not initialize Lucy renderer');
+gl.useProgram(program);
+const loc={p:gl.getAttribLocation(program,'aPosition'),n:gl.getAttribLocation(program,'aNormal'),mvp:gl.getUniformLocation(program,'uMVP'),model:gl.getUniformLocation(program,'uModel'),color:gl.getUniformLocation(program,'uColor')};
+function mesh(pos,norm,idx){const b={};b.v=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b.v);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pos),gl.STATIC_DRAW);b.n=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b.n);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(norm),gl.STATIC_DRAW);b.i=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.i);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(idx),gl.STATIC_DRAW);b.count=idx.length;return b;}
+function sphere(rows=18,cols=24){const p=[],n=[],ix=[];for(let y=0;y<=rows;y++){const v=y/rows,phi=v*Math.PI;for(let x=0;x<=cols;x++){const u=x/cols,theta=u*Math.PI*2,xx=-Math.cos(theta)*Math.sin(phi),yy=Math.cos(phi),zz=Math.sin(theta)*Math.sin(phi);p.push(xx,yy,zz);n.push(xx,yy,zz);}}for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){const a=y*(cols+1)+x,b=a+cols+1;ix.push(a,b,a+1,b,b+1,a+1);}return mesh(p,n,ix);}
+function cylinder(segments=16){const p=[],n=[],ix=[];for(let y=0;y<2;y++)for(let i=0;i<=segments;i++){const a=i/segments*Math.PI*2,x=Math.cos(a),z=Math.sin(a);p.push(x,y-.5,z);n.push(x,0,z);}for(let i=0;i<segments;i++){const a=i,b=i+segments+1;ix.push(a,b,a+1,b,b+1,a+1);}return mesh(p,n,ix);}
+const S=sphere(),C=cylinder();
+function I(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);}
+function mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++)o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];return o;}
+function tr(x,y,z){const m=I();m[12]=x;m[13]=y;m[14]=z;return m;}
+function sc(x,y,z){const m=I();m[0]=x;m[5]=y;m[10]=z;return m;}
+function rx(a){const m=I(),c=Math.cos(a),s=Math.sin(a);m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m;}
+function ry(a){const m=I(),c=Math.cos(a),s=Math.sin(a);m[0]=c;m[2]=-s;m[8]=s;m[10]=c;return m;}
+function rz(a){const m=I(),c=Math.cos(a),s=Math.sin(a);m[0]=c;m[1]=s;m[4]=-s;m[5]=c;return m;}
+function perspective(f,aspect,n,far){const t=1/Math.tan(f/2),m=new Float32Array(16);m[0]=t/aspect;m[5]=t;m[10]=(far+n)/(n-far);m[11]=-1;m[14]=2*far*n/(n-far);return m;}
+function lookAt(eye,center){let z=norm(sub(eye,center)),x=norm(cross([0,1,0],z)),y=cross(z,x),m=I();m[0]=x[0];m[1]=y[0];m[2]=z[0];m[4]=x[1];m[5]=y[1];m[6]=z[1];m[8]=x[2];m[9]=y[2];m[10]=z[2];m[12]=-dot(x,eye);m[13]=-dot(y,eye);m[14]=-dot(z,eye);return m;}
+const sub=(a,b)=>a.map((v,i)=>v-b[i]),dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0),cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],norm=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);};
+let projection=perspective(.48,1,.1,50),view=lookAt([0,.65,8.5],[0,.65,0]);
+function draw(g,m,color){const mvp=mul(projection,mul(view,m));gl.uniformMatrix4fv(loc.mvp,false,mvp);gl.uniformMatrix4fv(loc.model,false,m);gl.uniform3fv(loc.color,color);gl.bindBuffer(gl.ARRAY_BUFFER,g.v);gl.enableVertexAttribArray(loc.p);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,g.n);gl.enableVertexAttribArray(loc.n);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.i);gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_SHORT,0);}
+const col={skin:[1,.72,.66],hair:[.20,.13,.42],hair2:[.32,.23,.60],purple:[.40,.28,.78],light:[.72,.62,1],white:[.94,.91,1],iris:[.16,.20,.42],black:[.07,.06,.13],pink:[.95,.36,.57],gold:[1,.78,.38],shoe:[.16,.13,.29]};
+function ball(x,y,z,sx,sy,sz,color,rot=0){let m=mul(tr(x,y,z),mul(ry(rot),sc(sx,sy,sz)));draw(S,m,color);}
+function rod(a,b,r,color){const d=sub(b,a),len=Math.hypot(...d),mid=a.map((v,i)=>(v+b[i])/2),axis=norm(d),angle=Math.acos(Math.max(-1,Math.min(1,axis[1]))),rotAxis=[axis[2],0,-axis[0]],rot=Math.hypot(...rotAxis)>.0001?Math.atan2(Math.hypot(...rotAxis),axis[1]):0;let m=mul(tr(...mid),mul(rotateAxis(rotAxis,rot),sc(r,len,r)));draw(C,m,color);ball(...a,r,r,r,color);ball(...b,r,r,r,color);}
+function rotateAxis(axis,a){if(Math.hypot(...axis)<.0001)return I();const [x,y,z]=norm(axis),c=Math.cos(a),s=Math.sin(a),t=1-c,m=I();m[0]=t*x*x+c;m[1]=t*x*y+s*z;m[2]=t*x*z-s*y;m[4]=t*x*y-s*z;m[5]=t*y*y+c;m[6]=t*y*z+s*x;m[8]=t*x*z+s*y;m[9]=t*y*z-s*x;m[10]=t*z*z+c;return m;}
+let assistantState='idle',pose='idle',poseUntil=0,last=0,raf=0;
+window.setAssistantState=s=>{assistantState=s||'idle';const labels={idle:'Ready',listening:'Listening',capturing:'Looking at screen',analyzing:'Thinking',speaking:'Speaking',executingAction:'Working',waitingConfirmation:'Needs confirmation'};status.textContent=labels[assistantState]||'Ready';};
+window.playClip=name=>{pose=name;poseUntil=performance.now()+(name==='dance'?2600:1800);};
+function character(t){
+ const bob=Math.sin(t*2)*.035,turn=Math.sin(t*.65)*.045,listen=assistantState==='listening',talk=assistantState==='speaking',wave=pose==='greeting'&&performance.now()<poseUntil,dance=pose==='dance'&&performance.now()<poseUntil,peace=pose==='peaceSign'&&performance.now()<poseUntil;
+ if(!wave&&!dance&&!peace&&pose!=='idle')pose='idle';
+ const bodyY=bob+(dance?Math.sin(t*13)*.09:0),headTilt=(listen?-.12:0)+(dance?Math.sin(t*13)*.13:0);
+ // legs, shoes and pleated skirt
+ rod([-.23,-.72+bodyY,0],[-.28,-1.28+bodyY,0],.105,col.skin);rod([.23,-.72+bodyY,0],[.28,-1.28+bodyY,0],.105,col.skin);
+ ball(-.29,-1.34+bodyY,.07,.19,.11,.28,col.shoe);ball(.29,-1.34+bodyY,.07,.19,.11,.28,col.shoe);
+ ball(0,-.63+bodyY,0,.52,.29,.34,col.purple);
+ ball(0,-.39+bodyY,.01,.42,.13,.31,col.light);
+ // torso and collar
+ ball(0,.02+bodyY,0,.43,.57,.29,col.purple);
+ ball(0,.43+bodyY,.02,.23,.17,.25,col.white);
+ ball(0,.25+bodyY,.29,.07,.22,.035,col.gold);
+ // arms
+ const shoulderL=[-.43,.30+bodyY,0],shoulderR=[.43,.30+bodyY,0];
+ const waveAngle=wave?Math.sin(t*12)*.42:0;
+ const leftElbow=wave?[-.76,.55+bodyY,0]:[-.62,.02+bodyY,0];
+ const leftHand=wave?[-.78,.94+bodyY+waveAngle*.18,0]:[-.72,-.30+bodyY,0];
+ const rightElbow=peace?[.72,.55+bodyY,0]:[.62,.02+bodyY,0];
+ const rightHand=peace?[.78,.91+bodyY,0]:dance?[.82,.48+bodyY+Math.sin(t*13)*.12,0]:[.72,-.30+bodyY,0];
+ rod(shoulderL,leftElbow,.105,col.purple);rod(leftElbow,leftHand,.085,col.skin);
+ rod(shoulderR,rightElbow,.105,col.purple);rod(rightElbow,rightHand,.085,col.skin);
+ ball(...leftHand,.105,.105,.105,col.skin);ball(...rightHand,.105,.105,.105,col.skin);
+ // head, neck and hair silhouette
+ ball(0,.56+bodyY,0,.17,.22,.17,col.skin);
+ let head=mul(tr(turn,.1+bodyY,0),mul(ry(turn),mul(rz(headTilt),tr(0,1.23,0))));
+ draw(S,mul(head,sc(.66,.78,.56)),col.skin);
+ // hair cap and long side locks
+ draw(S,mul(head,mul(tr(0,.28,-.025),sc(.69,.61,.59))),col.hair);
+ ball(-.57,.96+bodyY,-.02,.17,.67,.19,col.hair);ball(.57,.96+bodyY,-.02,.17,.67,.19,col.hair);
+ ball(-.28,1.62+bodyY,.43,.31,.20,.13,col.hair2,-.38);ball(0,1.69+bodyY,.48,.31,.20,.13,col.hair2);ball(.29,1.60+bodyY,.42,.29,.19,.13,col.hair2,.38);
+ // fringe and hair ornaments
+ ball(-.48,1.30+bodyY,.42,.17,.33,.13,col.hair2,-.25);ball(.48,1.30+bodyY,.42,.17,.33,.13,col.hair2,.25);
+ ball(-.56,1.55+bodyY,.12,.11,.13,.09,col.gold);ball(.56,1.55+bodyY,.12,.11,.13,.09,col.gold);
+ // ears
+ ball(-.65,1.18+bodyY,0,.11,.17,.12,col.skin);ball(.65,1.18+bodyY,0,.11,.17,.12,col.skin);
+ // eyes, brows, blink
+ const blink=(Math.sin(t*1.7)> .995 || (listen&&Math.sin(t*2.8)>.97))? .12:1;
+ for(const x of [-.25,.25]){
+  ball(x,1.28+bodyY,.505,.125,.145*blink,.055,col.white);
+  ball(x,1.27+bodyY,.554,.073,.105*blink,.035,col.iris);
+  ball(x,1.27+bodyY,.582,.034,.062*blink,.018,col.black);
+  ball(x-.022,1.32+bodyY,.602,.019,.025*blink,.012,col.white);
+  ball(x,1.48+bodyY,.51,.14,.027,.035,col.hair);
  }
+ // cheeks and mouth
+ ball(-.40,1.02+bodyY,.48,.13,.055,.025,col.pink);ball(.40,1.02+bodyY,.48,.13,.055,.025,col.pink);
+ const mouthH=talk?.085+Math.abs(Math.sin(t*10))*.075:.018;
+ ball(0,.98+bodyY,.535,.075,mouthH,.025,col.pink);
+ // little shoulder badge
+ ball(.30,.40+bodyY,.28,.09,.09,.035,col.gold);
+}
+function resize(){const d=Math.min(window.devicePixelRatio||1,1.6),w=Math.max(1,Math.floor(canvas.clientWidth*d)),h=Math.max(1,Math.floor(canvas.clientHeight*d));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);projection=perspective(.48,w/h,.1,50);}}
+function frame(now){raf=requestAnimationFrame(frame);resize();const t=now/1000;gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);character(t);last=now;}
+window.addEventListener('resize',resize);resize();loading.classList.add('hidden');raf=requestAnimationFrame(frame);
 })();
 </script>
 </body>
