@@ -840,6 +840,9 @@ class _HomeScreenState extends State<HomeScreen>
         actions: [
           TextButton(
             onPressed: () async {
+              if (widget.controller.isGrokProvider) {
+                await widget.controller.setGrokProvider(false);
+              }
               await _grokService.clearApiKey();
               if (ctx.mounted) Navigator.pop(ctx);
             },
