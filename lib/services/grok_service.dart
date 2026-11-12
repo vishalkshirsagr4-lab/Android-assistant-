@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-/// Optional xAI/Grok text provider. API keys remain in secure device storage.
+/// xAI/Grok multimodal provider. API keys remain in secure device storage.
 class GrokService {
   static const _storage = FlutterSecureStorage();
   static const _keyName = 'lucy_xai_api_key';
   static const _endpoint = 'https://api.x.ai/v1/chat/completions';
-  static const Duration defaultTimeout = Duration(seconds: 25);
+  static const Duration defaultTimeout = Duration(seconds: 45);
 
   Future<void> saveApiKey(String key) async {
     final value = key.trim();
@@ -26,7 +27,9 @@ class GrokService {
 
   Future<String> complete(
     String prompt, {
-    String model = 'grok-3-mini',
+    String model = 'grok-4.7',
+    String? systemPrompt,
+    Uint8List? imageBytes,
     Duration timeout = defaultTimeout,
   }) async {
     final normalizedPrompt = prompt.trim();
@@ -38,6 +41,28 @@ class GrokService {
     if (key == null || key.isEmpty) {
       throw StateError('Add an xAI API key in Lucy settings first.');
     }
+
+    final messages = <Map<String, dynamic>>[];
+    if (systemPrompt != null && systemPrompt.isNotEmpty) {
+      messages.add({'role': 'system', 'content': systemPrompt});
+    }
+
+    final userContent = imageBytes == null
+        ? normalizedPrompt
+        : <Map<String, dynamic>>[
+            {
+              'type': 'text',
+              'text': normalizedPrompt,
+            },
+            {
+              'type': 'image_url',
+              'image_url': {
+                'url': 'data:image/jpeg;base64,${base64Encode(imageBytes)}',
+                'detail': 'auto',
+              },
+            },
+          ];
+    messages.add({'role': 'user', 'content': userContent});
 
     final client = http.Client();
     try {
@@ -51,10 +76,9 @@ class GrokService {
             },
             body: jsonEncode({
               'model': model,
-              'messages': [
-                {'role': 'user', 'content': normalizedPrompt},
-              ],
-              'temperature': 0.4,
+              'messages': messages,
+              'temperature': 0.2,
+              'stream': false,
             }),
           )
           .timeout(timeout);
