@@ -233,21 +233,32 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "showStopOverlay" -> {
-                    val intent = Intent(this, OverlayService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(intent)
-                    } else {
-                        startService(intent)
+                    try {
+                        val intent = Intent(this, OverlayService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(true)
+                    } catch (error: SecurityException) {
+                        Log.e(TAG, "Microphone foreground service permission denied", error)
+                        result.error("MICROPHONE_FGS_DENIED", "Android denied the microphone foreground service. Confirm microphone permission and start Lucy again.", null)
+                    } catch (error: Exception) {
+                        Log.e(TAG, "Could not start Lucy foreground service", error)
+                        result.error("FGS_START_FAILED", error.message ?: "Could not start background service", null)
                     }
-                    result.success(true)
                 }
                 "hideStopOverlay" -> {
-                    val service = OverlayService.instance
-                    if (service != null) {
-                        service.hideOverlay()
+                    try {
+                        val service = OverlayService.instance
+                        if (service != null) service.hideOverlay()
                         stopService(Intent(this, OverlayService::class.java))
+                        result.success(true)
+                    } catch (error: Exception) {
+                        Log.e(TAG, "Could not stop Lucy foreground service", error)
+                        result.error("FGS_STOP_FAILED", error.message ?: "Could not stop background service", null)
                     }
-                    result.success(true)
                 }
                 else -> result.notImplemented()
             }
