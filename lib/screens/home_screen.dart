@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
+import '../services/app_update_service.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -18,6 +19,8 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _pulseAnimation;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final AppUpdateService _appUpdateService = AppUpdateService();
+  bool _updateCheckStarted = false;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -39,12 +42,81 @@ class _HomeScreenState extends State<HomeScreen>
     _loadApiKey();
 
     _checkAccessibility();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForAppUpdate();
+    });
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (_updateCheckStarted || !mounted) return;
+    _updateCheckStarted = true;
+    try {
+      final update = await _appUpdateService.checkForUpdate();
+      if (!mounted || update == null) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.system_update_alt, size: 34),
+          title: Text('Lucy update available · ${update.version}'),
+          content: SingleChildScrollView(
+            child: Text(
+              update.notes.isEmpty
+                  ? 'A newer version of Lucy is ready to install.'
+                  : update.notes.length > 1400
+                      ? '${update.notes.substring(0, 1400)}…'
+                      : update.notes,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Later'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Downloading Lucy update…')),
+                );
+                try {
+                  final installerOpened =
+                      await _appUpdateService.downloadAndInstall(update);
+                  if (!mounted) return;
+                  if (!installerOpened) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Allow Lucy to install unknown apps in Settings. The update will continue when you return.',
+                        ),
+                        duration: Duration(seconds: 6),
+                      ),
+                    );
+                  }
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Update failed: $error')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('Download & install'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      // Update checks are optional; keep Lucy usable when offline or GitHub is unavailable.
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
+      _appUpdateService.resumePendingInstall();
     }
   }
 
