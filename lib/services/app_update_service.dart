@@ -18,7 +18,7 @@ class LucyUpdateInfo {
 }
 
 class AppUpdateService {
-  AppUpdateService._();
+  AppUpdateService();
 
   static const _channel = MethodChannel('com.poc.screen_aware_ai/updater');
   static const _releaseApi =
@@ -78,7 +78,10 @@ class AppUpdateService {
     final directory = await getTemporaryDirectory();
     final apkFile = File('${directory.path}/lucy-update.apk');
 
-    if (!await apkFile.exists() || await apkFile.length() == 0) {
+    if (await apkFile.exists()) {
+      await apkFile.delete();
+    }
+    {
       final request = http.Request('GET', Uri.parse(update.downloadUrl));
       final client = http.Client();
       try {
@@ -90,6 +93,9 @@ class AppUpdateService {
         }
         final sink = apkFile.openWrite();
         await response.stream.pipe(sink);
+      } catch (_) {
+        if (await apkFile.exists()) await apkFile.delete();
+        rethrow;
       } finally {
         client.close();
       }
