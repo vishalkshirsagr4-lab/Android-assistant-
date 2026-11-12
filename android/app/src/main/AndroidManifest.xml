@@ -48,6 +48,11 @@
                 android:resource="@xml/accessibility_service_config"/>
         </service>
 
+        <service
+            android:name=".NativeVoiceService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- Started only after the user taps Lucy's microphone control. -->
         <service
             android:name=".OverlayService"

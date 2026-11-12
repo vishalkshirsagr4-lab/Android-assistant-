@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var methodChannel: MethodChannel? = null
+    private var voiceChannel: MethodChannel? = null
     private var lastMetricsElapsedMs: Long? = null
     private var lastMetricsCpuMs: Long? = null
 
@@ -34,9 +35,16 @@ class MainActivity : FlutterActivity() {
     // Broadcast receiver for the stop notification action
     private val forceStopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == OverlayService.ACTION_FORCE_STOP) {
-                Log.d(TAG, "Received FORCE_STOP broadcast, forwarding to Flutter")
-                methodChannel?.invokeMethod("onForceStop", null)
+            when (intent?.action) {
+                OverlayService.ACTION_FORCE_STOP, NativeVoiceService.ACTION_FORCE_STOP -> {
+                    Log.d(TAG, "Received voice Stop broadcast")
+                    methodChannel?.invokeMethod("onForceStop", null)
+                }
+                NativeVoiceService.ACTION_RESULT -> voiceChannel?.invokeMethod("onResult",
+                    mapOf("text" to intent.getStringExtra("text").orEmpty(),
+                          "isFinal" to intent.getBooleanExtra("isFinal", false)))
+                NativeVoiceService.ACTION_ERROR -> voiceChannel?.invokeMethod("onError",
+                    mapOf("message" to intent.getStringExtra("message").orEmpty()))
             }
         }
     }
@@ -47,7 +55,11 @@ class MainActivity : FlutterActivity() {
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         // Register broadcast receiver for the stop notification action
-        val filter = IntentFilter(OverlayService.ACTION_FORCE_STOP)
+        val filter = IntentFilter(OverlayService.ACTION_FORCE_STOP).apply {
+            addAction(NativeVoiceService.ACTION_FORCE_STOP)
+            addAction(NativeVoiceService.ACTION_RESULT)
+            addAction(NativeVoiceService.ACTION_ERROR)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(forceStopReceiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
@@ -56,6 +68,38 @@ class MainActivity : FlutterActivity() {
 
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel = channel
+
+        val voice = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/voice")
+        voiceChannel = voice
+        voice.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(
+                            this, android.Manifest.permission.RECORD_AUDIO
+                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        result.error("MIC_PERMISSION", "Microphone permission is required.", null)
+                    } else {
+                        try {
+                            val serviceIntent = Intent(this, NativeVoiceService::class.java).apply {
+                                putExtra(NativeVoiceService.EXTRA_LOCALE, call.argument<String>("localeId") ?: "en_US")
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+                            else startService(serviceIntent)
+                            result.success(true)
+                        } catch (error: Exception) {
+                            result.error("VOICE_START_FAILED", error.message, null)
+                        }
+                    }
+                }
+                "stop" -> {
+                    stopService(Intent(this, NativeVoiceService::class.java))
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestScreenCapture" -> {
@@ -425,6 +469,7 @@ class MainActivity : FlutterActivity() {
             Log.w(TAG, "Failed to unregister forceStopReceiver", e)
         }
         methodChannel = null
+        voiceChannel = null
         super.onDestroy()
     }
 }

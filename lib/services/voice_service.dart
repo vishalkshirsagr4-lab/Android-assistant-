@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/services.dart';
 
 class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _tts = FlutterTts();
+  static const MethodChannel _native = MethodChannel('com.poc.screen_aware_ai/voice');
+  bool _nativeHandlerInstalled = false;
 
   bool _isInitialized = false;
   bool _isListening = false;
@@ -93,39 +96,34 @@ class VoiceService {
 
     if (_isListening) return true;
 
-    // Cancel any lingering STT session to ensure a clean engine state
-    await _speech.cancel();
-
-    _errorOccurred = false;
+    if (!_nativeHandlerInstalled) {
+      _nativeHandlerInstalled = true;
+      _native.setMethodCallHandler((call) async {
+        if (call.method == 'onResult' && call.arguments is Map) {
+          final data = Map<dynamic, dynamic>.from(call.arguments as Map);
+          final words = data['text']?.toString() ?? '';
+          if (words.isNotEmpty) onResult?.call(words, data['isFinal'] == true);
+        } else if (call.method == 'onError' && call.arguments is Map) {
+          final data = Map<dynamic, dynamic>.from(call.arguments as Map);
+          onError?.call(data['message']?.toString() ?? 'Speech recognition error');
+        }
+      });
+    }
     try {
-      await _speech.listen(
-      onResult: (result) {
-        onResult?.call(result.recognizedWords, result.finalResult);
-      },
-      // Android speech services impose their own hard session limits. Lucy
-      // renews bounded sessions while the user-started foreground session lives.
-      listenFor: const Duration(seconds: 55),
-      pauseFor: const Duration(seconds: 5),
-      localeId: localeId,
-      listenOptions: stt.SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-      ),
-      );
-      _isListening = true;
-      return true;
+      final started = await _native.invokeMethod<bool>('start', {'localeId': localeId ?? 'en_US'});
+      _isListening = started == true;
+      if (!_isListening) onError?.call('Android did not start the microphone foreground service.');
+      return _isListening;
     } catch (error) {
       _isListening = false;
-      onError?.call('Could not start speech recognition: $error');
+      onError?.call('Could not start native speech recognition: $error');
       return false;
     }
   }
 
   Future<void> stopListening() async {
-    if (_isListening) {
-      await _speech.stop();
-      _isListening = false;
-    }
+    try { await _native.invokeMethod<bool>('stop'); } catch (_) {}
+    _isListening = false;
   }
 
   Future<void> speak(String text, {String? lang}) async {
@@ -153,6 +151,7 @@ class VoiceService {
 
   void dispose() {
     _disposed = true;
+    _native.invokeMethod<bool>('stop');
     _speech.stop();
     _speech.cancel();
     _tts.stop();
