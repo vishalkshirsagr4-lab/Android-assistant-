@@ -1,0 +1,69 @@
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Local-only activity history. Screenshots, API keys and typed secrets are
+/// deliberately excluded; only short event summaries are persisted.
+class LucyActivityStore {
+  static const _eventsKey = 'lucy_activity_events_v1';
+  static const _routinesKey = 'lucy_automation_templates_v1';
+  static const _maxEvents = 500;
+
+  Future<void> seedDefaults() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_routinesKey)) {
+      await prefs.setString(_routinesKey, jsonEncode([
+        {'id': 'morning_brief', 'name': 'Morning briefing', 'enabled': false, 'requiresApproval': true},
+        {'id': 'focus_mode', 'name': 'Focus session', 'enabled': false, 'requiresApproval': true},
+        {'id': 'quick_notes', 'name': 'Quick note capture', 'enabled': false, 'requiresApproval': true},
+      ]));
+    }
+  }
+
+  Future<void> record(String type, String summary) async {
+    final prefs = await SharedPreferences.getInstance();
+    final events = await readEvents();
+    events.add({
+      'time': DateTime.now().toIso8601String(),
+      'type': type,
+      'summary': _safeSummary(summary),
+    });
+    final bounded = events.length > _maxEvents
+        ? events.sublist(events.length - _maxEvents)
+        : events;
+    await prefs.setString(_eventsKey, jsonEncode(bounded));
+  }
+
+  Future<List<Map<String, dynamic>>> readEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_eventsKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> readAutomationTemplates() async {
+    await seedDefaults();
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_routinesKey) ?? '[]';
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return [];
+    return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  Future<void> clearEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_eventsKey);
+  }
+
+  String _safeSummary(String value) {
+    final cleaned = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (cleaned.length <= 180) return cleaned;
+    return '${cleaned.substring(0, 177)}...';
+  }
+}
