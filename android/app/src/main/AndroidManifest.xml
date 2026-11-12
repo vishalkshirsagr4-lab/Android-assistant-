@@ -52,9 +52,6 @@
             android:name=".OverlayService"
             android:exported="false"
             android:foregroundServiceType="microphone">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="User-started voice assistant with a persistent stop notification"/>
         </service>
 
         <provider
