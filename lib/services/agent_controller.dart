@@ -6,6 +6,7 @@ import 'ai_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
 import 'lucy_activity_store.dart';
+import 'grok_service.dart';
 
 enum AgentState {
   idle,
