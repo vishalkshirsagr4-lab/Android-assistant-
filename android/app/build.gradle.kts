@@ -1,10 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
 
-dependencies {
-    implementation("androidx.work:work-runtime-ktx:2.10.1")
-}
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -12,6 +8,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
+}
 
 // A release keystore is optional. `android/key.properties` is gitignored, so a
 // fresh clone (and CI without the signing secrets configured) has no keystore.
