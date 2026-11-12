@@ -10,6 +10,7 @@ class VoiceService {
   bool _isListening = false;
   bool _isSpeaking = false;
   bool _errorOccurred = false;
+  bool _disposed = false;
   String _currentTtsLanguage = 'en-US';
 
   static const Map<String, String> _langToTtsLocale = {
@@ -40,6 +41,7 @@ class VoiceService {
 
   Future<bool> initialize() async {
     if (_isInitialized) return true;
+    if (_disposed) return false;
 
     try {
       _isInitialized = await _speech.initialize(
@@ -77,35 +79,46 @@ class VoiceService {
     }
   }
 
-  Future<void> startListening({String? localeId}) async {
-    if (!_isInitialized) {
-      await initialize();
+  Future<bool> startListening({String? localeId}) async {
+    if (!_isInitialized && !await initialize()) {
+      onError?.call('Speech recognition is unavailable or microphone permission is missing.');
+      return false;
     }
+    if (_disposed) return false;
 
     // Stop TTS if speaking
     if (_isSpeaking) {
       await stopSpeaking();
     }
 
-    if (_isListening) return;
+    if (_isListening) return true;
 
     // Cancel any lingering STT session to ensure a clean engine state
     await _speech.cancel();
 
-    _isListening = true;
     _errorOccurred = false;
-    await _speech.listen(
+    try {
+      await _speech.listen(
       onResult: (result) {
         onResult?.call(result.recognizedWords, result.finalResult);
       },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3),
+      // Android speech services impose their own hard session limits. Lucy
+      // renews bounded sessions while the user-started foreground session lives.
+      listenFor: const Duration(seconds: 55),
+      pauseFor: const Duration(seconds: 5),
       localeId: localeId,
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,
         cancelOnError: true,
       ),
-    );
+      );
+      _isListening = true;
+      return true;
+    } catch (error) {
+      _isListening = false;
+      onError?.call('Could not start speech recognition: $error');
+      return false;
+    }
   }
 
   Future<void> stopListening() async {
@@ -139,6 +152,7 @@ class VoiceService {
   }
 
   void dispose() {
+    _disposed = true;
     _speech.stop();
     _speech.cancel();
     _tts.stop();
