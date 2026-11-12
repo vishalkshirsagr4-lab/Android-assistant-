@@ -37,6 +37,7 @@ dependencies:
   flutter_tts: ^4.2.0
   path_provider: ^2.1.5
   shared_preferences: ^2.3.4
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:
@@ -59,6 +60,14 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/avatar_viewer/index.html
+    - assets/amica/LICENSE
+    - assets/amica/vrm/AvatarSample_A.vrm
+    - assets/amica/animations/idle_loop.vrma
+    - assets/amica/animations/greeting.vrma
+    - assets/amica/animations/dance.vrma
+    - assets/amica/animations/peaceSign.vrma
 
   # To add assets to your application, add an assets section, like this:
   # assets:
