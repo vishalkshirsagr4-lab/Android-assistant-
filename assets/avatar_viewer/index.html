@@ -106,7 +106,6 @@ window.setAssistantState=function(state){
   vrm=gltf.userData.vrm;
   if(!vrm)throw new Error('VRM model did not contain an avatar.');
   VRM.VRMUtils.rotateVRM0(vrm);
-  scene.add(vrm.scene);
   vrm.scene.rotation.y=Math.PI;
   scene.add(vrm.scene);
   const avatarBounds=new THREE.Box3().setFromObject(vrm.scene);
