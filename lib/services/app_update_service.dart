@@ -26,6 +26,7 @@ class AppUpdateService {
       'https://api.github.com/repos/vishalkshirsagr4-lab/Android-assistant-/releases/latest';
   static const _pendingApkKey = 'lucy_pending_update_apk';
   static const _pendingVersionKey = 'lucy_pending_update_version';
+  static const _permissionPendingKey = 'lucy_update_permission_pending';
 
   Future<LucyUpdateInfo?> checkForUpdate() async {
     final response = await http.get(
@@ -67,6 +68,11 @@ class AppUpdateService {
         code: 'VERSION_UNAVAILABLE',
         message: 'Lucy could not read its installed version.',
       );
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final pendingVersion = prefs.getString(_pendingVersionKey);
+    if (pendingVersion != null && !_isNewer(pendingVersion, installedVersion)) {
+      await clearPendingInstall();
     }
     if (!_isNewer(tag, installedVersion)) return null;
 
@@ -157,10 +163,12 @@ class AppUpdateService {
     final canInstall =
         await _channel.invokeMethod<bool>('canInstallPackages') ?? false;
     if (!canInstall) {
+      await prefs.setBool(_permissionPendingKey, true);
       await _channel.invokeMethod<void>('openInstallPermissionSettings');
       return false;
     }
 
+    await prefs.setBool(_permissionPendingKey, false);
     await _channel.invokeMethod<void>('installApk', {'path': path});
     // Keep the pending path until Android returns to Lucy. If the installer is
     // cancelled, the user can retry without downloading the APK again.
@@ -169,6 +177,8 @@ class AppUpdateService {
 
   Future<void> resumePendingInstall() async {
     final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_permissionPendingKey) != true) return;
+
     final path = prefs.getString(_pendingApkKey);
     if (path == null || path.isEmpty) return;
 
@@ -181,6 +191,7 @@ class AppUpdateService {
     final canInstall =
         await _channel.invokeMethod<bool>('canInstallPackages') ?? false;
     if (canInstall) {
+      await prefs.setBool(_permissionPendingKey, false);
       await _channel.invokeMethod<void>('installApk', {'path': path});
     }
   }
@@ -200,6 +211,7 @@ class AppUpdateService {
   ) async {
     await prefs.remove(_pendingApkKey);
     await prefs.remove(_pendingVersionKey);
+    await prefs.remove(_permissionPendingKey);
     if (apk != null && await apk.exists()) {
       await apk.delete();
     }
