@@ -48,11 +48,16 @@ class AppUpdateService {
     if (!_isNewer(tag, package.version)) return null;
 
     final assets = (release['assets'] as List<dynamic>? ?? const []);
-    final apk = assets.cast<Map<String, dynamic>>().where((asset) {
-      return asset['name'] == 'lucy-latest.apk' &&
+    Map<String, dynamic>? apk;
+    for (final item in assets) {
+      final asset = item as Map<String, dynamic>;
+      if (asset['name'] == 'lucy-latest.apk' &&
           (asset['content_type'] == 'application/vnd.android.package-archive' ||
-              (asset['name'] as String).endsWith('.apk'));
-    }).firstOrNull;
+              (asset['name'] as String).endsWith('.apk'))) {
+        apk = asset;
+        break;
+      }
+    }
 
     if (apk == null) {
       throw const FormatException(
