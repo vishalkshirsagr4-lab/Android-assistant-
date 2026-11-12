@@ -79,6 +79,7 @@ class GrokService {
               'messages': messages,
               'temperature': 0.2,
               'stream': false,
+              'response_format': {'type': 'json_object'},
             }),
           )
           .timeout(timeout);
