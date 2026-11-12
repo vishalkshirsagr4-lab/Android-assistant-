@@ -72,7 +72,7 @@ class AppUpdateService {
     );
   }
 
-  Future<void> downloadAndInstall(LucyUpdateInfo update) async {
+  Future<bool> downloadAndInstall(LucyUpdateInfo update) async {
     final directory = await getTemporaryDirectory();
     final apkFile = File('${directory.path}/lucy-update.apk');
 
@@ -94,7 +94,7 @@ class AppUpdateService {
     }
 
     _pendingApkPath = apkFile.path;
-    await _installPendingIfAllowed();
+    return _installPendingIfAllowed();
   }
 
   Future<bool> _installPendingIfAllowed() async {
