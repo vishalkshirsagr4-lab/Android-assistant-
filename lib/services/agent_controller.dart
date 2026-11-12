@@ -7,6 +7,7 @@ import 'voice_service.dart';
 import 'screen_capture_service.dart';
 import 'lucy_activity_store.dart';
 import 'grok_service.dart';
+import 'performance_monitor.dart';
 
 enum AgentState {
   idle,
@@ -53,6 +54,7 @@ class AgentController extends ChangeNotifier {
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
   final LucyActivityStore _activityStore = LucyActivityStore();
+  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -430,12 +432,15 @@ class AgentController extends ChangeNotifier {
       _statusMessage = '🤖 Thinking... (step $step)';
       notifyListeners();
 
+      final aiStopwatch = Stopwatch()..start();
       final agentResponse = await _aiService.agentChat(
         currentMessage,
         imageBytes: screenshotBytes,
         screenSize: screenSize,
         uiTree: uiTree,
       );
+      aiStopwatch.stop();
+      _performanceMonitor.recordResponse(aiStopwatch.elapsed);
 
       if (_cancelRequested) break;
 
