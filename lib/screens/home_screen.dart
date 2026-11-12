@@ -299,43 +299,58 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 66,
-              height: 66,
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Icon(Icons.auto_awesome, size: 32, color: colorScheme.primary),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 220;
+        return Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: compact ? 4 : 20,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Your assistant is ready',
-              style: TextStyle(
-                color: colorScheme.onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: compact ? 42 : 66,
+                  height: compact ? 42 : 66,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(compact ? 14 : 22),
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome,
+                    size: compact ? 22 : 32,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                SizedBox(height: compact ? 6 : 16),
+                Text(
+                  'Your assistant is ready',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: compact ? 15 : 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (!compact) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tap the microphone to talk to Lucy or ask for help with what is on your screen.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: colorScheme.onSurface.withOpacity(0.62),
+                      fontSize: 13,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Tap the microphone to talk to Lucy or ask for help with what is on your screen.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colorScheme.onSurface.withOpacity(0.62),
-                fontSize: 13,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
