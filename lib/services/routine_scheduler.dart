@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 
-/// Bridge to Android WorkManager. Scheduled items are deliberately reminders
-/// only; arbitrary unattended device actions are not exposed.
+/// Android WorkManager bridge. Routines currently support notification-only actions.
 class LucyRoutineScheduler {
   static const MethodChannel _channel =
       MethodChannel('com.poc.screen_aware_ai/routines');
@@ -16,15 +15,11 @@ class LucyRoutineScheduler {
         delayMinutes < 1 || delayMinutes > 525600) {
       throw ArgumentError('Invalid reminder details.');
     }
-    final scheduled = await _channel.invokeMethod<bool>('scheduleReminder', {
-      'id': id,
-      'title': title.trim(),
-      'body': body.trim(),
+    final ok = await _channel.invokeMethod<bool>('scheduleReminder', {
+      'id': id, 'title': title.trim(), 'body': body.trim(),
       'delayMinutes': delayMinutes,
     });
-    if (scheduled != true) {
-      throw StateError('Android did not confirm the reminder schedule.');
-    }
+    if (ok != true) throw StateError('Android did not confirm the schedule.');
   }
 
   static Future<void> cancelReminder(String id) async {

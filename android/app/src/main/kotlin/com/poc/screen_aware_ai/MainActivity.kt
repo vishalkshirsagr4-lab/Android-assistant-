@@ -264,6 +264,50 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+
+        // Persistent routine scheduling. WorkManager restores scheduled work
+        // after process death and reboot. Current routines are notification-only.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/routines")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scheduleReminder" -> {
+                        val id = call.argument<String>("id")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,64}")) }
+                        val title = call.argument<String>("title")?.take(80)?.trim().orEmpty()
+                        val body = call.argument<String>("body")?.take(240)?.trim().orEmpty()
+                        val delayMinutes = call.argument<Int>("delayMinutes") ?: 0
+                        if (id == null || title.isBlank() || delayMinutes !in 1..525600) {
+                            result.error("INVALID_ROUTINE", "Provide a valid id, title and delay.", null)
+                        } else {
+                            try {
+                                val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
+                                    .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
+                                    .setInputData(androidx.work.workDataOf(
+                                        RoutineReminderWorker.KEY_ID to id,
+                                        RoutineReminderWorker.KEY_TITLE to title,
+                                        RoutineReminderWorker.KEY_BODY to body
+                                    ))
+                                    .build()
+                                androidx.work.WorkManager.getInstance(applicationContext)
+                                    .enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
+                                result.success(true)
+                            } catch (error: Exception) {
+                                result.error("SCHEDULE_FAILED", error.message, null)
+                            }
+                        }
+                    }
+                    "cancelReminder" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}"))) {
+                            result.error("INVALID_ROUTINE", "Invalid routine id.", null)
+                        } else {
+                            androidx.work.WorkManager.getInstance(applicationContext).cancelUniqueWork(id)
+                            result.success(true)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // Separate channel for safe, user-confirmed APK updates from GitHub Releases.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/updater")
             .setMethodCallHandler { call, result ->
