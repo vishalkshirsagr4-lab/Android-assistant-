@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen>
   final AppUpdateService _appUpdateService = AppUpdateService();
   final GrokService _grokService = GrokService();
   final LucyActivityStore _activityStore = LucyActivityStore();
-  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor();
+  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
   bool _updateCheckStarted = false;
   DateTime? _lastUpdateCheckAt;
 
@@ -783,7 +783,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _showToolsDialog() async {
     final grokController = TextEditingController();
-    final snapshot = _performanceMonitor.snapshot();
+    final snapshot = await _performanceMonitor.snapshot();
     final templates = await _activityStore.readAutomationTemplates();
     final configured = await _grokService.isConfigured();
     if (!mounted) return;
@@ -799,6 +799,7 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('Performance · RAM: ${snapshot.ramLabel}'),
+                Text('CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}'),
                 Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
                 const SizedBox(height: 12),
                 const Text('Grok / xAI provider', style: TextStyle(fontWeight: FontWeight.bold)),
