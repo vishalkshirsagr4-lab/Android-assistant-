@@ -68,8 +68,12 @@ class _LucyAvatarState extends State<LucyAvatar> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the avatar prominent on phones without starving the conversation
+    // area on compact screens and in smaller widget-test viewports.
+    final avatarHeight =
+        (MediaQuery.sizeOf(context).height * 0.28).clamp(140.0, 220.0);
     return SizedBox(
-      height: 270,
+      height: avatarHeight,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
