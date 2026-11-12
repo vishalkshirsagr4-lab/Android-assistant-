@@ -229,7 +229,13 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: Column(
         children: [
-          LucyAvatar(state: widget.controller.state),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: LucyAvatar(state: widget.controller.state),
+            ),
+          ),
           // Status bar
           _buildStatusBar(colorScheme),
 
@@ -257,10 +263,12 @@ class _HomeScreenState extends State<HomeScreen>
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
-        border: Border(bottom: BorderSide(color: statusColor.withOpacity(0.3))),
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: statusColor.withOpacity(0.22)),
       ),
       child: Row(
         children: [
@@ -293,14 +301,37 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildEmptyState(ColorScheme colorScheme) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.visibility,
-              size: 72,
-              color: colorScheme.primary.withOpacity(0.4),
+            Container(
+              width: 66,
+              height: 66,
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Icon(Icons.auto_awesome, size: 32, color: colorScheme.primary),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Your assistant is ready',
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Tap the microphone to talk to Lucy or ask for help with what is on your screen.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.62),
+                fontSize: 13,
+                height: 1.45,
+              ),
             ),
           ],
         ),
