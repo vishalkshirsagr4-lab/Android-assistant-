@@ -277,15 +277,6 @@ class AgentController extends ChangeNotifier {
       );
     }
 
-    // Keep the process alive while the user-requested voice session is active.
-    // Android still controls microphone access and may stop recognition on some devices.
-    try {
-      await _screenCapture.showStopOverlay();
-    } catch (error) {
-      _statusMessage = 'Could not start the listening notification: $error';
-      notifyListeners();
-    }
-
     // Check if accessibility service is enabled
     final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
     if (!hasAccessibility) {
@@ -297,7 +288,19 @@ class AgentController extends ChangeNotifier {
     }
 
     _listenRetryCount = 0;
-    _startListening();
+    await _startListening();
+    // Start the microphone foreground service only after the speech plugin has
+    // had a chance to request RECORD_AUDIO from the visible activity.
+    try {
+      final started = await _screenCapture.showStopOverlay();
+      if (!started) {
+        _statusMessage = 'Listening started, but Android did not start the background notification service.';
+        notifyListeners();
+      }
+    } catch (error) {
+      _statusMessage = 'Background listening service could not start: $error';
+      notifyListeners();
+    }
   }
 
   Future<void> stopAgent() async {
