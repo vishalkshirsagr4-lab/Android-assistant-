@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/agent_controller.dart';
@@ -22,6 +24,12 @@ class _LucyAvatarState extends State<LucyAvatar> {
   @override
   void initState() {
     super.initState();
+    // The avatar is an Android WebView feature. Keep widget tests and other
+    // unsupported platforms usable without a registered WebView plugin.
+    if (!Platform.isAndroid) {
+      _loadFailed = true;
+      return;
+    }
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF10121D))
@@ -66,18 +74,19 @@ class _LucyAvatarState extends State<LucyAvatar> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          WebViewWidget(controller: _webViewController),
           if (_loadFailed)
             const ColoredBox(
               color: Color(0xFF10121D),
               child: Center(
                 child: Text(
-                  '3D avatar could not load. Check your internet connection.',
+                  '3D avatar is available on Android. Check your internet connection if it does not load.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70),
                 ),
               ),
-            ),
+            )
+          else
+            WebViewWidget(controller: _webViewController),
           Positioned(
             left: 14,
             bottom: 12,
