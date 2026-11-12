@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
+import 'lucy_activity_store.dart';
 
 enum AgentState {
   idle,
@@ -50,6 +51,7 @@ class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
+  final LucyActivityStore _activityStore = LucyActivityStore();
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -146,6 +148,7 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
@@ -850,6 +853,8 @@ class AgentController extends ChangeNotifier {
         screenshotBytes: screenshotBytes,
       ),
     );
+    // Persist a short local summary only. Never persist screenshots or API keys.
+    unawaited(_activityStore.record(isUser ? 'user_message' : 'assistant_message', text));
     notifyListeners();
   }
 
