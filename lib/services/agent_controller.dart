@@ -160,7 +160,8 @@ class AgentController extends ChangeNotifier {
     // Wire native stop notification action → requestCancel
     _screenCapture.onForceStop = () {
       if (_isActive) {
-        requestCancel();
+        // A notification Stop is a full stop, not merely a task cancellation.
+        unawaited(stopAgent());
       }
     };
 
@@ -251,6 +252,15 @@ class AgentController extends ChangeNotifier {
       );
     }
 
+    // Keep the process alive while the user-requested voice session is active.
+    // Android still controls microphone access and may stop recognition on some devices.
+    try {
+      await _screenCapture.showStopOverlay();
+    } catch (error) {
+      _statusMessage = 'Could not start the listening notification: $error';
+      notifyListeners();
+    }
+
     // Check if accessibility service is enabled
     final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
     if (!hasAccessibility) {
@@ -270,6 +280,11 @@ class AgentController extends ChangeNotifier {
     _cancelRequested = false;
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
+    try {
+      await _screenCapture.hideStopOverlay();
+    } catch (error) {
+      debugPrint('Could not stop Lucy foreground notification: $error');
+    }
     _setState(AgentState.idle);
     _statusMessage = 'I can see your screen and help you interact with apps';
     _addConversation('Agent stopped.', false);
@@ -340,9 +355,6 @@ class AgentController extends ChangeNotifier {
     _cancelRequested = false;
     int step = 0;
     String currentMessage = userMessage;
-
-    // Show persistent stop notification while Lucy is active
-    await _screenCapture.showStopOverlay();
 
     // Fetch screen size once for the whole loop
     final screenSize = await _screenCapture.getScreenSize();
@@ -473,9 +485,6 @@ class AgentController extends ChangeNotifier {
       // receive the message but without an image. The retry logic in
       // _captureScreenWithRetry handles this by making multiple attempts.
     }
-
-    // Always hide the stop notification when the loop ends
-    await _screenCapture.hideStopOverlay();
 
     // Handle cancellation
     if (_cancelRequested) {
