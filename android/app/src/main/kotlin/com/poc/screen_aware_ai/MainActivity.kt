@@ -237,6 +237,18 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/updater")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "getInstalledVersion" -> {
+                        @Suppress("DEPRECATION")
+                        val installed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageManager.getPackageInfo(
+                                packageName,
+                                android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                            )
+                        } else {
+                            packageManager.getPackageInfo(packageName, 0)
+                        }
+                        result.success(mapOf("versionName" to (installed.versionName ?: "0.0.0")))
+                    }
                     "canInstallPackages" -> {
                         result.success(
                             Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
