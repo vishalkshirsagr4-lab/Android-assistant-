@@ -1,6 +1,10 @@
 import java.util.Properties
 import java.io.FileInputStream
 
+dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
