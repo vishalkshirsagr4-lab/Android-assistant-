@@ -153,6 +153,10 @@ class AgentController extends ChangeNotifier {
     await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
+    await _aiService.restoreConfiguration(legacyKey: prefs.getString('gemini_api_key'));
+    if (prefs.containsKey('gemini_api_key')) {
+      await prefs.remove('gemini_api_key');
+    }
     _aiService.useGrok(prefs.getBool(_providerPrefKey) ?? false);
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
       _currentLang = savedLang;
@@ -243,8 +247,15 @@ class AgentController extends ChangeNotifier {
 
   final GrokService _grokService = GrokService();
 
-  void configureAi(String apiKey) {
-    _aiService.configure(apiKey);
+  Future<void> configureAi(String apiKey) async {
+    await _aiService.configure(apiKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('gemini_api_key');
+    notifyListeners();
+  }
+
+  Future<void> removeGeminiKey() async {
+    await _aiService.clearGeminiKey();
     notifyListeners();
   }
 
