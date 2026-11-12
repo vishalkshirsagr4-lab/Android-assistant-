@@ -314,25 +314,50 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/routines")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "ensureNotificationPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            androidx.core.content.ContextCompat.checkSelfPermission(
+                                this, android.Manifest.permission.POST_NOTIFICATIONS
+                            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 3301)
+                            result.success(false)
+                        } else {
+                            result.success(true)
+                        }
+                    }
                     "scheduleReminder" -> {
                         val id = call.argument<String>("id")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,64}")) }
                         val title = call.argument<String>("title")?.take(80)?.trim().orEmpty()
                         val body = call.argument<String>("body")?.take(240)?.trim().orEmpty()
                         val delayMinutes = call.argument<Int>("delayMinutes") ?: 0
-                        if (id == null || title.isBlank() || delayMinutes !in 1..525600) {
-                            result.error("INVALID_ROUTINE", "Provide a valid id, title and delay.", null)
+                        val repeatMinutes = call.argument<Int>("repeatIntervalMinutes") ?: 0
+                        if (id == null || title.isBlank() || delayMinutes !in 1..525600 ||
+                            repeatMinutes < 0 || repeatMinutes > 525600 ||
+                            (repeatMinutes in 1..14)) {
+                            result.error("INVALID_ROUTINE", "Invalid reminder or repeat interval. Repeating routines must be at least 15 minutes apart.", null)
                         } else {
                             try {
-                                val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
-                                    .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
-                                    .setInputData(androidx.work.workDataOf(
-                                        RoutineReminderWorker.KEY_ID to id,
-                                        RoutineReminderWorker.KEY_TITLE to title,
-                                        RoutineReminderWorker.KEY_BODY to body
-                                    ))
-                                    .build()
-                                androidx.work.WorkManager.getInstance(applicationContext)
-                                    .enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
+                                val input = androidx.work.workDataOf(
+                                    RoutineReminderWorker.KEY_ID to id,
+                                    RoutineReminderWorker.KEY_TITLE to title,
+                                    RoutineReminderWorker.KEY_BODY to body
+                                )
+                                val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                                if (repeatMinutes >= 15) {
+                                    val request = androidx.work.PeriodicWorkRequestBuilder<RoutineReminderWorker>(
+                                        repeatMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
+                                    ).setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
+                                        .setInputData(input).build()
+                                    manager.enqueueUniquePeriodicWork(
+                                        id, androidx.work.ExistingPeriodicWorkPolicy.UPDATE, request
+                                    )
+                                } else {
+                                    val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
+                                        .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
+                                        .setInputData(input).build()
+                                    manager.enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
+                                }
                                 result.success(true)
                             } catch (error: Exception) {
                                 result.error("SCHEDULE_FAILED", error.message, null)

@@ -50,12 +50,53 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     widget.controller.addListener(_onControllerUpdate);
+    widget.controller.onActionApproval = _confirmAgentAction;
     _loadApiKey();
 
     _checkAccessibility();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForAppUpdate();
     });
+  }
+
+
+  Future<bool> _confirmAgentAction(
+    String action,
+    Map<String, dynamic> params,
+  ) async {
+    if (!mounted) return false;
+    final details = params.entries
+        .where((entry) {
+          final key = entry.key.toLowerCase();
+          return !key.contains('password') && !key.contains('token') && !key.contains('key');
+        })
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .join('\n');
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.verified_user_outlined),
+        title: const Text('Lucy needs your approval'),
+        content: Text(
+          'Allow Lucy to perform this action in the currently open app?\n\n'
+          'Action: $action'
+          '${details.isEmpty ? '' : '\n$details'}'
+          '\n\nDenying is always safe.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Deny'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Approve this action'),
+          ),
+        ],
+      ),
+    );
+    return approved == true && mounted;
   }
 
   Future<void> _checkForAppUpdate() async {
@@ -787,6 +828,7 @@ class _HomeScreenState extends State<HomeScreen>
     final titleController = TextEditingController(text: 'Lucy reminder');
     final bodyController = TextEditingController();
     final minutesController = TextEditingController(text: '30');
+    final repeatController = TextEditingController(text: '0');
     final id = 'routine_${DateTime.now().millisecondsSinceEpoch}';
     await showDialog<void>(
       context: context,
@@ -814,9 +856,17 @@ class _HomeScreenState extends State<HomeScreen>
                   helperText: '1 minute to 1 year. WorkManager restores scheduled work after reboot.',
                 ),
               ),
+              TextField(
+                controller: repeatController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Repeat every minutes (0 = once)',
+                  helperText: 'Use 15 or more for recurring reminders.',
+                ),
+              ),
               const SizedBox(height: 8),
               const Text(
-                'This routine only shows a notification. It cannot tap, type, send messages, or change device settings.',
+                'Routines are notification-only. Lucy will not perform device actions in the background.',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -830,19 +880,29 @@ class _HomeScreenState extends State<HomeScreen>
           FilledButton(
             onPressed: () async {
               final minutes = int.tryParse(minutesController.text.trim());
+              final repeat = int.tryParse(repeatController.text.trim());
               if (minutes == null || minutes < 1 || minutes > 525600 ||
-                  titleController.text.trim().isEmpty) {
+                  repeat == null || repeat < 0 || (repeat > 0 && repeat < 15) ||
+                  repeat > 525600 || titleController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Enter a title and a delay from 1 to 525600 minutes.')),
+                  const SnackBar(content: Text('Enter a title, delay, and repeat interval of 0 or at least 15 minutes.')),
                 );
                 return;
               }
               try {
+                final permission = await LucyRoutineScheduler.ensureNotificationPermission();
+                if (!permission) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Allow Lucy notifications, then tap Schedule again.')),
+                  );
+                  return;
+                }
                 await LucyRoutineScheduler.scheduleReminder(
                   id: id,
                   title: titleController.text.trim(),
                   body: bodyController.text.trim(),
                   delayMinutes: minutes,
+                  repeatIntervalMinutes: repeat,
                 );
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                 if (mounted) {
@@ -866,6 +926,7 @@ class _HomeScreenState extends State<HomeScreen>
     titleController.dispose();
     bodyController.dispose();
     minutesController.dispose();
+    repeatController.dispose();
   }
 
   Future<void> _showToolsDialog() async {

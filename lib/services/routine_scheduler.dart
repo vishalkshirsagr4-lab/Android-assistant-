@@ -10,16 +10,25 @@ class LucyRoutineScheduler {
     required String title,
     required String body,
     required int delayMinutes,
+    int repeatIntervalMinutes = 0,
   }) async {
     if (id.isEmpty || title.trim().isEmpty ||
-        delayMinutes < 1 || delayMinutes > 525600) {
+        delayMinutes < 1 || delayMinutes > 525600 ||
+        repeatIntervalMinutes < 0 ||
+        (repeatIntervalMinutes > 0 && repeatIntervalMinutes < 15) ||
+        repeatIntervalMinutes > 525600) {
       throw ArgumentError('Invalid reminder details.');
     }
     final ok = await _channel.invokeMethod<bool>('scheduleReminder', {
       'id': id, 'title': title.trim(), 'body': body.trim(),
       'delayMinutes': delayMinutes,
+      'repeatIntervalMinutes': repeatIntervalMinutes,
     });
     if (ok != true) throw StateError('Android did not confirm the schedule.');
+  }
+
+  static Future<bool> ensureNotificationPermission() async {
+    return await _channel.invokeMethod<bool>('ensureNotificationPermission') ?? false;
   }
 
   static Future<void> cancelReminder(String id) async {

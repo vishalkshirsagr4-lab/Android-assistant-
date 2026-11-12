@@ -56,6 +56,10 @@ class AgentController extends ChangeNotifier {
   final LucyActivityStore _activityStore = LucyActivityStore();
   final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
 
+  /// The foreground UI must provide a visible confirmation for every
+  /// screen-changing action. A missing callback fails closed.
+  Future<bool> Function(String action, Map<String, dynamic> params)? onActionApproval;
+
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
 
@@ -786,6 +790,17 @@ class AgentController extends ChangeNotifier {
     AgentAction action,
     _UiSnapshot? beforeSnapshot,
   ) async {
+    // Fail closed: all actions that can affect another app or device state
+    // require a visible, per-action user approval.
+    const approvalRequired = {'open_app', 'tap', 'type', 'swipe', 'back', 'home'};
+    if (approvalRequired.contains(action.type)) {
+      final approve = onActionApproval;
+      if (approve == null || !await approve(action.type, action.params)) {
+        _addConversation('Action cancelled: ${action.type} was not approved.', false);
+        return beforeSnapshot;
+      }
+    }
+
     // Actions that require the accessibility service
     const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
 
