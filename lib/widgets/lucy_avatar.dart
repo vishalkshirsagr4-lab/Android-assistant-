@@ -87,7 +87,10 @@ class _LucyAvatarState extends State<LucyAvatar> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
