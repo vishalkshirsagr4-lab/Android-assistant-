@@ -8,6 +8,7 @@ import '../services/app_update_service.dart';
 import '../services/grok_service.dart';
 import '../services/lucy_activity_store.dart';
 import '../services/performance_monitor.dart';
+import '../services/routine_scheduler.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -781,6 +782,92 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+
+  Future<void> _showRoutineSchedulerDialog() async {
+    final titleController = TextEditingController(text: 'Lucy reminder');
+    final bodyController = TextEditingController();
+    final minutesController = TextEditingController(text: '30');
+    final id = 'routine_${DateTime.now().millisecondsSinceEpoch}';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Schedule a Lucy routine'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                maxLength: 80,
+                decoration: const InputDecoration(labelText: 'Reminder title'),
+              ),
+              TextField(
+                controller: bodyController,
+                maxLength: 240,
+                decoration: const InputDecoration(labelText: 'Message (optional)'),
+              ),
+              TextField(
+                controller: minutesController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Run after minutes',
+                  helperText: '1 minute to 1 year. WorkManager restores scheduled work after reboot.',
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This routine only shows a notification. It cannot tap, type, send messages, or change device settings.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final minutes = int.tryParse(minutesController.text.trim());
+              if (minutes == null || minutes < 1 || minutes > 525600 ||
+                  titleController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Enter a title and a delay from 1 to 525600 minutes.')),
+                );
+                return;
+              }
+              try {
+                await LucyRoutineScheduler.scheduleReminder(
+                  id: id,
+                  title: titleController.text.trim(),
+                  body: bodyController.text.trim(),
+                  delayMinutes: minutes,
+                );
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Routine scheduled. Android will show its reminder at the scheduled time.')),
+                  );
+                }
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not schedule routine: $error')),
+                  );
+                }
+              }
+            },
+            child: const Text('Schedule'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    bodyController.dispose();
+    minutesController.dispose();
+  }
+
   Future<void> _showToolsDialog() async {
     final grokController = TextEditingController();
     final snapshot = await _performanceMonitor.snapshot();
@@ -824,6 +911,15 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 const SizedBox(height: 8),
                 const Text('Automation templates', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showRoutineSchedulerDialog();
+                  },
+                  icon: const Icon(Icons.add_alarm),
+                  label: const Text('Create scheduled reminder'),
+                ),
                 ...templates.map((item) => ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
