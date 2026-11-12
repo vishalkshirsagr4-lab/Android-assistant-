@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 class LucyUpdateInfo {
@@ -44,8 +43,11 @@ class AppUpdateService {
     if (release['draft'] == true || release['prerelease'] == true) return null;
 
     final tag = (release['tag_name'] as String? ?? '').replaceFirst('v', '');
-    final package = await PackageInfo.fromPlatform();
-    if (!_isNewer(tag, package.version)) return null;
+    final installed = await _channel.invokeMapMethod<String, String>(
+      'getInstalledVersion',
+    );
+    final installedVersion = installed?['versionName'] ?? '0.0.0';
+    if (!_isNewer(tag, installedVersion)) return null;
 
     final assets = (release['assets'] as List<dynamic>? ?? const []);
     Map<String, dynamic>? apk;
