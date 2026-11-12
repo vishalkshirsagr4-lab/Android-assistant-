@@ -23,9 +23,9 @@ button:active{background:#51458c}
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/": "https://cdn.jsdelivr.net/npm/three@0.170.0/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.0/+esm",
-    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3.3.0/+esm"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.0/lib/three-vrm.module.min.js",
+    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3.3.0/lib/three-vrm-animation.module.js"
   }
 }
 </script>
@@ -63,7 +63,7 @@ window.setAssistantState=function(state){
   try {
    [THREE,GLTF,VRM,VRMA]=await Promise.all([
     import('three'),
-    import('three/examples/jsm/loaders/GLTFLoader.js'),
+    import('three/addons/loaders/GLTFLoader.js'),
     import('@pixiv/three-vrm'),
     import('@pixiv/three-vrm-animation')
    ]);
