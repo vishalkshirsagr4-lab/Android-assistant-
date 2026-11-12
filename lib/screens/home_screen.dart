@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _checkForAppUpdate() async {
-    if (_updateCheckStarted || !mounted) return;
+    if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
     _updateCheckStarted = true;
     try {
       final update = await _appUpdateService.checkForUpdate();
