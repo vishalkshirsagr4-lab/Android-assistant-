@@ -294,12 +294,13 @@ class AgentController extends ChangeNotifier {
     try {
       final started = await _screenCapture.showStopOverlay();
       if (!started) {
-        _statusMessage = 'Listening started, but Android did not start the background notification service.';
-        notifyListeners();
+        _statusMessage = 'Android could not start the microphone foreground service. Lucy has been stopped to avoid background listening without a visible notification.';
+        await stopAgent();
+        return;
       }
     } catch (error) {
       _statusMessage = 'Background listening service could not start: $error';
-      notifyListeners();
+      await stopAgent();
     }
   }
 
