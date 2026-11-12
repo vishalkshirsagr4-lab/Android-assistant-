@@ -1,6 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
+import '../services/app_update_service.dart';
+import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
   final AgentController controller;
@@ -17,6 +22,8 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _pulseAnimation;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final AppUpdateService _appUpdateService = AppUpdateService();
+  bool _updateCheckStarted = false;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -38,12 +45,81 @@ class _HomeScreenState extends State<HomeScreen>
     _loadApiKey();
 
     _checkAccessibility();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForAppUpdate();
+    });
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
+    _updateCheckStarted = true;
+    try {
+      final update = await _appUpdateService.checkForUpdate();
+      if (!mounted || update == null) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.system_update_alt, size: 34),
+          title: Text('Lucy update available · ${update.version}'),
+          content: SingleChildScrollView(
+            child: Text(
+              update.notes.isEmpty
+                  ? 'A newer version of Lucy is ready to install.'
+                  : update.notes.length > 1400
+                      ? '${update.notes.substring(0, 1400)}…'
+                      : update.notes,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Later'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Downloading Lucy update…')),
+                );
+                try {
+                  final installerOpened =
+                      await _appUpdateService.downloadAndInstall(update);
+                  if (!mounted) return;
+                  if (!installerOpened) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Allow Lucy to install unknown apps in Settings. The update will continue when you return.',
+                        ),
+                        duration: Duration(seconds: 6),
+                      ),
+                    );
+                  }
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Update failed: $error')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('Download & install'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      // Update checks are optional; keep Lucy usable when offline or GitHub is unavailable.
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
+      unawaited(_appUpdateService.resumePendingInstall());
     }
   }
 
@@ -228,21 +304,69 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: Column(
         children: [
-          // Status bar
-          _buildStatusBar(colorScheme),
-
-          // Conversation list
+          // Lucy is the full-screen visual focus. Status and conversation
+          // cards float above the avatar so voice and chat remain accessible.
           Expanded(
-            child: widget.controller.conversation.isEmpty
-                ? _buildEmptyState(colorScheme)
-                : _buildConversationList(colorScheme),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                LucyAvatar(state: widget.controller.state),
+                Positioned(
+                  top: 10,
+                  left: 12,
+                  right: 12,
+                  child: _buildStatusBar(colorScheme),
+                ),
+                if (widget.controller.conversation.isNotEmpty)
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 12,
+                    height: MediaQuery.sizeOf(context).height * 0.22,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface.withOpacity(0.82),
+                          border: Border.all(
+                            color: colorScheme.outline.withOpacity(0.18),
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: _buildConversationList(colorScheme),
+                      ),
+                    ),
+                  )
+                else
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: 22,
+                    child: IgnorePointer(
+                      child: Text(
+                        'I’m here. What shall we do?',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colorScheme.onSurface.withOpacity(0.72),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          shadows: [
+                            Shadow(
+                              color: colorScheme.surface,
+                              blurRadius: 12,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
 
-          // Current transcript
+          // Current transcript and microphone controls remain unchanged.
           if (widget.controller.currentTranscript?.isNotEmpty == true)
             _buildTranscriptBar(colorScheme),
-
-          // Bottom bar with mic button
           _buildBottomBar(colorScheme),
         ],
       ),
@@ -255,10 +379,12 @@ class _HomeScreenState extends State<HomeScreen>
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
-        border: Border(bottom: BorderSide(color: statusColor.withOpacity(0.3))),
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: statusColor.withOpacity(0.22)),
       ),
       child: Row(
         children: [
@@ -288,23 +414,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.visibility,
-              size: 72,
-              color: colorScheme.primary.withOpacity(0.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildConversationList(ColorScheme colorScheme) {
     return ListView.builder(

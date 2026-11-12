@@ -2,8 +2,9 @@
 
 How a new version of Lucy reaches the people who want to install her.
 
-Releases are automated. You never build or upload an APK by hand — you bump a
-version number, and merging that to `main` does the rest.
+Releases are automated. Bump the app version and merge to `main`; GitHub Actions
+builds and publishes the APK. Lucy checks the latest stable release inside the app
+and can download it and open Android's installer after you approve the update.
 
 ---
 
@@ -92,6 +93,19 @@ reason. It re-checks the tag, so it will not publish twice.
 
 ---
 
+## In-app updates
+
+On launch, Lucy checks the GitHub Releases API for a newer stable version. If one
+exists, Lucy shows the version and release notes. Choosing **Download & install**
+downloads the universal APK and hands it to Android's package installer. Android
+still asks the user to confirm installation; apps cannot silently install APKs
+under the normal Android permission model. On first use, Android may also ask the
+user to allow Lucy to install apps from this source.
+
+The app update checker compares the installed version with the latest stable
+release and uses the fixed `lucy-latest.apk` asset. Pre-releases and drafts are
+ignored.
+
 ## What gets published
 
 Each release carries these assets:
@@ -166,20 +180,18 @@ serving the last stable build. Testers grab the versioned file directly.
 
 ## Signing
 
-### Today: the debug key
+### Required: a permanent release keystore
 
-No release keystore is configured, so
-[`android/app/build.gradle.kts`](../android/app/build.gradle.kts) falls back to
-Android's debug signing key. The APKs install and run perfectly well, but the
-signature is not stable between builds, which means:
+In-app updates only work when every release is signed with the same permanent
+keystore. The release workflow now **fails instead of publishing a debug-signed
+APK** if the four signing secrets are missing. This prevents a release that looks
+updatable but Android will reject.
 
-- Users must **uninstall an older Lucy before installing a newer one**, otherwise
-  Android rejects the update with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
-- The build is not suitable for the Play Store.
+If Lucy was previously installed from a debug-signed APK, you must uninstall it
+once and install the first stable-key release. After that one-time migration,
+future releases can install over the existing app without uninstalling.
 
-The release notes carry this warning automatically for as long as it is true.
-
-### Upgrading to a real keystore
+### Create the keystore once
 
 Do this once and every future release is signed with a stable identity — users can
 then install updates straight over the top.
@@ -221,9 +233,9 @@ gh secret set ANDROID_KEY_PASSWORD
 **4. Delete `lucy-release.jks.base64`** and keep `lucy-release.jks` out of the
 repo — `*.jks`, `*.keystore` and `android/key.properties` are gitignored.
 
-The workflow picks the secrets up on the next run with no further changes: it
-writes `android/key.properties`, Gradle finds it, and the debug-key warning
-disappears from the release notes.
+The workflow picks the secrets up on the next run: it writes
+`android/key.properties`, Gradle finds it, and every future release is signed
+with the same stable identity. Never commit or share the keystore or passwords.
 
 ### For local release builds
 

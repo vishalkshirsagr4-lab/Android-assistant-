@@ -5,6 +5,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.util.Log
@@ -229,6 +232,72 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Separate channel for safe, user-confirmed APK updates from GitHub Releases.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/updater")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getInstalledVersion" -> {
+                        @Suppress("DEPRECATION")
+                        val installed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageManager.getPackageInfo(
+                                packageName,
+                                android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                            )
+                        } else {
+                            packageManager.getPackageInfo(packageName, 0)
+                        }
+                        result.success(mapOf("versionName" to (installed.versionName ?: "0.0.0")))
+                    }
+                    "canInstallPackages" -> {
+                        result.success(
+                            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                                packageManager.canRequestPackageInstalls()
+                        )
+                    }
+                    "openInstallPermissionSettings" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            !packageManager.canRequestPackageInstalls()
+                        ) {
+                            val settingsIntent = Intent(
+                                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:$packageName")
+                            )
+                            startActivity(settingsIntent)
+                        }
+                        result.success(true)
+                    }
+                    "installApk" -> {
+                        try {
+                            val path = call.argument<String>("path")
+                                ?: throw IllegalArgumentException("Missing APK path")
+                            val apk = File(path)
+                            if (!apk.isFile || apk.length() == 0L) {
+                                throw IllegalArgumentException("Downloaded APK is missing or empty")
+                            }
+                            val apkUri = FileProvider.getUriForFile(
+                                this,
+                                "$packageName.fileprovider",
+                                apk
+                            )
+                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(
+                                    apkUri,
+                                    "application/vnd.android.package-archive"
+                                )
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(installIntent)
+                            result.success(true)
+                        } catch (error: Exception) {
+                            Log.e(TAG, "Could not launch APK installer", error)
+                            result.error("INSTALL_FAILED", error.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     private fun startCaptureService(resultCode: Int, data: Intent) {

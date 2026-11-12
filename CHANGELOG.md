@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 📲 In-app update checks against GitHub Releases, with an update prompt, APK download and Android package-installer handoff
+- 🔐 Stable release signing is required so future APKs can update the installed app without uninstalling
+
+---
+
+## [0.2.0] - 2026-11-12
+
+### Added
+
+- 📲 In-app update prompt, download and Android installer flow for newer stable GitHub releases
+- 🔐 Release workflow now requires a persistent signing keystore to protect seamless upgrades
+
 ### Changed
 
 - 🎬 The README demo is now an **inline video player** instead of a GIF. The clip is hosted on GitHub's asset CDN rather than committed to the repo, so a clone no longer carries it — and viewers get the full 68 seconds with sound and controls instead of a silent 13-second excerpt
@@ -76,5 +90,6 @@ from GitHub, everything below is new to you.
 
 ---
 
-[Unreleased]: https://github.com/alzin/lucy-screen-agent/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alzin/lucy-screen-agent/releases/tag/v0.1.0
