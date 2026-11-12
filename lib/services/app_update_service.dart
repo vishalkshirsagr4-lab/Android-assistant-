@@ -218,7 +218,7 @@ class AppUpdateService {
   }
 
   static bool _isNewer(String remote, String local) {
-    final pattern = RegExp(r'^(\\d+)\\.(\\d+)\\.(\\d+)(?:-([0-9A-Za-z.-]+))?$');
+    final pattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$');
     final remoteMatch = pattern.firstMatch(remote);
     final localMatch = pattern.firstMatch(local);
     if (remoteMatch == null || localMatch == null) return false;
