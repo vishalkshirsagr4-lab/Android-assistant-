@@ -80,8 +80,8 @@ class LucyActivityStore {
     final sensitivePatterns = <RegExp>[
       RegExp(r'(?i)(password|passwd|passcode|otp|pin|api[_ -]?key|token|secret)\\s*[:=]\\s*[^\\s,;]+'),
       RegExp(r'(?i)bearer\\s+[a-z0-9._~+/-]+=*'),
-      RegExp(r'(?i)AIza[0-9A-Za-z_-]{20,}'),
-      RegExp(r'(?i)xai-[0-9A-Za-z_-]{12,}'),
+      RegExp(r'AIza[0-9A-Za-z_-]{20,}', caseSensitive: false),
+      RegExp(r'xai-[0-9A-Za-z_-]{12,}', caseSensitive: false),
       RegExp(r'\\b\\d{4,8}\\b'),
     ];
     for (final pattern in sensitivePatterns) {
