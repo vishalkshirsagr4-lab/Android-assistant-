@@ -133,7 +133,7 @@ class AppUpdateService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_pendingApkKey, apkFile.path);
       await prefs.setString(_pendingVersionKey, update.version);
-      return _installPendingIfAllowed();
+      return await _installPendingIfAllowed();
     } catch (_) {
       if (await apkFile.exists()) {
         await apkFile.delete();
