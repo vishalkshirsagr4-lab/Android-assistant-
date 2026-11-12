@@ -168,10 +168,17 @@ RESPONSE FORMAT (strict JSON, one action only):
   }
 
   Future<void> restoreConfiguration({String? legacyKey}) async {
-    var key = await _secureStorage.read(key: _geminiKeyName);
-    if ((key == null || key.isEmpty) && legacyKey != null && legacyKey.trim().isNotEmpty) {
-      key = legacyKey.trim();
-      await _secureStorage.write(key: _geminiKeyName, value: key);
+    String? key;
+    try {
+      key = await _secureStorage.read(key: _geminiKeyName);
+      if ((key == null || key.isEmpty) && legacyKey != null && legacyKey.trim().isNotEmpty) {
+        key = legacyKey.trim();
+        await _secureStorage.write(key: _geminiKeyName, value: key);
+      }
+    } catch (_) {
+      // Keep the app launchable in restricted test/desktop environments.
+      // Android production builds use the encrypted platform keystore.
+      key = legacyKey?.trim();
     }
     if (key != null && key.isNotEmpty) {
       final normalizedKey = key;
