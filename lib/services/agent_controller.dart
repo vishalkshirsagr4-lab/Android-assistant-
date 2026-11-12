@@ -92,6 +92,7 @@ class AgentController extends ChangeNotifier {
   String get currentLang => _currentLang;
 
   static const String _langPrefKey = 'lucy_lang';
+  static const String _providerPrefKey = 'lucy_use_grok';
   static const Set<String> _supportedLangs = {'en', 'ja', 'ar'};
 
   /// Set the UI/voice language. Persists across restarts. Restarts the
@@ -151,6 +152,7 @@ class AgentController extends ChangeNotifier {
     await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
+    _aiService.useGrok(prefs.getBool(_providerPrefKey) ?? false);
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
       _currentLang = savedLang;
     }
@@ -214,6 +216,32 @@ class AgentController extends ChangeNotifier {
     };
   }
 
+  bool get isGrokProvider => _aiService.isUsingGrok;
+
+  Future<void> setGrokProvider(bool enabled) async {
+    if (enabled && !await _activityGrokConfigured()) {
+      _statusMessage = 'Save a valid Grok API key before selecting Grok.';
+      notifyListeners();
+      return;
+    }
+    _aiService.useGrok(enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_providerPrefKey, enabled);
+    _statusMessage = enabled
+        ? 'Grok 4.7 selected for screen and voice tasks.'
+        : 'Gemini selected for screen and voice tasks.';
+    notifyListeners();
+  }
+
+  Future<bool> _activityGrokConfigured() async {
+    // Keep provider-key checks inside the secure-storage service.
+    return _grokKeyCheck();
+  }
+
+  Future<bool> _grokKeyCheck() async => _grokService.isConfigured();
+
+  final GrokService _grokService = GrokService();
+
   void configureAi(String apiKey) {
     _aiService.configure(apiKey);
     notifyListeners();
@@ -228,8 +256,10 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> startAgent() async {
-    if (!_aiService.isConfigured) {
-      _statusMessage = '⚠️ Please set your Gemini API key first';
+    if (!await _aiService.isProviderReady()) {
+      _statusMessage = _aiService.isUsingGrok
+          ? '⚠️ Please save a valid Grok API key in Lucy tools first'
+          : '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
     }
