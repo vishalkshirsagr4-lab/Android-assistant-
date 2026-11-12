@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'grok_service.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
@@ -63,8 +64,14 @@ class AiService {
   GenerativeModel? _model;
   ChatSession? _chat;
   String? _apiKey;
+  bool _useGrok = false;
+  final GrokService _grokService = GrokService();
 
-  bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
+  bool get isConfigured => _useGrok || (_apiKey != null && _apiKey!.isNotEmpty);
+  bool get isUsingGrok => _useGrok;
+  void useGrok(bool enabled) => _useGrok = enabled;
+  Future<bool> isProviderReady() async =>
+      _useGrok ? _grokService.isConfigured() : isConfigured;
 
   static const _systemPrompt = '''
 You are an autonomous AI agent controlling an Android phone. You receive TWO sources of information each step:
@@ -163,7 +170,7 @@ RESPONSE FORMAT (strict JSON, one action only):
   }) async {
     if (!isConfigured) {
       return AgentResponse.fallback(
-        'AI not configured. Please set your API key.',
+        'AI not configured. Please set an AI provider key in Lucy settings.',
       );
     }
 
@@ -186,6 +193,15 @@ RESPONSE FORMAT (strict JSON, one action only):
       buffer.write(message);
       final fullMessage = buffer.toString();
 
+      if (_useGrok) {
+        final text = await _grokService.complete(
+          fullMessage,
+          systemPrompt: _systemPrompt,
+          imageBytes: imageBytes,
+        );
+        return _parseAgentResponse(text);
+      }
+
       Content content;
       if (imageBytes != null) {
         content = Content.multi([
@@ -198,7 +214,6 @@ RESPONSE FORMAT (strict JSON, one action only):
 
       final response = await _chat!.sendMessage(content);
       final text = response.text ?? '{}';
-
       return _parseAgentResponse(text);
     } catch (e) {
       return AgentResponse.fallback('Error: ${e.toString()}');
