@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -37,6 +38,8 @@ class LucyPerformanceMonitor {
     Map<dynamic, dynamic> native = const {};
     if (Platform.isAndroid) {
       try {
+        await _channel.invokeMapMethod<dynamic, dynamic>('getDeviceMetrics');
+        await Future<void>.delayed(const Duration(milliseconds: 250));
         native = await _channel.invokeMapMethod<dynamic, dynamic>('getDeviceMetrics') ?? const {};
       } on PlatformException {
         // Keep RAM and latency visible even if an OEM blocks a metric.
