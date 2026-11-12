@@ -23,6 +23,8 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var methodChannel: MethodChannel? = null
+    private var lastMetricsElapsedMs: Long? = null
+    private var lastMetricsCpuMs: Long? = null
 
     // Store projection data so we can reinitialize the service if needed.
     // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
@@ -114,6 +116,24 @@ class MainActivity : FlutterActivity() {
                 }
                 "isAccessibilityEnabled" -> {
                     result.success(ScreenActionService.instance != null)
+                }
+                "getDeviceMetrics" -> {
+                    val nowElapsed = android.os.SystemClock.elapsedRealtime()
+                    val nowCpu = android.os.Process.getElapsedCpuTime()
+                    val previousElapsed = lastMetricsElapsedMs
+                    val previousCpu = lastMetricsCpuMs
+                    lastMetricsElapsedMs = nowElapsed
+                    lastMetricsCpuMs = nowCpu
+                    val cpuPercent = if (previousElapsed != null && previousCpu != null && nowElapsed > previousElapsed) {
+                        (((nowCpu - previousCpu).toDouble() / (nowElapsed - previousElapsed)) * 100.0)
+                            .coerceIn(0.0, 100.0)
+                    } else null
+                    val batteryManager = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+                    val battery = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    result.success(mapOf(
+                        "cpuPercent" to cpuPercent,
+                        "batteryPercent" to if (battery in 0..100) battery else null
+                    ))
                 }
                 "getScreenSize" -> {
                     val service = ScreenCaptureService.instance
