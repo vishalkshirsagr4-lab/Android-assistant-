@@ -64,7 +64,7 @@ class AppUpdateService {
     );
     final installedVersion = installed?['versionName'];
     if (installedVersion == null || installedVersion.isEmpty) {
-      throw const PlatformException(
+      throw PlatformException(
         code: 'VERSION_UNAVAILABLE',
         message: 'Lucy could not read its installed version.',
       );
@@ -112,7 +112,6 @@ class AppUpdateService {
     }
 
     final client = http.Client();
-    IOSink? sink;
     try {
       final request = http.Request('GET', Uri.parse(update.downloadUrl))
         ..headers['Accept'] = 'application/octet-stream';
@@ -123,9 +122,8 @@ class AppUpdateService {
         throw HttpException('APK download failed (HTTP ${response.statusCode}).');
       }
 
-      sink = apkFile.openWrite();
-      await response.stream.pipe(sink);
-      sink = null; // Stream.pipe closes the sink after the stream completes.
+      final fileSink = apkFile.openWrite();
+      await response.stream.pipe(fileSink);
 
       final size = await apkFile.length();
       if (size < 1024) {
@@ -137,9 +135,6 @@ class AppUpdateService {
       await prefs.setString(_pendingVersionKey, update.version);
       return _installPendingIfAllowed();
     } catch (_) {
-      if (sink != null) {
-        await sink.close();
-      }
       if (await apkFile.exists()) {
         await apkFile.delete();
       }
