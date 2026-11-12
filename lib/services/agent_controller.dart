@@ -8,6 +8,7 @@ import 'screen_capture_service.dart';
 import 'lucy_activity_store.dart';
 import 'grok_service.dart';
 import 'performance_monitor.dart';
+import 'action_approval_policy.dart';
 
 enum AgentState {
   idle,
@@ -792,8 +793,7 @@ class AgentController extends ChangeNotifier {
   ) async {
     // Fail closed: all actions that can affect another app or device state
     // require a visible, per-action user approval.
-    const approvalRequired = {'open_app', 'tap', 'type', 'swipe', 'back', 'home'};
-    if (approvalRequired.contains(action.type)) {
+    if (LucyActionApprovalPolicy.requiresApproval(action.type)) {
       final approve = onActionApproval;
       if (approve == null || !await approve(action.type, action.params)) {
         _addConversation('Action cancelled: ${action.type} was not approved.', false);
