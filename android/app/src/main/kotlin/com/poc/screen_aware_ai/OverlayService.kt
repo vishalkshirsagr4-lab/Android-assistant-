@@ -7,13 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import android.content.pm.ServiceInfo
 
 class OverlayService : Service() {
-
     companion object {
         var instance: OverlayService? = null
         private const val TAG = "OverlayService"
@@ -31,16 +30,12 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_NOTIFICATION_STOP) {
-            Log.d(TAG, "Stop notification action tapped — broadcasting FORCE_STOP")
-            val stopIntent = Intent(ACTION_FORCE_STOP).apply {
-                setPackage(packageName)
-            }
-            sendBroadcast(stopIntent)
-            hideOverlay()
+            Log.d(TAG, "Stop notification action tapped")
+            sendBroadcast(Intent(ACTION_FORCE_STOP).setPackage(packageName))
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
-
         showOverlay()
         return START_NOT_STICKY
     }
@@ -53,20 +48,18 @@ class OverlayService : Service() {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        Log.d(TAG, "Stop notification shown")
+        Log.d(TAG, "Voice foreground notification shown")
     }
 
     fun hideOverlay() {
         stopForeground(STOP_FOREGROUND_REMOVE)
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancel(NOTIFICATION_ID)
-        Log.d(TAG, "Stop notification hidden")
+        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 
     private fun createNotificationChannel() {
@@ -77,8 +70,7 @@ class OverlayService : Service() {
         ).apply {
             description = getString(R.string.stop_notification_channel_description)
         }
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun createNotification(): Notification {
@@ -91,16 +83,14 @@ class OverlayService : Service() {
             stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-
         val builder = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.stop_notification_title))
-            .setContentText(getString(R.string.stop_notification_text))
-            .setSmallIcon(android.R.drawable.ic_media_pause)
+            .setContentTitle("Lucy is listening")
+            .setContentText("Microphone active · Tap Stop to end listening")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setTicker(getString(R.string.stop_notification_title))
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
             .addAction(
                 Notification.Action.Builder(
                     android.R.drawable.ic_media_pause,
@@ -108,11 +98,9 @@ class OverlayService : Service() {
                     stopPendingIntent,
                 ).build(),
             )
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
-
         return builder.build()
     }
 
