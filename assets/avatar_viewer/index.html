@@ -22,10 +22,10 @@ button:active{background:#51458c}
 <script type="importmap">
 {
   "imports": {
-    "three": "https://esm.sh/three@0.170.0",
-    "three/": "https://esm.sh/three@0.170.0/",
-    "@pixiv/three-vrm": "https://esm.sh/@pixiv/three-vrm@3.3.0?external=three",
-    "@pixiv/three-vrm-animation": "https://esm.sh/@pixiv/three-vrm-animation@3.3.0?external=three,@pixiv/three-vrm"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/": "https://cdn.jsdelivr.net/npm/three@0.170.0/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.0/+esm",
+    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3.3.0/+esm"
   }
 }
 </script>
@@ -59,12 +59,17 @@ window.setAssistantState=function(state){
  try{
   // Dynamic imports ensure network/module errors are caught and shown instead
   // of leaving the screen stuck on the loading message forever.
-  const [THREE,GLTF,VRM,VRMA]=await Promise.all([
-   import('three'),
-   import('three/examples/jsm/loaders/GLTFLoader.js'),
-   import('@pixiv/three-vrm'),
-   import('@pixiv/three-vrm-animation')
-  ]);
+  let THREE,GLTF,VRM,VRMA;
+  try {
+   [THREE,GLTF,VRM,VRMA]=await Promise.all([
+    import('three'),
+    import('three/examples/jsm/loaders/GLTFLoader.js'),
+    import('@pixiv/three-vrm'),
+    import('@pixiv/three-vrm-animation')
+   ]);
+  } catch (moduleError) {
+   throw new Error('Could not download the 3D rendering libraries. Open Lucy with a working internet connection, then try again. Details: '+(moduleError?.message||moduleError));
+  }
   const host=document.getElementById('stage');
   const scene=new THREE.Scene();
   const camera=new THREE.PerspectiveCamera(30,1,.1,100);
