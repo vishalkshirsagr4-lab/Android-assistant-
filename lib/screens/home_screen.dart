@@ -799,6 +799,15 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 12),
                 const Text('Grok / xAI provider', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text(configured ? 'API key saved securely on this device.' : 'No Grok key configured.'),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Grok 4.7 for Lucy'),
+                  subtitle: const Text('Supports text and screen images. Gemini remains available.'),
+                  value: widget.controller.isGrokProvider,
+                  onChanged: configured
+                      ? (enabled) => widget.controller.setGrokProvider(enabled)
+                      : null,
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: grokController,
@@ -878,7 +887,6 @@ class _HomeScreenState extends State<HomeScreen>
             onPressed: () async {
               final key = grokController.text.trim();
               if (key.isNotEmpty) await _grokService.saveApiKey(key);
-              grokController.dispose();
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Save Grok key'),
