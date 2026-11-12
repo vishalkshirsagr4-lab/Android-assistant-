@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
@@ -116,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
-      _appUpdateService.resumePendingInstall();
+      unawaited(_appUpdateService.resumePendingInstall());
     }
   }
 
