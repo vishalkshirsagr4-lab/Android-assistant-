@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
 import '../services/app_update_service.dart';
+import '../services/grok_service.dart';
+import '../services/lucy_activity_store.dart';
+import '../services/performance_monitor.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,6 +26,9 @@ class _HomeScreenState extends State<HomeScreen>
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
   final AppUpdateService _appUpdateService = AppUpdateService();
+  final GrokService _grokService = GrokService();
+  final LucyActivityStore _activityStore = LucyActivityStore();
+  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor();
   bool _updateCheckStarted = false;
   DateTime? _lastUpdateCheckAt;
 
@@ -301,6 +307,11 @@ class _HomeScreenState extends State<HomeScreen>
         elevation: 0,
         actions: [
           _buildLanguageToggle(),
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Lucy tools and activity',
+            onPressed: _showToolsDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.key),
             tooltip: 'API Key',
@@ -764,6 +775,118 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _showToolsDialog() async {
+    final grokController = TextEditingController();
+    final snapshot = _performanceMonitor.snapshot();
+    final templates = await _activityStore.readAutomationTemplates();
+    final configured = await _grokService.isConfigured();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lucy tools'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Performance · RAM: ${snapshot.ramLabel}'),
+                Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
+                const SizedBox(height: 12),
+                const Text('Grok / xAI provider', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(configured ? 'API key saved securely on this device.' : 'No Grok key configured.'),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: grokController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Paste xAI API key',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('Automation templates', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...templates.map((item) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule),
+                  title: Text(item['name']?.toString() ?? 'Routine'),
+                  subtitle: const Text('Template only · approval required before actions'),
+                )),
+                const SizedBox(height: 8),
+                const Text('Activity history is stored locally on this device. API keys, screenshots and passwords are not included.'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _grokService.clearApiKey();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Remove Grok key'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final events = await _activityStore.readEvents();
+              if (!ctx.mounted) return;
+              await showDialog<void>(
+                context: ctx,
+                builder: (historyContext) => AlertDialog(
+                  title: const Text('Recent activity'),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    height: 320,
+                    child: events.isEmpty
+                        ? const Text('No saved activity yet.')
+                        : ListView.builder(
+                            itemCount: events.length,
+                            itemBuilder: (_, index) {
+                              final event = events[events.length - 1 - index];
+                              return ListTile(
+                                dense: true,
+                                title: Text(event['summary']?.toString() ?? ''),
+                                subtitle: Text(event['time']?.toString() ?? ''),
+                              );
+                            },
+                          ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        await _activityStore.clearEvents();
+                        if (historyContext.mounted) Navigator.pop(historyContext);
+                      },
+                      child: const Text('Clear history'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(historyContext),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            child: const Text('View activity'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final key = grokController.text.trim();
+              if (key.isNotEmpty) await _grokService.saveApiKey(key);
+              grokController.dispose();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Save Grok key'),
+          ),
+        ],
+      ),
+    );
+    grokController.dispose();
   }
 
   Future<void> _manualCapture() async {
