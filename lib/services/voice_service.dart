@@ -12,7 +12,6 @@ class VoiceService {
   bool _isInitialized = false;
   bool _isListening = false;
   bool _isSpeaking = false;
-  bool _errorOccurred = false;
   bool _disposed = false;
   String _currentTtsLanguage = 'en-US';
 
@@ -48,20 +47,13 @@ class VoiceService {
 
     try {
       _isInitialized = await _speech.initialize(
-        onError: (error) {
-          _isListening = false;
-          _errorOccurred = true;
-          onError?.call(error.errorMsg);
+        onError: (_) {
+          // This plugin is used only to request microphone permission and
+          // initialize TTS. NativeVoiceService owns the actual recognizer;
+          // forwarding plugin lifecycle callbacks caused duplicate reconnects.
         },
-        onStatus: (status) {
-          if (status == 'done' || status == 'notListening') {
-            _isListening = false;
-            if (_errorOccurred) {
-              _errorOccurred = false;
-            } else {
-              onListeningDone?.call();
-            }
-          }
+        onStatus: (_) {
+          // Recognition lifecycle is reported by NativeVoiceService.
         },
       );
 
