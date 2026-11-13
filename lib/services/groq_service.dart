@@ -164,12 +164,24 @@ class GroqService {
         throw const FormatException('Groq returned an empty response.');
       }
 
-      // Store both sides of the turn. Bound history to avoid unbounded token use.
+      // Retain only compact text context. Never retain screenshots or their
+      // base64 payloads: resending old images on every agent step quickly
+      // exhausts Groq's input-tokens-per-minute allowance.
+      final historyUserText = prompt.trim();
       _history
-        ..add(userMessage)
-        ..add({'role': 'assistant', 'content': text});
-      if (_history.length > 24) {
-        _history.removeRange(0, _history.length - 24);
+        ..add({
+          'role': 'user',
+          'content': historyUserText.length > 1800
+              ? historyUserText.substring(0, 1800)
+              : historyUserText,
+        })
+        ..add({
+          'role': 'assistant',
+          'content': text.length > 1200 ? text.substring(0, 1200) : text,
+        });
+      // Keep only the last two text-only exchanges (four messages).
+      if (_history.length > 4) {
+        _history.removeRange(0, _history.length - 4);
       }
       return text;
     } on TimeoutException {
