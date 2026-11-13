@@ -87,6 +87,73 @@ class AgentController extends ChangeNotifier {
   static const Duration _openAppReadyTimeout = Duration(milliseconds: 2500);
 
   bool _cancelRequested = false;
+  _UiSnapshot? _previousTaskSnapshot;
+
+  // Store only stable, non-editable controls. Never save screen contents,
+  // message previews, account data, passwords, OTPs, or editable text.
+  String _layoutSignature(List<Map<String, dynamic>> elements) {
+    final parts = elements.where((e) => e['clickable'] == true).map((e) {
+      final type = (e['type'] ?? '').toString().split('.').last;
+      final desc = (e['desc'] ?? '').toString().trim();
+      final label = (e['text'] ?? '').toString().trim();
+      return type + '|' + (desc.isNotEmpty ? desc : label);
+    }).join('|');
+    var hash = 0x811c9dc5;
+    for (final unit in parts.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16);
+  }
+
+  Future<void> _rememberUiLayout(_UiSnapshot snapshot, Map<String, int>? size) async {
+    final package = snapshot.packageName;
+    final width = size?['width'] ?? 0;
+    final height = size?['height'] ?? 0;
+    if (package == null || package.isEmpty || width <= 0 || height <= 0) return;
+    final controls = <Map<String, dynamic>>[];
+    for (final element in snapshot.elements) {
+      if (element['clickable'] != true || element['editable'] == true) continue;
+      final bounds = element['bounds'];
+      if (bounds is! Map) continue;
+      final label = (element['desc'] ?? element['text'] ?? '').toString().trim();
+      if (label.isEmpty || label.length > 64 || RegExp(r'[@0-9]').hasMatch(label)) continue;
+      final x = (bounds['cx'] as num?)?.toDouble();
+      final y = (bounds['cy'] as num?)?.toDouble();
+      if (x == null || y == null) continue;
+      controls.add({
+        'label': label,
+        'role': (element['type'] ?? '').toString().split('.').last,
+        'x': (x / width).clamp(0.0, 1.0),
+        'y': (y / height).clamp(0.0, 1.0),
+      });
+      if (controls.length >= 80) break;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('lucy_ui_layout_v1_' + package, jsonEncode({
+      'signature': _layoutSignature(snapshot.elements),
+      'width': width,
+      'height': height,
+      'controls': controls,
+    }));
+  }
+
+  Future<String?> _knownLayoutHint(_UiSnapshot? snapshot) async {
+    final package = snapshot?.packageName;
+    if (package == null || snapshot == null) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('lucy_ui_layout_v1_' + package);
+    if (saved == null) return null;
+    try {
+      final memory = jsonDecode(saved) as Map<String, dynamic>;
+      if (memory['signature'] != _layoutSignature(snapshot.elements)) return null;
+      final controls = memory['controls'] as List<dynamic>? ?? const [];
+      return controls.isEmpty ? null : jsonEncode(controls);
+    } catch (_) {
+      return null;
+    }
+  }
+
 
   bool _isAskingForFurtherHelp = false;
 
@@ -396,6 +463,7 @@ class AgentController extends ChangeNotifier {
   /// The core agent loop: capture → analyze → act → repeat.
   Future<void> _runAgentLoop(String userMessage) async {
     _cancelRequested = false;
+    _previousTaskSnapshot = null;
     int step = 0;
     String currentMessage = userMessage;
 
@@ -408,25 +476,28 @@ class AgentController extends ChangeNotifier {
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
       step++;
 
-      // 1. Capture screenshot (with retries for reliability after app switches)
+      // Read the accessibility tree first; avoid resending an unchanged image.
       _setState(AgentState.capturing);
-      _statusMessage = '📸 Capturing screen... (step $step)';
+      _statusMessage = 'Reading app controls... (step $step)';
       notifyListeners();
-
-      final screenshotFuture = _captureScreenWithRetry();
-      final uiSnapshotFuture = _fetchUiSnapshot();
-
-      final screenshotBytes = await screenshotFuture;
-      if (screenshotBytes != null) {
-        _lastScreenshotBytes = screenshotBytes;
+      final uiSnapshot = await _fetchUiSnapshot();
+      if (uiSnapshot != null) await _rememberUiLayout(uiSnapshot, screenSize);
+      final hint = await _knownLayoutHint(uiSnapshot);
+      final liveTree = uiSnapshot?.rawTree;
+      final uiTree = liveTree == null ? null : hint == null
+          ? liveTree
+          : liveTree + '\\n[KNOWN_LAYOUT_HINT - use fresh live IDs and bounds only]\\n' + hint;
+      final changed = _previousTaskSnapshot == null ||
+          uiSnapshot == null ||
+          _didTreeSignatureChange(_previousTaskSnapshot, uiSnapshot);
+      Uint8List? screenshotBytes;
+      if (changed) {
+        _statusMessage = '📸 Capturing changed screen... (step $step)';
+        notifyListeners();
+        screenshotBytes = await _captureScreenWithRetry();
+        if (screenshotBytes != null) _lastScreenshotBytes = screenshotBytes;
       }
-
-      if (_cancelRequested) break;
-
-      // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
-      final uiSnapshot = await uiSnapshotFuture;
-      final uiTree = uiSnapshot?.rawTree;
-
+      _previousTaskSnapshot = uiSnapshot;
       if (_cancelRequested) break;
 
       // 2. Send to AI (with screenshot + UI tree)
@@ -917,6 +988,7 @@ class AgentController extends ChangeNotifier {
   void clearConversation() {
     _conversation.clear();
     _lastScreenshotBytes = null;
+    _previousTaskSnapshot = null;
     _isAskingForFurtherHelp = false;
     _aiService.resetChat();
     notifyListeners();
