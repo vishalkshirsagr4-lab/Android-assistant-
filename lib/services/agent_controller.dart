@@ -185,7 +185,7 @@ class AgentController extends ChangeNotifier {
     // Migrate the old boolean preference used by previous Lucy builds.
     final provider = savedProvider is String
         ? savedProvider
-        : (prefs.getBool(_providerPrefKey) ?? false ? 'grok' : 'gemini');
+        : ((prefs.getBool(_providerPrefKey) ?? false) ? 'grok' : 'gemini');
     _aiService.useGrok(provider == 'grok');
     _aiService.useGroq(provider == 'groq');
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
