@@ -96,7 +96,12 @@ class NativeVoiceService : Service() {
                             emitError("Microphone permission is missing.")
                             stopSelf()
                         } else {
-                            emitError("Speech session interrupted (code $error); reconnecting.")
+                            // SpeechRecognizer commonly ends an utterance with
+                            // ERROR_SPEECH_TIMEOUT. This is recoverable: retry
+                            // inside the foreground service only. Do not also
+                            // ask Flutter to restart, which caused competing
+                            // recognizers and repeated listening-timeout loops.
+                            Log.w(TAG, "Recoverable speech interruption (code $error); reconnecting")
                             scheduleRestart(retryMs)
                         }
                     }
