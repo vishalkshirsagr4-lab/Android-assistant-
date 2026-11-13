@@ -53,6 +53,7 @@ class AgentController extends ChangeNotifier {
   final GrokService _grokService = GrokService();
   final GroqService _groqService = GroqService();
   static const String _providerPrefKey = 'lucy_ai_provider';
+  static const String _legacyProviderPrefKey = 'lucy_use_grok';
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
 
@@ -181,11 +182,10 @@ class AgentController extends ChangeNotifier {
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
-    final savedProvider = prefs.get(_providerPrefKey);
+    final savedProvider = prefs.getString(_providerPrefKey);
     // Migrate the old boolean preference used by previous Lucy builds.
-    final provider = savedProvider is String
-        ? savedProvider
-        : ((prefs.getBool(_providerPrefKey) ?? false) ? 'grok' : 'gemini');
+    final provider = savedProvider ??
+        ((prefs.getBool(_legacyProviderPrefKey) ?? false) ? 'grok' : 'gemini');
     _aiService.useGrok(provider == 'grok');
     _aiService.useGroq(provider == 'groq');
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
