@@ -348,14 +348,14 @@ class MainActivity : FlutterActivity() {
                                     val request = androidx.work.PeriodicWorkRequestBuilder<RoutineReminderWorker>(
                                         repeatMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
                                     ).setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
-                                        .setInputData(input).build()
+                                        .setInputData(input).addTag("lucy_routine").addTag("routine_id:$id").build()
                                     manager.enqueueUniquePeriodicWork(
                                         id, androidx.work.ExistingPeriodicWorkPolicy.UPDATE, request
                                     )
                                 } else {
                                     val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
                                         .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
-                                        .setInputData(input).build()
+                                        .setInputData(input).addTag("lucy_routine").addTag("routine_id:$id").build()
                                     manager.enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
                                 }
                                 result.success(true)
@@ -363,6 +363,23 @@ class MainActivity : FlutterActivity() {
                                 result.error("SCHEDULE_FAILED", error.message, null)
                             }
                         }
+                    }
+                    "listRoutines" -> {
+                        val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                        manager.getWorkInfosByTag("lucy_routine").addListener({
+                            try {
+                                val routines = manager.getWorkInfosByTag("lucy_routine").get().map { info ->
+                                    mapOf(
+                                        "id" to (info.tags.firstOrNull { it.startsWith("routine_id:") }?.removePrefix("routine_id:") ?: info.id.toString()),
+                                        "state" to info.state.name,
+                                        "runAttemptCount" to info.runAttemptCount
+                                    )
+                                }
+                                result.success(routines)
+                            } catch (error: Exception) {
+                                result.error("LIST_FAILED", error.message, null)
+                            }
+                        }, androidx.core.content.ContextCompat.getMainExecutor(this))
                     }
                     "cancelReminder" -> {
                         val id = call.argument<String>("id") ?: ""
