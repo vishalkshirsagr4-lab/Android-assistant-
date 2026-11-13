@@ -432,8 +432,12 @@ class AgentController extends ChangeNotifier {
       notifyListeners();
 
       final aiStopwatch = Stopwatch()..start();
+      final localNow = DateTime.now();
+      final requestWithClock =
+          '[Device local date/time: ${localNow.toIso8601String()}]\\n'
+          '${currentMessage}';
       final agentResponse = await _aiService.agentChat(
-        currentMessage,
+        requestWithClock,
         imageBytes: screenshotBytes,
         screenSize: screenSize,
         uiTree: uiTree,
