@@ -296,17 +296,8 @@ class AgentController extends ChangeNotifier {
     await _startListening();
     // Start the microphone foreground service only after the speech plugin has
     // had a chance to request RECORD_AUDIO from the visible activity.
-    try {
-      final started = await _screenCapture.showStopOverlay();
-      if (!started) {
-        _statusMessage = 'Android could not start the microphone foreground service. Lucy has been stopped to avoid background listening without a visible notification.';
-        await stopAgent();
-        return;
-      }
-    } catch (error) {
-      _statusMessage = 'Background listening service could not start: $error';
-      await stopAgent();
-    }
+    // NativeVoiceService owns the microphone foreground service and Stop notification.
+    // Avoid starting a second microphone foreground service.
   }
 
   Future<void> stopAgent() async {
@@ -315,11 +306,7 @@ class AgentController extends ChangeNotifier {
     _cancelRequested = false;
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
-    try {
-      await _screenCapture.hideStopOverlay();
-    } catch (error) {
-      debugPrint('Could not stop Lucy foreground notification: $error');
-    }
+    // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
     _setState(AgentState.idle);
     _statusMessage = 'I can see your screen and help you interact with apps';
     _addConversation('Agent stopped.', false);
