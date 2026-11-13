@@ -341,23 +341,21 @@ class MainActivity : FlutterActivity() {
                                 val input = androidx.work.workDataOf(
                                     RoutineReminderWorker.KEY_ID to id,
                                     RoutineReminderWorker.KEY_TITLE to title,
-                                    RoutineReminderWorker.KEY_BODY to body
+                                    RoutineReminderWorker.KEY_BODY to body,
+                                    RoutineReminderWorker.KEY_REPEAT_MINUTES to repeatMinutes,
+                                    RoutineReminderWorker.KEY_BOOTSTRAP_REPEAT to (repeatMinutes >= 15)
                                 )
                                 val manager = androidx.work.WorkManager.getInstance(applicationContext)
-                                if (repeatMinutes >= 15) {
-                                    val request = androidx.work.PeriodicWorkRequestBuilder<RoutineReminderWorker>(
-                                        repeatMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
-                                    ).setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
-                                        .setInputData(input).addTag("lucy_routine").addTag("routine_id:$id").build()
-                                    manager.enqueueUniquePeriodicWork(
-                                        id, androidx.work.ExistingPeriodicWorkPolicy.UPDATE, request
-                                    )
-                                } else {
-                                    val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
-                                        .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
-                                        .setInputData(input).addTag("lucy_routine").addTag("routine_id:$id").build()
-                                    manager.enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
-                                }
+                                // PeriodicWorkRequest does not support an initial delay.
+                                // Run a delayed one-time bootstrap first; it posts the
+                                // first reminder and then registers the periodic request.
+                                val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
+                                    .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
+                                    .setInputData(input)
+                                    .addTag("lucy_routine")
+                                    .addTag("routine_id:$id")
+                                    .build()
+                                manager.enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
                                 result.success(true)
                             } catch (error: Exception) {
                                 result.error("SCHEDULE_FAILED", error.message, null)
@@ -386,7 +384,9 @@ class MainActivity : FlutterActivity() {
                         if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}"))) {
                             result.error("INVALID_ROUTINE", "Invalid routine id.", null)
                         } else {
-                            androidx.work.WorkManager.getInstance(applicationContext).cancelUniqueWork(id)
+                            val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                            manager.cancelUniqueWork(id)
+                            manager.cancelUniqueWork("$id-periodic")
                             result.success(true)
                         }
                     }
