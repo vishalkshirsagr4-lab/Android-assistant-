@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
+import 'grok_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
 
@@ -48,6 +49,8 @@ class _UiSnapshot {
 
 class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
+  final GrokService _grokService = GrokService();
+  static const String _providerPrefKey = 'lucy_use_grok';
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
 
@@ -133,6 +136,22 @@ class AgentController extends ChangeNotifier {
   );
 
   AiService get aiService => _aiService;
+  bool get isGrokProvider => _aiService.isUsingGrok;
+
+  Future<void> setGrokProvider(bool enabled) async {
+    if (enabled && !await _grokService.isConfigured()) {
+      _statusMessage = 'Save a Grok API key in Lucy Tools before enabling Grok.';
+      notifyListeners();
+      return;
+    }
+    _aiService.useGrok(enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_providerPrefKey, enabled);
+    _statusMessage = enabled
+        ? 'Grok 4.7 selected for Lucy.'
+        : 'Gemini selected for Lucy.';
+    notifyListeners();
+  }
   ScreenCaptureManager get screenCapture => _screenCapture;
 
   /// Whether a cancel has been requested by the user.
@@ -148,6 +167,7 @@ class AgentController extends ChangeNotifier {
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
+    _aiService.useGrok(prefs.getBool(_providerPrefKey) ?? false);
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
       _currentLang = savedLang;
     }
@@ -224,8 +244,10 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> startAgent() async {
-    if (!_aiService.isConfigured) {
-      _statusMessage = '⚠️ Please set your Gemini API key first';
+    if (!await _aiService.isProviderReady()) {
+      _statusMessage = _aiService.isUsingGrok
+          ? '⚠️ Please save a Grok API key in Lucy Tools first'
+          : '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
     }
