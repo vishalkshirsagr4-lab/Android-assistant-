@@ -182,8 +182,8 @@ class AgentController extends ChangeNotifier {
       final pendingApproval = _pendingVoiceApproval;
       if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
         final answer = text.trim().toLowerCase();
-        final approved = RegExp(r'\b(approve|approved|yes|allow|continue|go ahead)\b').hasMatch(answer);
-        final denied = RegExp(r'\b(deny|denied|no|cancel|stop|reject)\b').hasMatch(answer);
+        final approved = RegExp(r'\b(approve|approved|yes|allow|continue|go ahead|haan|han|ಹೌದು|ಮಾಡಿ|हो|हाँ|मंजूर)\b').hasMatch(answer);
+        final denied = RegExp(r'\b(deny|denied|no|cancel|stop|reject| ಬೇಡ|ಇಲ್ಲ|नहीं|मत करो)\b').hasMatch(answer);
         if (approved || denied) {
           if (!pendingApproval.isCompleted) pendingApproval.complete(approved);
           unawaited(_voiceService.stopListening());
@@ -805,6 +805,11 @@ class AgentController extends ChangeNotifier {
     _statusMessage = 'Waiting for your spoken approval...';
     _addConversation(prompt, false);
     await _voiceService.speak(prompt, lang: _currentLang);
+    await Future.delayed(const Duration(milliseconds: 250));
+    while (_voiceService.isSpeaking && _isActive) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    if (!_isActive) return false;
     final completer = Completer<bool>();
     _pendingVoiceApproval = completer;
     _currentTranscript = '';
