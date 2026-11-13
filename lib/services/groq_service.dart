@@ -16,6 +16,12 @@ class GroqService {
   // Multimodal model supports screenshot understanding and JSON mode.
   static const model = 'qwen/qwen3.8-27b';
 
+  // Keep the same multi-step conversation context that Gemini's ChatSession
+  // retains, so Groq remembers the original task after each phone action.
+  final List<Map<String, dynamic>> _history = [];
+
+  void resetChat() => _history.clear();
+
   String _normalizeKey(String input) {
     var value = input.trim();
     if (value.startsWith('Bearer ')) value = value.substring(7).trim();
@@ -110,12 +116,14 @@ class GroqService {
       });
     }
 
+    final userMessage = <String, dynamic>{
+      'role': 'user',
+      'content': imageBytes == null ? prompt.trim() : userContent,
+    };
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': systemPrompt},
-      {
-        'role': 'user',
-        'content': imageBytes == null ? prompt.trim() : userContent,
-      },
+      ..._history,
+      userMessage,
     ];
 
     final client = http.Client();
@@ -132,7 +140,7 @@ class GroqService {
           'messages': messages,
           'response_format': {'type': 'json_object'},
           'temperature': 0.2,
-          'max_completion_tokens': 2048,
+          'max_completion_tokens': 4096,
           'reasoning_effort': 'none',
           'stream': false,
         }),
@@ -154,6 +162,14 @@ class GroqService {
       final text = message is Map ? message['content']?.toString().trim() : null;
       if (text == null || text.isEmpty) {
         throw const FormatException('Groq returned an empty response.');
+      }
+
+      // Store both sides of the turn. Bound history to avoid unbounded token use.
+      _history
+        ..add(userMessage)
+        ..add({'role': 'assistant', 'content': text});
+      if (_history.length > 24) {
+        _history.removeRange(0, _history.length - 24);
       }
       return text;
     } on TimeoutException {
