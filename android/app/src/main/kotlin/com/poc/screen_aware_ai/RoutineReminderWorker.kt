@@ -15,6 +15,8 @@ class RoutineReminderWorker(appContext: Context, params: WorkerParameters) :
         const val KEY_ID = "routine_id"
         const val KEY_TITLE = "routine_title"
         const val KEY_BODY = "routine_body"
+        const val KEY_REPEAT_MINUTES = "repeat_minutes"
+        const val KEY_BOOTSTRAP_REPEAT = "bootstrap_repeat"
         private const val CHANNEL_ID = "lucy_routine_reminders"
     }
 
@@ -39,6 +41,32 @@ class RoutineReminderWorker(appContext: Context, params: WorkerParameters) :
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
         manager.notify(id.hashCode(), notification)
+
+        // The first delayed one-time run installs the recurring request.
+        // PeriodicWorkRequest itself cannot carry an initial delay.
+        val repeatMinutes = inputData.getInt(KEY_REPEAT_MINUTES, 0)
+        val bootstrapRepeat = inputData.getBoolean(KEY_BOOTSTRAP_REPEAT, false)
+        if (bootstrapRepeat && repeatMinutes >= 15) {
+            val periodicInput = androidx.work.workDataOf(
+                KEY_ID to id,
+                KEY_TITLE to title,
+                KEY_BODY to body,
+                KEY_REPEAT_MINUTES to 0,
+                KEY_BOOTSTRAP_REPEAT to false
+            )
+            val periodic = androidx.work.PeriodicWorkRequestBuilder<RoutineReminderWorker>(
+                repeatMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
+            ).setInputData(periodicInput)
+                .addTag("lucy_routine")
+                .addTag("routine_id:$id")
+                .build()
+            androidx.work.WorkManager.getInstance(applicationContext)
+                .enqueueUniquePeriodicWork(
+                    "$id-periodic",
+                    androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                    periodic
+                )
+        }
         return Result.success()
     }
 }
