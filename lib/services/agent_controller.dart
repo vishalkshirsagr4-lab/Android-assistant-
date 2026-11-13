@@ -368,7 +368,24 @@ class AgentController extends ChangeNotifier {
       }
     }
 
-    await _runAgentLoop(text);
+    // Ordinary conversation never triggers screenshot or accessibility capture.
+    final lower = text.toLowerCase().trim();
+    final needsPhone = RegExp(r'\b(open|launch|tap|click|press|select|scroll|swipe|type|enter|send|reply|message|call|dial|search in|install|uninstall|enable|disable|set alarm|set timer|read screen|read this|what is on my screen|look at my screen|describe this screen|book|order|upload|download|share|navigate|delete)\b').hasMatch(lower);
+    if (!needsPhone) {
+      final reply = await _aiService.agentChat(text);
+      if (!_cancelRequested) {
+        final answer = reply.speak.trim().isEmpty ? 'I’m here. What would you like to do?' : reply.speak.trim();
+        _addConversation(answer, false);
+        _setState(AgentState.speaking);
+        await _voiceService.speak(_trimForTts(answer), lang: _currentLang);
+        while (_voiceService.isSpeaking && !_cancelRequested) {
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+      }
+      _cancelRequested = false;
+    } else {
+      await _runAgentLoop(text);
+    }
 
     // Resume listening after the loop completes
     if (_isActive) {
