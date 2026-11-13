@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'grok_service.dart';
+import 'groq_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
 
@@ -50,7 +51,8 @@ class _UiSnapshot {
 class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
   final GrokService _grokService = GrokService();
-  static const String _providerPrefKey = 'lucy_use_grok';
+  final GroqService _groqService = GroqService();
+  static const String _providerPrefKey = 'lucy_ai_provider';
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
 
@@ -137,19 +139,31 @@ class AgentController extends ChangeNotifier {
 
   AiService get aiService => _aiService;
   bool get isGrokProvider => _aiService.isUsingGrok;
+  bool get isGroqProvider => _aiService.isUsingGroq;
 
   Future<void> setGrokProvider(bool enabled) async {
     if (enabled && !await _grokService.isConfigured()) {
-      _statusMessage = 'Save a Grok API key in Lucy Tools before enabling Grok.';
+      _statusMessage = 'Save an xAI API key in Lucy Tools before enabling Grok.';
       notifyListeners();
       return;
     }
     _aiService.useGrok(enabled);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_providerPrefKey, enabled);
-    _statusMessage = enabled
-        ? 'Grok 4.7 selected for Lucy.'
-        : 'Gemini selected for Lucy.';
+    await prefs.setString(_providerPrefKey, enabled ? 'grok' : 'gemini');
+    _statusMessage = enabled ? 'Grok 4.7 selected for Lucy.' : 'Gemini selected for Lucy.';
+    notifyListeners();
+  }
+
+  Future<void> setGroqProvider(bool enabled) async {
+    if (enabled && !await _groqService.isConfigured()) {
+      _statusMessage = 'Save a Groq API key in Lucy Tools before enabling Groq.';
+      notifyListeners();
+      return;
+    }
+    _aiService.useGroq(enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_providerPrefKey, enabled ? 'groq' : 'gemini');
+    _statusMessage = enabled ? 'Groq Qwen 3.8 selected for Lucy.' : 'Gemini selected for Lucy.';
     notifyListeners();
   }
   ScreenCaptureManager get screenCapture => _screenCapture;
@@ -167,7 +181,13 @@ class AgentController extends ChangeNotifier {
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
-    _aiService.useGrok(prefs.getBool(_providerPrefKey) ?? false);
+    final savedProvider = prefs.get(_providerPrefKey);
+    // Migrate the old boolean preference used by previous Lucy builds.
+    final provider = savedProvider is String
+        ? savedProvider
+        : (prefs.getBool(_providerPrefKey) ?? false ? 'grok' : 'gemini');
+    _aiService.useGrok(provider == 'grok');
+    _aiService.useGroq(provider == 'groq');
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
       _currentLang = savedLang;
     }
