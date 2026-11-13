@@ -23,7 +23,8 @@ class _HomeScreenState extends State<HomeScreen>
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
   final AppUpdateService _appUpdateService = AppUpdateService();
-  bool _updateCheckStarted = false;
+  bool _isCheckingUpdate = false;
+  DateTime? _lastAutomaticUpdateCheck;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -46,16 +47,26 @@ class _HomeScreenState extends State<HomeScreen>
 
     _checkAccessibility();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkForAppUpdate();
+      _checkForAppUpdate(showResult: true);
     });
   }
 
-  Future<void> _checkForAppUpdate() async {
-    if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
-    _updateCheckStarted = true;
+  Future<void> _checkForAppUpdate({bool showResult = false}) async {
+    if (!Platform.isAndroid || _isCheckingUpdate || !mounted) return;
+    _isCheckingUpdate = true;
+    if (mounted) setState(() {});
+
     try {
       final update = await _appUpdateService.checkForUpdate();
-      if (!mounted || update == null) return;
+      if (!mounted) return;
+      if (update == null) {
+        if (showResult) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("You're using the latest version of Lucy.")),
+          );
+        }
+        return;
+      }
       await showDialog<void>(
         context: context,
         barrierDismissible: true,
@@ -110,8 +121,15 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       );
-    } catch (_) {
-      // Update checks are optional; keep Lucy usable when offline or GitHub is unavailable.
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not check for updates: $error')),
+        );
+      }
+    } finally {
+      _isCheckingUpdate = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -120,6 +138,12 @@ class _HomeScreenState extends State<HomeScreen>
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
       unawaited(_appUpdateService.resumePendingInstall());
+      final now = DateTime.now();
+      final lastCheck = _lastAutomaticUpdateCheck;
+      if (lastCheck == null || now.difference(lastCheck) >= const Duration(minutes: 15)) {
+        _lastAutomaticUpdateCheck = now;
+        unawaited(_checkForAppUpdate());
+      }
     }
   }
 
@@ -288,6 +312,19 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: colorScheme.surface,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: _isCheckingUpdate
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.system_update_alt),
+            tooltip: 'Check for updates',
+            onPressed: _isCheckingUpdate
+                ? null
+                : () => _checkForAppUpdate(showResult: true),
+          ),
           _buildLanguageToggle(),
           IconButton(
             icon: const Icon(Icons.key),
