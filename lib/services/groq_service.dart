@@ -91,6 +91,12 @@ class GroqService {
       throw StateError('Add a Groq API key in Lucy Tools first.');
     }
     if (prompt.trim().isEmpty) throw ArgumentError('Prompt cannot be empty.');
+    if (imageBytes != null && imageBytes.length > 20 * 1024 * 1024) {
+      throw ArgumentError(
+        'The captured screen image is larger than Groq’s 20 MB image limit. '
+        'Please try again after reducing the screen resolution.',
+      );
+    }
 
     final userContent = <Map<String, dynamic>>[
       {'type': 'text', 'text': prompt.trim()},
@@ -127,6 +133,8 @@ class GroqService {
           'response_format': {'type': 'json_object'},
           'temperature': 0.2,
           'max_completion_tokens': 2048,
+          'reasoning_effort': 'none',
+          'stream': false,
         }),
       ).timeout(timeout);
 
