@@ -266,8 +266,10 @@ class AgentController extends ChangeNotifier {
   Future<void> startAgent() async {
     if (!await _aiService.isProviderReady()) {
       _statusMessage = _aiService.isUsingGrok
-          ? '⚠️ Please save a Grok API key in Lucy Tools first'
-          : '⚠️ Please set your Gemini API key first';
+          ? '⚠️ Please save an xAI API key in Lucy Tools first'
+          : _aiService.isUsingGroq
+              ? '⚠️ Please save a Groq API key in Lucy Tools first'
+              : '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
     }
