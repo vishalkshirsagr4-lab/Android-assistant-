@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
 import '../services/app_update_service.dart';
 import '../services/grok_service.dart';
+import '../services/groq_service.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -756,8 +757,15 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _showToolsDialog() async {
     final grokController = TextEditingController();
-    final configured = await _grokService.isConfigured();
-    if (!mounted) return;
+    final groqController = TextEditingController();
+    var grokConfigured = await _grokService.isConfigured();
+    final groqService = GroqService();
+    var groqConfigured = await groqService.isConfigured();
+    if (!mounted) {
+      grokController.dispose();
+      groqController.dispose();
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -768,18 +776,123 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('Gemini', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Use your saved Google Gemini API key.'),
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Gemini'),
+                  value: 'gemini',
+                  groupValue: widget.controller.isGrokProvider
+                      ? 'grok'
+                      : widget.controller.isGroqProvider
+                          ? 'groq'
+                          : 'gemini',
+                  onChanged: (value) async {
+                    await widget.controller.setGrokProvider(false);
+                    await widget.controller.setGroqProvider(false);
+                    if (dialogContext.mounted) setDialogState(() {});
+                  },
+                ),
+                const Divider(),
+                const Text('Groq Cloud', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(groqConfigured
+                    ? 'A Groq API key is saved securely on this device.'
+                    : 'No Groq API key is configured.'),
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Groq · Qwen 3.8 27B'),
+                  subtitle: const Text('Supports text and screenshot understanding.'),
+                  value: 'groq',
+                  groupValue: widget.controller.isGrokProvider
+                      ? 'grok'
+                      : widget.controller.isGroqProvider
+                          ? 'groq'
+                          : 'gemini',
+                  onChanged: groqConfigured
+                      ? (value) async {
+                          await widget.controller.setGroqProvider(true);
+                          if (dialogContext.mounted) setDialogState(() {});
+                        }
+                      : null,
+                ),
+                TextField(
+                  controller: groqController,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Groq API key',
+                    hintText: 'Paste key from console.groq.com',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        final key = groqController.text.trim();
+                        if (key.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Paste your Groq API key first.')),
+                          );
+                          return;
+                        }
+                        try {
+                          await groqService.validateApiKey(key);
+                          await groqService.saveApiKey(key);
+                          groqConfigured = true;
+                          await widget.controller.setGroqProvider(true);
+                          if (dialogContext.mounted) setDialogState(() {});
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Groq key verified and saved.')),
+                            );
+                          }
+                        } catch (error) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Groq setup failed: $error')),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Verify & enable Groq'),
+                    ),
+                    TextButton(
+                      onPressed: groqConfigured
+                          ? () async {
+                              if (widget.controller.isGroqProvider) {
+                                await widget.controller.setGroqProvider(false);
+                              }
+                              await groqService.clearApiKey();
+                              groqConfigured = false;
+                              if (dialogContext.mounted) setDialogState(() {});
+                            }
+                          : null,
+                      child: const Text('Remove Groq key'),
+                    ),
+                  ],
+                ),
+                const Divider(),
                 const Text('Grok / xAI', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(configured
+                Text(grokConfigured
                     ? 'An xAI API key is saved securely on this device.'
-                    : 'No Grok API key is configured.'),
-                SwitchListTile(
+                    : 'No xAI API key is configured.'),
+                RadioListTile<String>(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use Grok 4.7'),
-                  subtitle: const Text('Use Grok for Lucy voice and screen tasks.'),
-                  value: widget.controller.isGrokProvider,
-                  onChanged: configured
-                      ? (enabled) async {
-                          await widget.controller.setGrokProvider(enabled);
+                  subtitle: const Text('Requires an xAI API key, not a Groq key.'),
+                  value: 'grok',
+                  groupValue: widget.controller.isGrokProvider
+                      ? 'grok'
+                      : widget.controller.isGroqProvider
+                          ? 'groq'
+                          : 'gemini',
+                  onChanged: grokConfigured
+                      ? (value) async {
+                          await widget.controller.setGrokProvider(true);
                           if (dialogContext.mounted) setDialogState(() {});
                         }
                       : null,
@@ -787,15 +900,66 @@ class _HomeScreenState extends State<HomeScreen>
                 TextField(
                   controller: grokController,
                   obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   decoration: const InputDecoration(
                     labelText: 'xAI API key',
-                    hintText: 'Paste your xAI API key',
+                    hintText: 'Paste key from console.x.ai',
                     border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        final key = grokController.text.trim();
+                        if (key.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Paste your xAI API key first.')),
+                          );
+                          return;
+                        }
+                        try {
+                          await _grokService.validateApiKey(key);
+                          await _grokService.saveApiKey(key);
+                          grokConfigured = true;
+                          await widget.controller.setGrokProvider(true);
+                          if (dialogContext.mounted) setDialogState(() {});
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Grok 4.7 verified and enabled.')),
+                            );
+                          }
+                        } catch (error) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Grok setup failed: $error')),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Verify & enable Grok'),
+                    ),
+                    TextButton(
+                      onPressed: grokConfigured
+                          ? () async {
+                              if (widget.controller.isGrokProvider) {
+                                await widget.controller.setGrokProvider(false);
+                              }
+                              await _grokService.clearApiKey();
+                              grokConfigured = false;
+                              if (dialogContext.mounted) setDialogState(() {});
+                            }
+                          : null,
+                      child: const Text('Remove xAI key'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 const Text(
-                  'The key is stored in Android secure storage. Do not share it.',
+                  'API keys are stored in Android secure storage. Keep them private. API usage may have limits or costs depending on your provider account.',
                   style: TextStyle(fontSize: 12),
                 ),
               ],
@@ -803,58 +967,15 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           actions: [
             TextButton(
-              onPressed: () async {
-                if (widget.controller.isGrokProvider) {
-                  await widget.controller.setGrokProvider(false);
-                }
-                await _grokService.clearApiKey();
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Grok key removed.')),
-                  );
-                }
-              },
-              child: const Text('Remove Grok key'),
-            ),
-            TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Close'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final key = grokController.text.trim();
-                if (key.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Paste your xAI API key first.')),
-                  );
-                  return;
-                }
-                try {
-                  await _grokService.validateApiKey(key);
-                  await _grokService.saveApiKey(key);
-                  await widget.controller.setGrokProvider(true);
-                  if (!dialogContext.mounted) return;
-                  Navigator.pop(dialogContext);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Grok 4.7 verified and enabled.')),
-                    );
-                  }
-                } catch (error) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Grok setup failed: $error')),
-                  );
-                }
-              },
-              child: const Text('Verify, save & enable Grok'),
             ),
           ],
         ),
       ),
     );
     grokController.dispose();
+    groqController.dispose();
   }
 
   void _showApiKeyDialog(BuildContext context) {
