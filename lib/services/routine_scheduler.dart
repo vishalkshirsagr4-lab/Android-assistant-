@@ -31,6 +31,13 @@ class LucyRoutineScheduler {
     return await _channel.invokeMethod<bool>('ensureNotificationPermission') ?? false;
   }
 
+  static Future<List<Map<String, dynamic>>> listRoutines() async {
+    final result = await _channel.invokeMethod<List<dynamic>>('listRoutines');
+    return (result ?? const []).whereType<Map>().map((item) =>
+      Map<String, dynamic>.from(item)
+    ).toList(growable: false);
+  }
+
   static Future<void> cancelReminder(String id) async {
     await _channel.invokeMethod<bool>('cancelReminder', {'id': id});
   }
