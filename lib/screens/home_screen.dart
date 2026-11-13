@@ -1051,10 +1051,29 @@ class _HomeScreenState extends State<HomeScreen>
           FilledButton(
             onPressed: () async {
               final key = grokController.text.trim();
-              if (key.isNotEmpty) await _grokService.saveApiKey(key);
-              if (ctx.mounted) Navigator.pop(ctx);
+              if (key.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Paste your xAI API key first.')),
+                );
+                return;
+              }
+              try {
+                await _grokService.validateApiKey(key);
+                await _grokService.saveApiKey(key);
+                await widget.controller.setGrokProvider(true);
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Grok key verified and Grok selected for Lucy.')),
+                );
+              } catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Grok setup failed: $error')),
+                );
+              }
             },
-            child: const Text('Save Grok key'),
+            child: const Text('Verify, save & enable Grok'),
           ),
         ],
       ),
