@@ -13,8 +13,23 @@ class GrokService {
   static const _modelsEndpoint = 'https://api.x.ai/v1/models';
   static const _model = 'grok-4.7';
 
+  /// Accept raw keys and common copied formats without storing wrapper text.
+  String _normalizeApiKey(String input) {
+    var value = input.trim();
+    if (value.startsWith('Bearer ')) value = value.substring(7).trim();
+    if (value.startsWith('XAI_API_KEY=')) {
+      value = value.substring('XAI_API_KEY='.length).trim();
+    }
+    if (value.length >= 2 &&
+        ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'")))) {
+      value = value.substring(1, value.length - 1).trim();
+    }
+    return value;
+  }
+
   Future<void> saveApiKey(String key) async {
-    final value = key.trim();
+    final value = _normalizeApiKey(key);
     if (value.isEmpty) throw ArgumentError('Paste your xAI API key.');
     await _storage.write(key: _keyName, value: value);
   }
@@ -25,7 +40,7 @@ class GrokService {
   Future<void> clearApiKey() => _storage.delete(key: _keyName);
 
   Future<void> validateApiKey(String apiKey) async {
-    final key = apiKey.trim();
+    final key = _normalizeApiKey(apiKey);
     if (key.isEmpty) throw ArgumentError('Paste your xAI API key.');
     final client = http.Client();
     try {
@@ -66,7 +81,8 @@ class GrokService {
     Uint8List? imageBytes,
     Duration timeout = const Duration(seconds: 180),
   }) async {
-    final key = await _storage.read(key: _keyName);
+    final storedKey = await _storage.read(key: _keyName);
+    final key = storedKey == null ? null : _normalizeApiKey(storedKey);
     if (key == null || key.trim().isEmpty) {
       throw StateError('Add an xAI API key in Lucy Tools first.');
     }
@@ -154,7 +170,14 @@ class GrokService {
     }
     if (detail.length > 400) detail = detail.substring(0, 400);
     if (status == 400) {
-      return 'xAI rejected the request (HTTP 400). ${detail.isEmpty ? 'Check the request format.' : detail}';
+      final lowerDetail = detail.toLowerCase();
+      if (checkingKey && (lowerDetail.contains('incorrect api key') ||
+          lowerDetail.contains('invalid api key') ||
+          lowerDetail.contains('api key provided'))) {
+        return 'This is not a valid xAI API key. Create one in the xAI Console API Keys page. A Grok app/X subscription or management key will not work. Paste only the key itself, without Bearer.';
+      }
+      return 'xAI rejected the request (HTTP 400). ' +
+          (detail.isEmpty ? 'Check the request format.' : detail);
     }
     if (status == 401) return 'xAI rejected this API key (HTTP 401).';
     if (status == 403) return 'This xAI key does not have access (HTTP 403).';
