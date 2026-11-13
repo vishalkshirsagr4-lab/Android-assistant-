@@ -529,13 +529,8 @@ class AgentController extends ChangeNotifier {
       // Show AI response and action summary in conversation
       String speakText = agentResponse.speak;
       if (agentResponse.done) {
-        if (speakText.isNotEmpty &&
-            !speakText.endsWith(' ') &&
-            !speakText.endsWith('\n')) {
-          speakText += ' ';
-        }
-        speakText += _followUps[_currentLang] ?? _followUps['en']!;
-        _isAskingForFurtherHelp = true;
+        // Finish the requested goal without an automatic "what next?" prompt.
+        _isAskingForFurtherHelp = false;
       } else {
         _isAskingForFurtherHelp = false;
       }
