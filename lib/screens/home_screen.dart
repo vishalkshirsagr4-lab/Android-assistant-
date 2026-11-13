@@ -929,6 +929,63 @@ class _HomeScreenState extends State<HomeScreen>
     repeatController.dispose();
   }
 
+  Future<void> _showScheduledRoutinesDialog() async {
+    try {
+      final routines = await LucyRoutineScheduler.listRoutines();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Scheduled reminders'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: routines.isEmpty
+                ? const Text('No scheduled reminders found.')
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: routines.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final routine = routines[index];
+                      final id = routine['id']?.toString() ?? '';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(id),
+                        subtitle: Text('Status: ${routine['state'] ?? 'Unknown'}'),
+                        trailing: IconButton(
+                          tooltip: 'Cancel reminder',
+                          icon: const Icon(Icons.cancel_outlined),
+                          onPressed: id.isEmpty ? null : () async {
+                            await LucyRoutineScheduler.cancelReminder(id);
+                            if (dialogContext.mounted) Navigator.pop(dialogContext);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Scheduled reminder cancelled.')),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load scheduled reminders: $error')),
+        );
+      }
+    }
+  }
+
   Future<void> _showToolsDialog() async {
     final grokController = TextEditingController();
     final snapshot = await _performanceMonitor.snapshot();
@@ -980,6 +1037,15 @@ class _HomeScreenState extends State<HomeScreen>
                   },
                   icon: const Icon(Icons.add_alarm),
                   label: const Text('Create scheduled reminder'),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showScheduledRoutinesDialog();
+                  },
+                  icon: const Icon(Icons.manage_history),
+                  label: const Text('Manage scheduled reminders'),
                 ),
                 ...templates.map((item) => ListTile(
                   dense: true,
