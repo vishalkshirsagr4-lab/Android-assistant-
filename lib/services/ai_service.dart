@@ -6,7 +6,7 @@ import 'grok_service.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
-  final String type; // tap, type, open_app, back, home, swipe, wait
+  final String type; // open_app, tap, type, swipe, back, home, wait, schedule_reminder
   final Map<String, dynamic> params;
 
   AgentAction({required this.type, this.params = const {}});
@@ -98,7 +98,7 @@ AVAILABLE ACTIONS:
 - {"type": "swipe", "startX": 540, "startY": 1500, "endX": 540, "endY": 500} — Swipe/scroll
 - {"type": "back"} — Press the back button
 - {"type": "home"} — Press the home button
-- {"type": "wait", "ms": 1000} — Wait before next screenshot
+- {"type": "schedule_reminder", "title": "Study", "body": "Time to study", "delayMinutes": 30, "repeatIntervalMinutes": 0} — Schedule a notification reminder; repeatIntervalMinutes must be 0 or at least 15\n- {"type": "wait", "ms": 1000} — Wait before next screenshot
 
 COMMON APP PACKAGES:
 - WhatsApp: com.whatsapp
@@ -131,7 +131,7 @@ CRITICAL RULES:
 4. After performing an action, set "done": false to receive the updated screen.
 5. Set "done": true only when the user's request is fully completed or you've reported the info they asked for.
 6. Keep "speak" concise — it will be read aloud. Only include "speak" text when you have something meaningful to tell the user (e.g., task done, error, or asking for clarification). For intermediate steps, use an empty string.
-7. If you cannot perform an action or need more info, explain in "speak" and set "done": true.
+7. If you cannot perform an action or need more info, explain in "speak" and set "done": true.\n8. For voice reminders, convert the requested time to delayMinutes using the current local time context supplied by the app. If the time is ambiguous, ask a brief question instead of guessing.\n9. When asked to text a message, open the requested messaging app, select the recipient only when clearly identified, and type the exact requested message. Do not tap Send/Send now/Publish without asking the user to confirm.\n10. For YouTube requests, open YouTube, use its visible search UI, type the requested song/video title, and select a matching result. Do not claim playback until the screen confirms it.
 8. When asked to read/describe screen content, read it from the screenshot and UI tree, speak it, and set "done": true.
 9. Use the UI tree "package" field to confirm which app is in the foreground.
 
