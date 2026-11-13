@@ -273,5 +273,6 @@ RESPONSE FORMAT (strict JSON, one action only):
     if (_model != null) {
       _chat = _model!.startChat();
     }
+    _groqService.resetChat();
   }
 }
