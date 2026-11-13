@@ -9,7 +9,7 @@ import 'package:http/http.dart' as http;
 class GrokService {
   static const _storage = FlutterSecureStorage();
   static const _keyName = 'lucy_xai_api_key';
-  static const _endpoint = 'https://api.x.ai/v1/chat/completions';
+  static const _endpoint = 'https://api.x.ai/v1/responses';
   static const _modelsEndpoint = 'https://api.x.ai/v1/models';
   // Reasoning models can take several minutes. Keep this configurable per call.
   static const Duration defaultTimeout = Duration(seconds: 900);
@@ -108,24 +108,15 @@ class GrokService {
       throw StateError('Add and verify an xAI API key in Lucy Tools first.');
     }
 
-    final messages = <Map<String, dynamic>>[];
-    if (systemPrompt != null && systemPrompt.isNotEmpty) {
-      messages.add({'role': 'system', 'content': systemPrompt});
+    final content = <Map<String, dynamic>>[
+      {'type': 'input_text', 'text': normalizedPrompt},
+    ];
+    if (imageBytes != null) {
+      content.add({
+        'type': 'input_image',
+        'image_url': 'data:image/jpeg;base64,${base64Encode(imageBytes)}',
+      });
     }
-
-    final userContent = imageBytes == null
-        ? normalizedPrompt
-        : <Map<String, dynamic>>[
-            {'type': 'text', 'text': normalizedPrompt},
-            {
-              'type': 'image_url',
-              'image_url': {
-                'url': 'data:image/jpeg;base64,${base64Encode(imageBytes)}',
-                'detail': 'auto',
-              },
-            },
-          ];
-    messages.add({'role': 'user', 'content': userContent});
 
     final client = http.Client();
     try {
@@ -139,22 +130,37 @@ class GrokService {
             },
             body: jsonEncode({
               'model': model,
-              'messages': messages,
-              'temperature': 0.7,
-              'top_p': 0.95,
-              'stream': false,
-              'response_format': {'type': 'json_object'},
+              if (systemPrompt != null && systemPrompt.isNotEmpty)
+                'instructions': systemPrompt,
+              'input': [
+                {'role': 'user', 'content': content},
+              ],
+              'reasoning': {'effort': 'low'},
+              'store': false,
             }),
           )
           .timeout(timeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        String detail = '';
+        try {
+          final errorBody = jsonDecode(response.body);
+          final error = errorBody is Map ? errorBody['error'] : null;
+          detail = error is Map
+              ? (error['message']?.toString() ?? '')
+              : (error?.toString() ?? '');
+        } catch (_) {
+          detail = response.body;
+        }
+        if (detail.length > 240) detail = detail.substring(0, 240);
         final message = switch (response.statusCode) {
-          401 => 'Grok rejected the saved API key. Open Lucy Tools and verify it again.',
-          403 => 'Grok access is not enabled for this key or model.',
-          429 => 'Grok rate limit reached. Wait briefly and try again.',
+          400 => 'Grok rejected the request format (HTTP 400). $detail',
+          401 => 'Grok rejected the saved API key. Verify the xAI key in Lucy Tools.',
+          403 => 'This xAI key does not have permission for the selected model.',
+          404 => 'The selected Grok model or API endpoint was not found. Check the model ID.',
+          429 => 'Grok rate limit or account quota reached. Check xAI billing and try later.',
           >= 500 => 'xAI is temporarily unavailable (HTTP ${response.statusCode}). Try again.',
-          _ => 'Grok request failed (HTTP ${response.statusCode}).',
+          _ => 'Grok request failed (HTTP ${response.statusCode}). $detail',
         };
         throw GrokRequestException(message, response.statusCode);
       }
@@ -163,16 +169,26 @@ class GrokService {
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException('Grok returned an invalid response.');
       }
-      final choices = decoded['choices'];
-      if (choices is! List || choices.isEmpty || choices.first is! Map) {
-        throw const FormatException('Grok returned no answer.');
+      final output = decoded['output'];
+      final text = StringBuffer();
+      if (output is List) {
+        for (final item in output.whereType<Map>()) {
+          final parts = item['content'];
+          if (parts is List) {
+            for (final part in parts.whereType<Map>()) {
+              if (part['type'] == 'output_text' && part['text'] is String) {
+                text.write(part['text']);
+              }
+            }
+          }
+        }
       }
-      final message = (choices.first as Map)['message'];
-      final content = message is Map ? message['content'] : null;
-      if (content is! String || content.trim().isEmpty) {
-        throw const FormatException('Grok returned an empty answer.');
+      final answer = text.toString().trim();
+      if (answer.isEmpty) {
+        final status = decoded['status']?.toString() ?? 'unknown';
+        throw FormatException('Grok returned no text (response status: $status).');
       }
-      return content.trim();
+      return answer;
     } on TimeoutException {
       throw TimeoutException(
         'Grok is still taking longer than expected. Lucy will not treat this as an invalid API key; check your connection and retry.',
