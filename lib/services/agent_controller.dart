@@ -181,11 +181,6 @@ class AgentController extends ChangeNotifier {
     }
   }
 
-  static const Map<String, String> _followUps = {
-    'en': 'Do you need any further help?',
-    'ja': '他に何かお手伝いできることはありますか？',
-    'ar': 'هل تحتاج إلى أي مساعدة أخرى؟',
-  };
   static const Map<String, String> _stoppingMessages = {
     'en': 'Alright, stopping the agent.',
     'ja': 'わかりました。エージェントを停止します。',
