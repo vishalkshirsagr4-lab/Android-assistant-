@@ -136,6 +136,9 @@ class GrokService {
                 {'role': 'user', 'content': content},
               ],
               'reasoning': {'effort': 'low'},
+              'text': {
+                'format': {'type': 'json_object'},
+              },
               'store': false,
             }),
           )
