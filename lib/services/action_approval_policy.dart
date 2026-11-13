@@ -21,7 +21,10 @@ class LucyActionApprovalPolicy {
   }) {
     if (action != 'tap') return false;
     final label = (targetLabel ?? '').trim().toLowerCase();
-    if (_sensitiveTapLabels.contains(label)) return true;
+    if (_sensitiveTapLabels.contains(label) ||
+        _sensitiveTapLabels.any((sensitive) => label.contains(sensitive))) {
+      return true;
+    }
     if (label.isEmpty && _messagingPackages.contains(packageName)) return true;
     return false;
   }
