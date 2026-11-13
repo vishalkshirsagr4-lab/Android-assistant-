@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'grok_service.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
@@ -63,8 +64,15 @@ class AiService {
   GenerativeModel? _model;
   ChatSession? _chat;
   String? _apiKey;
+  bool _useGrok = false;
+  final GrokService _grokService = GrokService();
 
-  bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
+  bool get isConfigured => _useGrok || (_apiKey != null && _apiKey!.isNotEmpty);
+  bool get isUsingGrok => _useGrok;
+  void useGrok(bool enabled) => _useGrok = enabled;
+
+  Future<bool> isProviderReady() async =>
+      _useGrok ? _grokService.isConfigured() : (_apiKey != null && _apiKey!.isNotEmpty);
 
   static const _systemPrompt = '''
 You are an autonomous AI agent controlling an Android phone. You receive TWO sources of information each step:
@@ -185,6 +193,15 @@ RESPONSE FORMAT (strict JSON, one action only):
 
       buffer.write(message);
       final fullMessage = buffer.toString();
+
+      if (_useGrok) {
+        final grokText = await _grokService.complete(
+          fullMessage,
+          systemPrompt: _systemPrompt,
+          imageBytes: imageBytes,
+        );
+        return _parseAgentResponse(grokText);
+      }
 
       Content content;
       if (imageBytes != null) {
