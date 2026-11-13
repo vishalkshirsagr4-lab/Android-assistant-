@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
 import '../services/app_update_service.dart';
+import '../services/grok_service.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen>
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
   final AppUpdateService _appUpdateService = AppUpdateService();
+  final GrokService _grokService = GrokService();
   bool _isCheckingUpdate = false;
   DateTime? _lastAutomaticUpdateCheck;
 
@@ -745,6 +747,109 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _showToolsDialog() async {
+    final grokController = TextEditingController();
+    final configured = await _grokService.isConfigured();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Lucy tools · AI provider'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Grok / xAI', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(configured
+                    ? 'An xAI API key is saved securely on this device.'
+                    : 'No Grok API key is configured.'),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Grok 4.7'),
+                  subtitle: const Text('Use Grok for Lucy voice and screen tasks.'),
+                  value: widget.controller.isGrokProvider,
+                  onChanged: configured
+                      ? (enabled) async {
+                          await widget.controller.setGrokProvider(enabled);
+                          if (dialogContext.mounted) setDialogState(() {});
+                        }
+                      : null,
+                ),
+                TextField(
+                  controller: grokController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'xAI API key',
+                    hintText: 'Paste your xAI API key',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'The key is stored in Android secure storage. Do not share it.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                if (widget.controller.isGrokProvider) {
+                  await widget.controller.setGrokProvider(false);
+                }
+                await _grokService.clearApiKey();
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Grok key removed.')),
+                  );
+                }
+              },
+              child: const Text('Remove Grok key'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final key = grokController.text.trim();
+                if (key.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Paste your xAI API key first.')),
+                  );
+                  return;
+                }
+                try {
+                  await _grokService.validateApiKey(key);
+                  await _grokService.saveApiKey(key);
+                  await widget.controller.setGrokProvider(true);
+                  if (!dialogContext.mounted) return;
+                  Navigator.pop(dialogContext);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Grok 4.7 verified and enabled.')),
+                    );
+                  }
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Grok setup failed: $error')),
+                  );
+                }
+              },
+              child: const Text('Verify, save & enable Grok'),
+            ),
+          ],
+        ),
+      ),
+    );
+    grokController.dispose();
   }
 
   void _showApiKeyDialog(BuildContext context) {
