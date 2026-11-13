@@ -329,8 +329,13 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           _buildLanguageToggle(),
           IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Lucy tools · AI provider',
+            onPressed: _showToolsDialog,
+          ),
+          IconButton(
             icon: const Icon(Icons.key),
-            tooltip: 'API Key',
+            tooltip: 'Gemini API Key',
             onPressed: () => _showApiKeyDialog(context),
           ),
           if (widget.controller.conversation.isNotEmpty)
