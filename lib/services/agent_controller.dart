@@ -92,6 +92,7 @@ class AgentController extends ChangeNotifier {
   static const Duration _openAppReadyTimeout = Duration(milliseconds: 2500);
 
   bool _cancelRequested = false;
+  Completer<bool>? _pendingVoiceApproval;
 
   bool _isAskingForFurtherHelp = false;
 
@@ -182,7 +183,20 @@ class AgentController extends ChangeNotifier {
 
     _voiceService.onResult = (text, isFinal) {
       _currentTranscript = text;
-      if (isFinal && text.isNotEmpty) {
+      final pendingApproval = _pendingVoiceApproval;
+      if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
+        final answer = text.trim().toLowerCase();
+        final approved = RegExp(r'\b(approve|approved|yes|allow|continue|go ahead)\b').hasMatch(answer);
+        final denied = RegExp(r'\b(deny|denied|no|cancel|stop|reject)\b').hasMatch(answer);
+        if (approved || denied) {
+          if (!pendingApproval.isCompleted) pendingApproval.complete(approved);
+          unawaited(_voiceService.stopListening());
+        } else {
+          _currentTranscript = 'Please say approve or cancel.';
+          unawaited(_voiceService.speak('Please say approve or cancel.', lang: _currentLang));
+          unawaited(_voiceService.startListening(localeId: VoiceService.sttLocaleFor(_currentLang)));
+        }
+      } else if (isFinal && text.isNotEmpty) {
         _handleUserInput(text);
       }
       notifyListeners();
@@ -779,13 +793,56 @@ class AgentController extends ChangeNotifier {
   }
 
   /// Execute a single agent action.
+  Future<bool> _requestVoiceApproval(
+    AgentAction action,
+    String? targetLabel,
+  ) async {
+    if (!_isActive || _pendingVoiceApproval != null) return false;
+    final details = <String>[
+      action.type.replaceAll('_', ' '),
+      if (targetLabel != null && targetLabel.isNotEmpty) 'target $targetLabel',
+      if (action.params['text'] is String) 'message: ${action.params['text']}',
+      if (action.params['recipient'] is String) 'recipient: ${action.params['recipient']}',
+    ].join('. ');
+    final prompt = 'Lucy wants to $details. Say approve to continue, or cancel to stop.';
+    _setState(AgentState.waitingConfirmation);
+    _statusMessage = 'Waiting for your spoken approval...';
+    _addConversation(prompt, false);
+    await _voiceService.speak(prompt, lang: _currentLang);
+    final completer = Completer<bool>();
+    _pendingVoiceApproval = completer;
+    _currentTranscript = '';
+    final started = await _voiceService.startListening(
+      localeId: VoiceService.sttLocaleFor(_currentLang),
+    );
+    if (!started) {
+      _pendingVoiceApproval = null;
+      _addConversation('I could not hear an approval. The action was not performed.', false);
+      return false;
+    }
+    var approved = false;
+    try {
+      approved = await completer.future.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      _addConversation('Approval timed out. The action was not performed.', false);
+    } finally {
+      _pendingVoiceApproval = null;
+      await _voiceService.stopListening();
+      _currentTranscript = '';
+      if (_isActive) _setState(AgentState.executingAction);
+    }
+    if (approved) {
+      _addConversation('Approval received. Continuing the task.', false);
+    }
+    return approved;
+  }
+
   Future<_UiSnapshot?> _executeAction(
     AgentAction action,
     _UiSnapshot? beforeSnapshot,
   ) async {
-    // Ordinary navigation, opening apps, typing drafts and media playback
-    // are hands-free. Only clearly consequential taps (send/post/pay/delete)
-    // keep a confirmation gate.
+    // Ordinary navigation is hands-free. Consequential actions pause the
+    // task, ask for spoken approval, and resume the same agent loop on approval.
     String? targetLabel;
     if (action.type == 'tap' && beforeSnapshot != null) {
       final elementId = (action.params['element'] as num?)?.toInt();
@@ -804,9 +861,10 @@ class AgentController extends ChangeNotifier {
       targetLabel: targetLabel,
       packageName: beforeSnapshot?.packageName,
     )) {
-      final approve = onActionApproval;
-      if (approve == null || !await approve(action.type, action.params)) {
-        _addConversation('Action cancelled: please confirm this action first.', false);
+      final approved = await _requestVoiceApproval(action, targetLabel);
+      if (!approved) {
+        _cancelRequested = true;
+        _addConversation('Action cancelled. I will stop this task.', false);
         return beforeSnapshot;
       }
     }
