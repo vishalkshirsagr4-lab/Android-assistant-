@@ -10,7 +10,10 @@ class GrokService {
   static const _storage = FlutterSecureStorage();
   static const _keyName = 'lucy_xai_api_key';
   static const _endpoint = 'https://api.x.ai/v1/chat/completions';
-  static const Duration defaultTimeout = Duration(seconds: 45);
+  static const _modelsEndpoint = 'https://api.x.ai/v1/models';
+  // Reasoning models can take several minutes. Keep this configurable per call.
+  static const Duration defaultTimeout = Duration(seconds: 900);
+  static const Duration validationTimeout = Duration(seconds: 25);
 
   Future<void> saveApiKey(String key) async {
     final value = key.trim();
@@ -21,9 +24,72 @@ class GrokService {
   }
 
   Future<bool> isConfigured() async =>
-      (await _storage.read(key: _keyName))?.isNotEmpty ?? false;
+      (await _storage.read(key: _keyName))?.trim().isNotEmpty ?? false;
 
   Future<void> clearApiKey() => _storage.delete(key: _keyName);
+
+  /// Verifies the credential with xAI and confirms that the selected model is
+  /// available to that key before Lucy switches providers.
+  Future<void> validateApiKey(
+    String apiKey, {
+    String model = 'grok-4.7',
+  }) async {
+    final key = apiKey.trim();
+    if (key.isEmpty) {
+      throw ArgumentError.value(apiKey, 'apiKey', 'Paste your xAI API key.');
+    }
+    final client = http.Client();
+    try {
+      final response = await client
+          .get(
+            Uri.parse(_modelsEndpoint),
+            headers: {
+              'Authorization': 'Bearer $key',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(validationTimeout);
+      if (response.statusCode == 401) {
+        throw const GrokRequestException(
+          'xAI rejected this API key. Check that you copied the complete key.',
+          401,
+        );
+      }
+      if (response.statusCode == 403) {
+        throw const GrokRequestException(
+          'This xAI key does not have permission to access the API.',
+          403,
+        );
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw GrokRequestException(
+          'Could not verify the xAI key (HTTP ${response.statusCode}).',
+          response.statusCode,
+        );
+      }
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map ? decoded['data'] : null;
+      if (data is! List) {
+        throw const FormatException('xAI returned an unexpected models response.');
+      }
+      final available = data
+          .whereType<Map>()
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .toSet();
+      if (!available.contains(model)) {
+        throw GrokRequestException(
+          'The key is valid, but model "$model" is not available to this xAI account. '
+          'Check model access in the xAI console.',
+          403,
+        );
+      }
+    } on TimeoutException {
+      throw TimeoutException('xAI key verification timed out. Check your connection.');
+    } finally {
+      client.close();
+    }
+  }
 
   Future<String> complete(
     String prompt, {
@@ -38,8 +104,8 @@ class GrokService {
     }
 
     final key = await _storage.read(key: _keyName);
-    if (key == null || key.isEmpty) {
-      throw StateError('Add an xAI API key in Lucy settings first.');
+    if (key == null || key.trim().isEmpty) {
+      throw StateError('Add and verify an xAI API key in Lucy Tools first.');
     }
 
     final messages = <Map<String, dynamic>>[];
@@ -50,10 +116,7 @@ class GrokService {
     final userContent = imageBytes == null
         ? normalizedPrompt
         : <Map<String, dynamic>>[
-            {
-              'type': 'text',
-              'text': normalizedPrompt,
-            },
+            {'type': 'text', 'text': normalizedPrompt},
             {
               'type': 'image_url',
               'image_url': {
@@ -70,14 +133,15 @@ class GrokService {
           .post(
             Uri.parse(_endpoint),
             headers: {
-              'Authorization': 'Bearer $key',
+              'Authorization': 'Bearer ${key.trim()}',
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
             body: jsonEncode({
               'model': model,
               'messages': messages,
-              'temperature': 0.2,
+              'temperature': 0.7,
+              'top_p': 0.95,
               'stream': false,
               'response_format': {'type': 'json_object'},
             }),
@@ -86,10 +150,10 @@ class GrokService {
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final message = switch (response.statusCode) {
-          401 => 'Grok rejected the API key. Check the key in Lucy settings.',
-          403 => 'Grok access is not enabled for this API key.',
-          429 => 'Grok rate limit reached. Wait a moment and try again.',
-          >= 500 => 'Grok service is temporarily unavailable. Try again shortly.',
+          401 => 'Grok rejected the saved API key. Open Lucy Tools and verify it again.',
+          403 => 'Grok access is not enabled for this key or model.',
+          429 => 'Grok rate limit reached. Wait briefly and try again.',
+          >= 500 => 'xAI is temporarily unavailable (HTTP ${response.statusCode}). Try again.',
           _ => 'Grok request failed (HTTP ${response.statusCode}).',
         };
         throw GrokRequestException(message, response.statusCode);
@@ -111,7 +175,7 @@ class GrokService {
       return content.trim();
     } on TimeoutException {
       throw TimeoutException(
-        'Grok took too long to respond. Check your connection and retry.',
+        'Grok is still taking longer than expected. Lucy will not treat this as an invalid API key; check your connection and retry.',
         timeout,
       );
     } finally {
