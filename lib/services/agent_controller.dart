@@ -9,6 +9,7 @@ import 'lucy_activity_store.dart';
 import 'grok_service.dart';
 import 'performance_monitor.dart';
 import 'action_approval_policy.dart';
+import 'routine_scheduler.dart';
 
 enum AgentState {
   idle,
@@ -778,12 +779,30 @@ class AgentController extends ChangeNotifier {
     AgentAction action,
     _UiSnapshot? beforeSnapshot,
   ) async {
-    // Fail closed: all actions that can affect another app or device state
-    // require a visible, per-action user approval.
-    if (LucyActionApprovalPolicy.requiresApproval(action.type)) {
+    // Ordinary navigation, opening apps, typing drafts and media playback
+    // are hands-free. Only clearly consequential taps (send/post/pay/delete)
+    // keep a confirmation gate.
+    String? targetLabel;
+    if (action.type == 'tap' && beforeSnapshot != null) {
+      final elementId = (action.params['element'] as num?)?.toInt();
+      if (elementId != null &&
+          elementId >= 0 &&
+          elementId < beforeSnapshot.elements.length) {
+        final element = beforeSnapshot.elements[elementId];
+        targetLabel = [
+          element['text']?.toString() ?? '',
+          element['desc']?.toString() ?? '',
+        ].where((value) => value.isNotEmpty).join(' ').trim();
+      }
+    }
+    if (LucyActionApprovalPolicy.requiresApproval(
+      action.type,
+      targetLabel: targetLabel,
+      packageName: beforeSnapshot?.packageName,
+    )) {
       final approve = onActionApproval;
       if (approve == null || !await approve(action.type, action.params)) {
-        _addConversation('Action cancelled: ${action.type} was not approved.', false);
+        _addConversation('Action cancelled: please confirm this action first.', false);
         return beforeSnapshot;
       }
     }
@@ -863,6 +882,37 @@ class AgentController extends ChangeNotifier {
 
         case 'home':
           await _screenCapture.pressHome();
+          break;
+
+        case 'schedule_reminder':
+          final title = action.params['title']?.toString().trim() ?? '';
+          final body = action.params['body']?.toString().trim() ?? title;
+          final delayMinutes =
+              (action.params['delayMinutes'] as num?)?.toInt() ?? 0;
+          final repeatMinutes =
+              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;
+          if (title.isEmpty || delayMinutes < 1) {
+            _addConversation(
+              'I need a reminder title and a future time. Please say when you want it.',
+              false,
+            );
+            break;
+          }
+          final reminderId =
+              'voice_${DateTime.now().millisecondsSinceEpoch}';
+          await LucyRoutineScheduler.scheduleReminder(
+            id: reminderId,
+            title: title,
+            body: body,
+            delayMinutes: delayMinutes,
+            repeatIntervalMinutes: repeatMinutes,
+          );
+          _addConversation(
+            repeatMinutes >= 15
+                ? 'Reminder scheduled: $title. It will repeat every $repeatMinutes minutes.'
+                : 'Reminder scheduled: $title.',
+            false,
+          );
           break;
 
         case 'wait':
