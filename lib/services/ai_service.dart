@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'grok_service.dart';
+import 'groq_service.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
@@ -65,14 +66,28 @@ class AiService {
   ChatSession? _chat;
   String? _apiKey;
   bool _useGrok = false;
+  bool _useGroq = false;
   final GrokService _grokService = GrokService();
+  final GroqService _groqService = GroqService();
 
-  bool get isConfigured => _useGrok || (_apiKey != null && _apiKey!.isNotEmpty);
+  bool get isConfigured =>
+      _useGrok || _useGroq || (_apiKey != null && _apiKey!.isNotEmpty);
   bool get isUsingGrok => _useGrok;
-  void useGrok(bool enabled) => _useGrok = enabled;
+  bool get isUsingGroq => _useGroq;
+  void useGrok(bool enabled) {
+    _useGrok = enabled;
+    if (enabled) _useGroq = false;
+  }
+  void useGroq(bool enabled) {
+    _useGroq = enabled;
+    if (enabled) _useGrok = false;
+  }
 
-  Future<bool> isProviderReady() async =>
-      _useGrok ? _grokService.isConfigured() : (_apiKey != null && _apiKey!.isNotEmpty);
+  Future<bool> isProviderReady() async {
+    if (_useGrok) return _grokService.isConfigured();
+    if (_useGroq) return _groqService.isConfigured();
+    return _apiKey != null && _apiKey!.isNotEmpty;
+  }
 
   static const _systemPrompt = '''
 You are an autonomous AI agent controlling an Android phone. You receive TWO sources of information each step:
@@ -201,6 +216,14 @@ RESPONSE FORMAT (strict JSON, one action only):
           imageBytes: imageBytes,
         );
         return _parseAgentResponse(grokText);
+      }
+      if (_useGroq) {
+        final groqText = await _groqService.complete(
+          fullMessage,
+          systemPrompt: _systemPrompt,
+          imageBytes: imageBytes,
+        );
+        return _parseAgentResponse(groqText);
       }
 
       Content content;
