@@ -50,7 +50,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     widget.controller.addListener(_onControllerUpdate);
-    widget.controller.onActionApproval = _confirmAgentAction;
     _loadApiKey();
 
     _checkAccessibility();
@@ -59,45 +58,6 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-
-  Future<bool> _confirmAgentAction(
-    String action,
-    Map<String, dynamic> params,
-  ) async {
-    if (!mounted) return false;
-    final details = params.entries
-        .where((entry) {
-          final key = entry.key.toLowerCase();
-          return !key.contains('password') && !key.contains('token') && !key.contains('key');
-        })
-        .map((entry) => '${entry.key}: ${entry.value}')
-        .join('\n');
-    final approved = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.verified_user_outlined),
-        title: const Text('Lucy needs your approval'),
-        content: Text(
-          'Allow Lucy to perform this action in the currently open app?\n\n'
-          'Action: $action'
-          '${details.isEmpty ? '' : '\n$details'}'
-          '\n\nDenying is always safe.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Deny'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Approve this action'),
-          ),
-        ],
-      ),
-    );
-    return approved == true && mounted;
-  }
 
   Future<void> _checkForAppUpdate() async {
     if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
