@@ -58,10 +58,6 @@ class AgentController extends ChangeNotifier {
   final LucyActivityStore _activityStore = LucyActivityStore();
   final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
 
-  /// The foreground UI must provide a visible confirmation for every
-  /// screen-changing action. A missing callback fails closed.
-  Future<bool> Function(String action, Map<String, dynamic> params)? onActionApproval;
-
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
 
