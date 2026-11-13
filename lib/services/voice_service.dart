@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/services.dart';
 
 class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _tts = FlutterTts();
+  static const MethodChannel _native = MethodChannel('com.poc.screen_aware_ai/voice');
+  bool _nativeHandlerInstalled = false;
 
   bool _isInitialized = false;
   bool _isListening = false;
   bool _isSpeaking = false;
-  bool _errorOccurred = false;
+  bool _disposed = false;
   String _currentTtsLanguage = 'en-US';
 
   static const Map<String, String> _langToTtsLocale = {
@@ -40,23 +43,17 @@ class VoiceService {
 
   Future<bool> initialize() async {
     if (_isInitialized) return true;
+    if (_disposed) return false;
 
     try {
       _isInitialized = await _speech.initialize(
-        onError: (error) {
-          _isListening = false;
-          _errorOccurred = true;
-          onError?.call(error.errorMsg);
+        onError: (_) {
+          // This plugin is used only to request microphone permission and
+          // initialize TTS. NativeVoiceService owns the actual recognizer;
+          // forwarding plugin lifecycle callbacks caused duplicate reconnects.
         },
-        onStatus: (status) {
-          if (status == 'done' || status == 'notListening') {
-            _isListening = false;
-            if (_errorOccurred) {
-              _errorOccurred = false;
-            } else {
-              onListeningDone?.call();
-            }
-          }
+        onStatus: (_) {
+          // Recognition lifecycle is reported by NativeVoiceService.
         },
       );
 
@@ -77,42 +74,48 @@ class VoiceService {
     }
   }
 
-  Future<void> startListening({String? localeId}) async {
-    if (!_isInitialized) {
-      await initialize();
+  Future<bool> startListening({String? localeId}) async {
+    if (!_isInitialized && !await initialize()) {
+      onError?.call('Speech recognition is unavailable or microphone permission is missing.');
+      return false;
     }
+    if (_disposed) return false;
 
     // Stop TTS if speaking
     if (_isSpeaking) {
       await stopSpeaking();
     }
 
-    if (_isListening) return;
+    if (_isListening) return true;
 
-    // Cancel any lingering STT session to ensure a clean engine state
-    await _speech.cancel();
-
-    _isListening = true;
-    _errorOccurred = false;
-    await _speech.listen(
-      onResult: (result) {
-        onResult?.call(result.recognizedWords, result.finalResult);
-      },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3),
-      localeId: localeId,
-      listenOptions: stt.SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-      ),
-    );
+    if (!_nativeHandlerInstalled) {
+      _nativeHandlerInstalled = true;
+      _native.setMethodCallHandler((call) async {
+        if (call.method == 'onResult' && call.arguments is Map) {
+          final data = Map<dynamic, dynamic>.from(call.arguments as Map);
+          final words = data['text']?.toString() ?? '';
+          if (words.isNotEmpty) onResult?.call(words, data['isFinal'] == true);
+        } else if (call.method == 'onError' && call.arguments is Map) {
+          final data = Map<dynamic, dynamic>.from(call.arguments as Map);
+          onError?.call(data['message']?.toString() ?? 'Speech recognition error');
+        }
+      });
+    }
+    try {
+      final started = await _native.invokeMethod<bool>('start', {'localeId': localeId ?? 'en_US'});
+      _isListening = started == true;
+      if (!_isListening) onError?.call('Android did not start the microphone foreground service.');
+      return _isListening;
+    } catch (error) {
+      _isListening = false;
+      onError?.call('Could not start native speech recognition: $error');
+      return false;
+    }
   }
 
   Future<void> stopListening() async {
-    if (_isListening) {
-      await _speech.stop();
-      _isListening = false;
-    }
+    try { await _native.invokeMethod<bool>('stop'); } catch (_) {}
+    _isListening = false;
   }
 
   Future<void> speak(String text, {String? lang}) async {
@@ -139,6 +142,8 @@ class VoiceService {
   }
 
   void dispose() {
+    _disposed = true;
+    _native.invokeMethod<bool>('stop');
     _speech.stop();
     _speech.cancel();
     _tts.stop();

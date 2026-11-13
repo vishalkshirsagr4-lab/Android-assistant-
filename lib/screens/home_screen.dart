@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
 import '../services/app_update_service.dart';
+import '../services/grok_service.dart';
+import '../services/lucy_activity_store.dart';
+import '../services/performance_monitor.dart';
+import '../services/routine_scheduler.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,7 +27,11 @@ class _HomeScreenState extends State<HomeScreen>
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
   final AppUpdateService _appUpdateService = AppUpdateService();
+  final GrokService _grokService = GrokService();
+  final LucyActivityStore _activityStore = LucyActivityStore();
+  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
   bool _updateCheckStarted = false;
+  DateTime? _lastUpdateCheckAt;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -50,9 +58,16 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+
   Future<void> _checkForAppUpdate() async {
     if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
+    final now = DateTime.now();
+    if (_lastUpdateCheckAt != null &&
+        now.difference(_lastUpdateCheckAt!) < const Duration(minutes: 5)) {
+      return;
+    }
     _updateCheckStarted = true;
+    _lastUpdateCheckAt = now;
     try {
       final update = await _appUpdateService.checkForUpdate();
       if (!mounted || update == null) return;
@@ -110,8 +125,11 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       );
-    } catch (_) {
-      // Update checks are optional; keep Lucy usable when offline or GitHub is unavailable.
+    } catch (error) {
+      // Keep Lucy usable offline, but allow another check after a later resume.
+      debugPrint('Lucy update check failed: $error');
+    } finally {
+      _updateCheckStarted = false;
     }
   }
 
@@ -120,6 +138,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
       unawaited(_appUpdateService.resumePendingInstall());
+      // Retry release checks after returning online or from Android settings.
+      unawaited(_checkForAppUpdate());
     }
   }
 
@@ -149,9 +169,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _saveApiKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('gemini_api_key', key);
-    widget.controller.configureAi(key);
+    await widget.controller.configureAi(key);
+    _apiKeyController.clear();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gemini key saved securely on this device.')),
+      );
+    }
   }
 
   void _onControllerUpdate() {
@@ -289,6 +313,11 @@ class _HomeScreenState extends State<HomeScreen>
         elevation: 0,
         actions: [
           _buildLanguageToggle(),
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Lucy tools and activity',
+            onPressed: _showToolsDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.key),
             tooltip: 'API Key',
@@ -752,6 +781,330 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+
+  Future<void> _showRoutineSchedulerDialog() async {
+    final titleController = TextEditingController(text: 'Lucy reminder');
+    final bodyController = TextEditingController();
+    final minutesController = TextEditingController(text: '30');
+    final repeatController = TextEditingController(text: '0');
+    final id = 'routine_${DateTime.now().millisecondsSinceEpoch}';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Schedule a Lucy routine'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                maxLength: 80,
+                decoration: const InputDecoration(labelText: 'Reminder title'),
+              ),
+              TextField(
+                controller: bodyController,
+                maxLength: 240,
+                decoration: const InputDecoration(labelText: 'Message (optional)'),
+              ),
+              TextField(
+                controller: minutesController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Run after minutes',
+                  helperText: '1 minute to 1 year. WorkManager restores scheduled work after reboot.',
+                ),
+              ),
+              TextField(
+                controller: repeatController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Repeat every minutes (0 = once)',
+                  helperText: 'Use 15 or more for recurring reminders.',
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Routines are notification-only. Lucy will not perform device actions in the background.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final minutes = int.tryParse(minutesController.text.trim());
+              final repeat = int.tryParse(repeatController.text.trim());
+              if (minutes == null || minutes < 1 || minutes > 525600 ||
+                  repeat == null || repeat < 0 || (repeat > 0 && repeat < 15) ||
+                  repeat > 525600 || titleController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Enter a title, delay, and repeat interval of 0 or at least 15 minutes.')),
+                );
+                return;
+              }
+              try {
+                final permission = await LucyRoutineScheduler.ensureNotificationPermission();
+                if (!permission) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Allow Lucy notifications, then tap Schedule again.')),
+                  );
+                  return;
+                }
+                await LucyRoutineScheduler.scheduleReminder(
+                  id: id,
+                  title: titleController.text.trim(),
+                  body: bodyController.text.trim(),
+                  delayMinutes: minutes,
+                  repeatIntervalMinutes: repeat,
+                );
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Routine scheduled. Android will show its reminder at the scheduled time.')),
+                  );
+                }
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not schedule routine: $error')),
+                  );
+                }
+              }
+            },
+            child: const Text('Schedule'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    bodyController.dispose();
+    minutesController.dispose();
+    repeatController.dispose();
+  }
+
+  Future<void> _showScheduledRoutinesDialog() async {
+    try {
+      final routines = await LucyRoutineScheduler.listRoutines();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Scheduled reminders'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: routines.isEmpty
+                ? const Text('No scheduled reminders found.')
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: routines.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final routine = routines[index];
+                      final id = routine['id']?.toString() ?? '';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(id),
+                        subtitle: Text('Status: ${routine['state'] ?? 'Unknown'}'),
+                        trailing: IconButton(
+                          tooltip: 'Cancel reminder',
+                          icon: const Icon(Icons.cancel_outlined),
+                          onPressed: id.isEmpty ? null : () async {
+                            await LucyRoutineScheduler.cancelReminder(id);
+                            if (dialogContext.mounted) Navigator.pop(dialogContext);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Scheduled reminder cancelled.')),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load scheduled reminders: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showToolsDialog() async {
+    final grokController = TextEditingController();
+    final snapshot = await _performanceMonitor.snapshot();
+    final templates = await _activityStore.readAutomationTemplates();
+    final configured = await _grokService.isConfigured();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lucy tools'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Performance · RAM: ${snapshot.ramLabel}'),
+                Text('CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}'),
+                Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
+                const SizedBox(height: 12),
+                const Text('Grok / xAI provider', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(configured ? 'API key saved securely on this device.' : 'No Grok key configured.'),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Grok 4.7 for Lucy'),
+                  subtitle: const Text('Supports text and screen images. Gemini remains available.'),
+                  value: widget.controller.isGrokProvider,
+                  onChanged: configured
+                      ? (enabled) => widget.controller.setGrokProvider(enabled)
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: grokController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Paste xAI API key',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('Automation templates', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showRoutineSchedulerDialog();
+                  },
+                  icon: const Icon(Icons.add_alarm),
+                  label: const Text('Create scheduled reminder'),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showScheduledRoutinesDialog();
+                  },
+                  icon: const Icon(Icons.manage_history),
+                  label: const Text('Manage scheduled reminders'),
+                ),
+                ...templates.map((item) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule),
+                  title: Text(item['name']?.toString() ?? 'Routine'),
+                  subtitle: const Text('Template only · approval required before actions'),
+                )),
+                const SizedBox(height: 8),
+                const Text('Activity history is stored locally on this device. API keys, screenshots and passwords are not included.'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (widget.controller.isGrokProvider) {
+                await widget.controller.setGrokProvider(false);
+              }
+              await _grokService.clearApiKey();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Remove Grok key'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final events = await _activityStore.readEvents();
+              if (!ctx.mounted) return;
+              await showDialog<void>(
+                context: ctx,
+                builder: (historyContext) => AlertDialog(
+                  title: const Text('Recent activity'),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    height: 320,
+                    child: events.isEmpty
+                        ? const Text('No saved activity yet.')
+                        : ListView.builder(
+                            itemCount: events.length,
+                            itemBuilder: (_, index) {
+                              final event = events[events.length - 1 - index];
+                              return ListTile(
+                                dense: true,
+                                title: Text(event['summary']?.toString() ?? ''),
+                                subtitle: Text(event['time']?.toString() ?? ''),
+                              );
+                            },
+                          ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        await _activityStore.clearEvents();
+                        if (historyContext.mounted) Navigator.pop(historyContext);
+                      },
+                      child: const Text('Clear history'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(historyContext),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            child: const Text('View activity'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final key = grokController.text.trim();
+              if (key.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Paste your xAI API key first.')),
+                );
+                return;
+              }
+              try {
+                await _grokService.validateApiKey(key);
+                await _grokService.saveApiKey(key);
+                await widget.controller.setGrokProvider(true);
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Grok key verified and Grok selected for Lucy.')),
+                );
+              } catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Grok setup failed: $error')),
+                );
+              }
+            },
+            child: const Text('Verify, save & enable Grok'),
+          ),
+        ],
+      ),
+    );
+    grokController.dispose();
   }
 
   Future<void> _manualCapture() async {

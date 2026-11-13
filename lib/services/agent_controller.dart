@@ -5,6 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
+import 'lucy_activity_store.dart';
+import 'grok_service.dart';
+import 'performance_monitor.dart';
+import 'action_approval_policy.dart';
+import 'routine_scheduler.dart';
 
 enum AgentState {
   idle,
@@ -50,6 +55,8 @@ class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
+  final LucyActivityStore _activityStore = LucyActivityStore();
+  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -71,7 +78,7 @@ class AgentController extends ChangeNotifier {
   bool get isActive => _isActive;
 
   int _listenRetryCount = 0;
-  static const int _maxListenRetries = 3;
+  bool _listenRestartScheduled = false;
 
   static const int _maxStepsPerCommand = 50;
   static const Duration _uiPollInterval = Duration(milliseconds: 120);
@@ -81,6 +88,7 @@ class AgentController extends ChangeNotifier {
   static const Duration _openAppReadyTimeout = Duration(milliseconds: 2500);
 
   bool _cancelRequested = false;
+  Completer<bool>? _pendingVoiceApproval;
 
   bool _isAskingForFurtherHelp = false;
 
@@ -90,6 +98,7 @@ class AgentController extends ChangeNotifier {
   String get currentLang => _currentLang;
 
   static const String _langPrefKey = 'lucy_lang';
+  static const String _providerPrefKey = 'lucy_use_grok';
   static const Set<String> _supportedLangs = {'en', 'ja', 'ar'};
 
   /// Set the UI/voice language. Persists across restarts. Restarts the
@@ -146,8 +155,14 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
+    await _aiService.restoreConfiguration(legacyKey: prefs.getString('gemini_api_key'));
+    if (prefs.containsKey('gemini_api_key')) {
+      await prefs.remove('gemini_api_key');
+    }
+    _aiService.useGrok(prefs.getBool(_providerPrefKey) ?? false);
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
       _currentLang = savedLang;
     }
@@ -157,61 +172,97 @@ class AgentController extends ChangeNotifier {
     // Wire native stop notification action → requestCancel
     _screenCapture.onForceStop = () {
       if (_isActive) {
-        requestCancel();
+        // A notification Stop is a full stop, not merely a task cancellation.
+        unawaited(stopAgent());
       }
     };
 
     _voiceService.onResult = (text, isFinal) {
       _currentTranscript = text;
-      if (isFinal && text.isNotEmpty) {
+      final pendingApproval = _pendingVoiceApproval;
+      if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
+        final answer = text.trim().toLowerCase();
+        final approved =
+            RegExp(r'\b(approve|approved|yes|allow|continue|go ahead|haan|han|ho|haanji|manzoor)\b').hasMatch(answer) ||
+            answer.contains('ಹೌದು') ||
+            answer.contains('मंजूर') ||
+            answer.contains('हाँ');
+        final denied =
+            RegExp(r'\b(deny|denied|no|cancel|stop|reject|beda|illa|nahi|mat karo)\b').hasMatch(answer) ||
+            answer.contains('ಬೇಡ') ||
+            answer.contains('ಇಲ್ಲ') ||
+            answer.contains('नहीं');
+        if (approved || denied) {
+          if (!pendingApproval.isCompleted) pendingApproval.complete(approved);
+          unawaited(_voiceService.stopListening());
+        } else {
+          _currentTranscript = 'Please say approve or cancel.';
+          unawaited(_voiceService.speak('Please say approve or cancel.', lang: _currentLang));
+          unawaited(_voiceService.startListening(localeId: VoiceService.sttLocaleFor(_currentLang)));
+        }
+      } else if (isFinal && text.isNotEmpty) {
         _handleUserInput(text);
       }
       notifyListeners();
     };
 
     _voiceService.onListeningDone = () {
-      if (_state == AgentState.listening &&
-          _currentTranscript?.isEmpty == true) {
-        if (_isActive) {
-          _listenRetryCount++;
-          if (_listenRetryCount > _maxListenRetries) {
-            print(
-              'Listening retry limit reached ($_maxListenRetries). Stopping.',
-            );
-            _listenRetryCount = 0;
-            _statusMessage = 'Listening timed out. Tap to restart.';
-            _setState(AgentState.idle);
-            _isActive = false;
-            notifyListeners();
-            return;
-          }
-          Future.delayed(const Duration(seconds: 2), () {
-            if (_isActive && _state == AgentState.listening) {
-              _startListening();
-            }
-          });
-        }
-      } else {
-        _listenRetryCount = 0;
-      }
+      if (!_isActive || _state != AgentState.listening) return;
+      _listenRetryCount++;
+      _scheduleListeningRestart();
     };
 
     _voiceService.onError = (error) {
-      print('Voice error: $error');
-      if (_isActive && _state == AgentState.listening) {
-        if (error == 'error_busy' || error == 'error_client') {
-          // Avoid infinite loops if Android STT client is busy or STT dead.
-          return;
-        }
-        Future.delayed(const Duration(seconds: 1), () {
-          if (_isActive) _startListening();
-        });
+      debugPrint('Lucy speech recognition error: $error');
+      if (!_isActive || _state != AgentState.listening) return;
+      final normalized = error.toLowerCase();
+      if (normalized.contains('permission') ||
+          normalized.contains('not_available') ||
+          normalized.contains('recognizer_not_found')) {
+        _statusMessage = 'Microphone or speech service unavailable. Check permissions and retry.';
+        unawaited(stopAgent());
+        return;
       }
+      _listenRetryCount++;
+      _scheduleListeningRestart();
     };
   }
 
-  void configureAi(String apiKey) {
-    _aiService.configure(apiKey);
+  bool get isGrokProvider => _aiService.isUsingGrok;
+
+  Future<void> setGrokProvider(bool enabled) async {
+    if (enabled && !await _activityGrokConfigured()) {
+      _statusMessage = 'Save a valid Grok API key before selecting Grok.';
+      notifyListeners();
+      return;
+    }
+    _aiService.useGrok(enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_providerPrefKey, enabled);
+    _statusMessage = enabled
+        ? 'Grok 4.7 selected for screen and voice tasks.'
+        : 'Gemini selected for screen and voice tasks.';
+    notifyListeners();
+  }
+
+  Future<bool> _activityGrokConfigured() async {
+    // Keep provider-key checks inside the secure-storage service.
+    return _grokKeyCheck();
+  }
+
+  Future<bool> _grokKeyCheck() async => _grokService.isConfigured();
+
+  final GrokService _grokService = GrokService();
+
+  Future<void> configureAi(String apiKey) async {
+    await _aiService.configure(apiKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('gemini_api_key');
+    notifyListeners();
+  }
+
+  Future<void> removeGeminiKey() async {
+    await _aiService.clearGeminiKey();
     notifyListeners();
   }
 
@@ -224,8 +275,10 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> startAgent() async {
-    if (!_aiService.isConfigured) {
-      _statusMessage = '⚠️ Please set your Gemini API key first';
+    if (!await _aiService.isProviderReady()) {
+      _statusMessage = _aiService.isUsingGrok
+          ? '⚠️ Please save a valid Grok API key in Lucy tools first'
+          : '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
     }
@@ -259,18 +312,38 @@ class AgentController extends ChangeNotifier {
     }
 
     _listenRetryCount = 0;
-    _startListening();
+    await _startListening();
+    // Start the microphone foreground service only after the speech plugin has
+    // had a chance to request RECORD_AUDIO from the visible activity.
+    // NativeVoiceService owns the microphone foreground service and Stop notification.
+    // Avoid starting a second microphone foreground service.
   }
 
   Future<void> stopAgent() async {
     _isActive = false;
+    _listenRestartScheduled = false;
     _cancelRequested = false;
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
+    // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
     _setState(AgentState.idle);
     _statusMessage = 'I can see your screen and help you interact with apps';
     _addConversation('Agent stopped.', false);
     notifyListeners();
+  }
+
+  void _scheduleListeningRestart() {
+    if (!_isActive || _listenRestartScheduled) return;
+    _listenRestartScheduled = true;
+    final seconds = (1 << (_listenRetryCount.clamp(0, 5))).clamp(2, 30);
+    _statusMessage = 'Speech session ended. Reconnecting in $seconds seconds...';
+    notifyListeners();
+    Future.delayed(Duration(seconds: seconds), () {
+      _listenRestartScheduled = false;
+      if (_isActive && _state == AgentState.listening) {
+        unawaited(_startListening());
+      }
+    });
   }
 
   Future<void> _startListening() async {
@@ -280,9 +353,15 @@ class AgentController extends ChangeNotifier {
     _currentTranscript = '';
     notifyListeners();
 
-    await _voiceService.startListening(
+    final started = await _voiceService.startListening(
       localeId: VoiceService.sttLocaleFor(_currentLang),
     );
+    if (!started && _isActive) {
+      _listenRetryCount++;
+      _scheduleListeningRestart();
+    } else if (started) {
+      _listenRetryCount = 0;
+    }
   }
 
   /// Main handler: user says something → agent loop begins.
@@ -338,9 +417,6 @@ class AgentController extends ChangeNotifier {
     int step = 0;
     String currentMessage = userMessage;
 
-    // Show persistent stop notification while Lucy is active
-    await _screenCapture.showStopOverlay();
-
     // Fetch screen size once for the whole loop
     final screenSize = await _screenCapture.getScreenSize();
 
@@ -373,12 +449,19 @@ class AgentController extends ChangeNotifier {
       _statusMessage = '🤖 Thinking... (step $step)';
       notifyListeners();
 
+      final aiStopwatch = Stopwatch()..start();
+      final localNow = DateTime.now();
+      final requestWithClock =
+          '[Device local date/time: ${localNow.toIso8601String()}]\\n'
+          '${currentMessage}';
       final agentResponse = await _aiService.agentChat(
-        currentMessage,
+        requestWithClock,
         imageBytes: screenshotBytes,
         screenSize: screenSize,
         uiTree: uiTree,
       );
+      aiStopwatch.stop();
+      _performanceMonitor.recordResponse(aiStopwatch.elapsed);
 
       if (_cancelRequested) break;
 
@@ -470,9 +553,6 @@ class AgentController extends ChangeNotifier {
       // receive the message but without an image. The retry logic in
       // _captureScreenWithRetry handles this by making multiple attempts.
     }
-
-    // Always hide the stop notification when the loop ends
-    await _screenCapture.hideStopOverlay();
 
     // Handle cancellation
     if (_cancelRequested) {
@@ -717,10 +797,87 @@ class AgentController extends ChangeNotifier {
   }
 
   /// Execute a single agent action.
+  Future<bool> _requestVoiceApproval(
+    AgentAction action,
+    String? targetLabel,
+  ) async {
+    if (!_isActive || _pendingVoiceApproval != null) return false;
+    final details = <String>[
+      action.type.replaceAll('_', ' '),
+      if (targetLabel != null && targetLabel.isNotEmpty) 'target $targetLabel',
+      if (action.params['text'] is String) 'message: ${action.params['text']}',
+      if (action.params['recipient'] is String) 'recipient: ${action.params['recipient']}',
+    ].join('. ');
+    final prompt = 'Lucy wants to $details. Say approve to continue, or cancel to stop.';
+    _setState(AgentState.waitingConfirmation);
+    _statusMessage = 'Waiting for your spoken approval...';
+    _addConversation(prompt, false);
+    await _voiceService.speak(prompt, lang: _currentLang);
+    await Future.delayed(const Duration(milliseconds: 250));
+    while (_voiceService.isSpeaking && _isActive) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    if (!_isActive) return false;
+    final completer = Completer<bool>();
+    _pendingVoiceApproval = completer;
+    _currentTranscript = '';
+    final started = await _voiceService.startListening(
+      localeId: VoiceService.sttLocaleFor(_currentLang),
+    );
+    if (!started) {
+      _pendingVoiceApproval = null;
+      _addConversation('I could not hear an approval. The action was not performed.', false);
+      return false;
+    }
+    var approved = false;
+    try {
+      approved = await completer.future.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      _addConversation('Approval timed out. The action was not performed.', false);
+    } finally {
+      _pendingVoiceApproval = null;
+      await _voiceService.stopListening();
+      _currentTranscript = '';
+      if (_isActive) _setState(AgentState.executingAction);
+    }
+    if (approved) {
+      _addConversation('Approval received. Continuing the task.', false);
+    }
+    return approved;
+  }
+
   Future<_UiSnapshot?> _executeAction(
     AgentAction action,
     _UiSnapshot? beforeSnapshot,
   ) async {
+    // Ordinary navigation is hands-free. Consequential actions pause the
+    // task, ask for spoken approval, and resume the same agent loop on approval.
+    String? targetLabel;
+    if (action.type == 'tap' && beforeSnapshot != null) {
+      final elementId = (action.params['element'] as num?)?.toInt();
+      if (elementId != null &&
+          elementId >= 0 &&
+          elementId < beforeSnapshot.elements.length) {
+        final element = beforeSnapshot.elements[elementId];
+        targetLabel = [
+          element['text']?.toString() ?? '',
+          element['desc']?.toString() ?? '',
+        ].where((value) => value.isNotEmpty).join(' ').trim();
+      }
+    }
+    if (LucyActionApprovalPolicy.requiresApproval(
+      action.type,
+      targetLabel: targetLabel,
+      packageName: beforeSnapshot?.packageName,
+    )) {
+      final approved = await _requestVoiceApproval(action, targetLabel);
+      if (!approved) {
+        _cancelRequested = true;
+        _addConversation('Action cancelled. I will stop this task.', false);
+        return beforeSnapshot;
+      }
+    }
+
     // Actions that require the accessibility service
     const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
 
@@ -798,6 +955,37 @@ class AgentController extends ChangeNotifier {
           await _screenCapture.pressHome();
           break;
 
+        case 'schedule_reminder':
+          final title = action.params['title']?.toString().trim() ?? '';
+          final body = action.params['body']?.toString().trim() ?? title;
+          final delayMinutes =
+              (action.params['delayMinutes'] as num?)?.toInt() ?? 0;
+          final repeatMinutes =
+              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;
+          if (title.isEmpty || delayMinutes < 1) {
+            _addConversation(
+              'I need a reminder title and a future time. Please say when you want it.',
+              false,
+            );
+            break;
+          }
+          final reminderId =
+              'voice_${DateTime.now().millisecondsSinceEpoch}';
+          await LucyRoutineScheduler.scheduleReminder(
+            id: reminderId,
+            title: title,
+            body: body,
+            delayMinutes: delayMinutes,
+            repeatIntervalMinutes: repeatMinutes,
+          );
+          _addConversation(
+            repeatMinutes >= 15
+                ? 'Reminder scheduled: $title. It will repeat every $repeatMinutes minutes.'
+                : 'Reminder scheduled: $title.',
+            false,
+          );
+          break;
+
         case 'wait':
           break;
 
@@ -850,6 +1038,8 @@ class AgentController extends ChangeNotifier {
         screenshotBytes: screenshotBytes,
       ),
     );
+    // Persist a short local summary only. Never persist screenshots or API keys.
+    unawaited(_activityStore.record(isUser ? 'user_message' : 'assistant_message', text));
     notifyListeners();
   }
 

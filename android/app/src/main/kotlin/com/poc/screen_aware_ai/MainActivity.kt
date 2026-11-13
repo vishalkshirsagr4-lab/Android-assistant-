@@ -23,6 +23,9 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var methodChannel: MethodChannel? = null
+    private var voiceChannel: MethodChannel? = null
+    private var lastMetricsElapsedMs: Long? = null
+    private var lastMetricsCpuMs: Long? = null
 
     // Store projection data so we can reinitialize the service if needed.
     // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
@@ -32,9 +35,16 @@ class MainActivity : FlutterActivity() {
     // Broadcast receiver for the stop notification action
     private val forceStopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == OverlayService.ACTION_FORCE_STOP) {
-                Log.d(TAG, "Received FORCE_STOP broadcast, forwarding to Flutter")
-                methodChannel?.invokeMethod("onForceStop", null)
+            when (intent?.action) {
+                OverlayService.ACTION_FORCE_STOP, NativeVoiceService.ACTION_FORCE_STOP -> {
+                    Log.d(TAG, "Received voice Stop broadcast")
+                    methodChannel?.invokeMethod("onForceStop", null)
+                }
+                NativeVoiceService.ACTION_RESULT -> voiceChannel?.invokeMethod("onResult",
+                    mapOf("text" to intent.getStringExtra("text").orEmpty(),
+                          "isFinal" to intent.getBooleanExtra("isFinal", false)))
+                NativeVoiceService.ACTION_ERROR -> voiceChannel?.invokeMethod("onError",
+                    mapOf("message" to intent.getStringExtra("message").orEmpty()))
             }
         }
     }
@@ -45,7 +55,11 @@ class MainActivity : FlutterActivity() {
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         // Register broadcast receiver for the stop notification action
-        val filter = IntentFilter(OverlayService.ACTION_FORCE_STOP)
+        val filter = IntentFilter(OverlayService.ACTION_FORCE_STOP).apply {
+            addAction(NativeVoiceService.ACTION_FORCE_STOP)
+            addAction(NativeVoiceService.ACTION_RESULT)
+            addAction(NativeVoiceService.ACTION_ERROR)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(forceStopReceiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
@@ -54,6 +68,38 @@ class MainActivity : FlutterActivity() {
 
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel = channel
+
+        val voice = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/voice")
+        voiceChannel = voice
+        voice.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(
+                            this, android.Manifest.permission.RECORD_AUDIO
+                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        result.error("MIC_PERMISSION", "Microphone permission is required.", null)
+                    } else {
+                        try {
+                            val serviceIntent = Intent(this, NativeVoiceService::class.java).apply {
+                                putExtra(NativeVoiceService.EXTRA_LOCALE, call.argument<String>("localeId") ?: "en_US")
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+                            else startService(serviceIntent)
+                            result.success(true)
+                        } catch (error: Exception) {
+                            result.error("VOICE_START_FAILED", error.message, null)
+                        }
+                    }
+                }
+                "stop" -> {
+                    stopService(Intent(this, NativeVoiceService::class.java))
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestScreenCapture" -> {
@@ -114,6 +160,24 @@ class MainActivity : FlutterActivity() {
                 }
                 "isAccessibilityEnabled" -> {
                     result.success(ScreenActionService.instance != null)
+                }
+                "getDeviceMetrics" -> {
+                    val nowElapsed = android.os.SystemClock.elapsedRealtime()
+                    val nowCpu = android.os.Process.getElapsedCpuTime()
+                    val previousElapsed = lastMetricsElapsedMs
+                    val previousCpu = lastMetricsCpuMs
+                    lastMetricsElapsedMs = nowElapsed
+                    lastMetricsCpuMs = nowCpu
+                    val cpuPercent = if (previousElapsed != null && previousCpu != null && nowElapsed > previousElapsed) {
+                        (((nowCpu - previousCpu).toDouble() / (nowElapsed - previousElapsed)) * 100.0)
+                            .coerceIn(0.0, 100.0)
+                    } else null
+                    val batteryManager = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+                    val battery = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    result.success(mapOf(
+                        "cpuPercent" to cpuPercent,
+                        "batteryPercent" to if (battery in 0..100) battery else null
+                    ))
                 }
                 "getScreenSize" -> {
                     val service = ScreenCaptureService.instance
@@ -213,25 +277,122 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "showStopOverlay" -> {
-                    val intent = Intent(this, OverlayService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(intent)
-                    } else {
-                        startService(intent)
+                    try {
+                        val intent = Intent(this, OverlayService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(true)
+                    } catch (error: SecurityException) {
+                        Log.e(TAG, "Microphone foreground service permission denied", error)
+                        result.error("MICROPHONE_FGS_DENIED", "Android denied the microphone foreground service. Confirm microphone permission and start Lucy again.", null)
+                    } catch (error: Exception) {
+                        Log.e(TAG, "Could not start Lucy foreground service", error)
+                        result.error("FGS_START_FAILED", error.message ?: "Could not start background service", null)
                     }
-                    result.success(true)
                 }
                 "hideStopOverlay" -> {
-                    val service = OverlayService.instance
-                    if (service != null) {
-                        service.hideOverlay()
+                    try {
+                        val service = OverlayService.instance
+                        if (service != null) service.hideOverlay()
                         stopService(Intent(this, OverlayService::class.java))
+                        result.success(true)
+                    } catch (error: Exception) {
+                        Log.e(TAG, "Could not stop Lucy foreground service", error)
+                        result.error("FGS_STOP_FAILED", error.message ?: "Could not stop background service", null)
                     }
-                    result.success(true)
                 }
                 else -> result.notImplemented()
             }
         }
+
+
+        // Persistent routine scheduling. WorkManager restores scheduled work
+        // after process death and reboot. Current routines are notification-only.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/routines")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "ensureNotificationPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            androidx.core.content.ContextCompat.checkSelfPermission(
+                                this, android.Manifest.permission.POST_NOTIFICATIONS
+                            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 3301)
+                            result.success(false)
+                        } else {
+                            result.success(true)
+                        }
+                    }
+                    "scheduleReminder" -> {
+                        val id = call.argument<String>("id")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,64}")) }
+                        val title = call.argument<String>("title")?.take(80)?.trim().orEmpty()
+                        val body = call.argument<String>("body")?.take(240)?.trim().orEmpty()
+                        val delayMinutes = call.argument<Int>("delayMinutes") ?: 0
+                        val repeatMinutes = call.argument<Int>("repeatIntervalMinutes") ?: 0
+                        if (id == null || title.isBlank() || delayMinutes !in 1..525600 ||
+                            repeatMinutes < 0 || repeatMinutes > 525600 ||
+                            (repeatMinutes in 1..14)) {
+                            result.error("INVALID_ROUTINE", "Invalid reminder or repeat interval. Repeating routines must be at least 15 minutes apart.", null)
+                        } else {
+                            try {
+                                val input = androidx.work.workDataOf(
+                                    RoutineReminderWorker.KEY_ID to id,
+                                    RoutineReminderWorker.KEY_TITLE to title,
+                                    RoutineReminderWorker.KEY_BODY to body,
+                                    RoutineReminderWorker.KEY_REPEAT_MINUTES to repeatMinutes,
+                                    RoutineReminderWorker.KEY_BOOTSTRAP_REPEAT to (repeatMinutes >= 15)
+                                )
+                                val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                                // PeriodicWorkRequest does not support an initial delay.
+                                // Run a delayed one-time bootstrap first; it posts the
+                                // first reminder and then registers the periodic request.
+                                val request = androidx.work.OneTimeWorkRequestBuilder<RoutineReminderWorker>()
+                                    .setInitialDelay(delayMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES)
+                                    .setInputData(input)
+                                    .addTag("lucy_routine")
+                                    .addTag("routine_id:$id")
+                                    .build()
+                                manager.enqueueUniqueWork(id, androidx.work.ExistingWorkPolicy.REPLACE, request)
+                                result.success(true)
+                            } catch (error: Exception) {
+                                result.error("SCHEDULE_FAILED", error.message, null)
+                            }
+                        }
+                    }
+                    "listRoutines" -> {
+                        val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                        manager.getWorkInfosByTag("lucy_routine").addListener({
+                            try {
+                                val routines = manager.getWorkInfosByTag("lucy_routine").get().map { info ->
+                                    mapOf(
+                                        "id" to (info.tags.firstOrNull { it.startsWith("routine_id:") }?.removePrefix("routine_id:") ?: info.id.toString()),
+                                        "state" to info.state.name,
+                                        "runAttemptCount" to info.runAttemptCount
+                                    )
+                                }
+                                result.success(routines)
+                            } catch (error: Exception) {
+                                result.error("LIST_FAILED", error.message, null)
+                            }
+                        }, androidx.core.content.ContextCompat.getMainExecutor(this))
+                    }
+                    "cancelReminder" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}"))) {
+                            result.error("INVALID_ROUTINE", "Invalid routine id.", null)
+                        } else {
+                            val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                            manager.cancelUniqueWork(id)
+                            manager.cancelUniqueWork("$id-periodic")
+                            result.success(true)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         // Separate channel for safe, user-confirmed APK updates from GitHub Releases.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/updater")
@@ -350,6 +511,7 @@ class MainActivity : FlutterActivity() {
             Log.w(TAG, "Failed to unregister forceStopReceiver", e)
         }
         methodChannel = null
+        voiceChannel = null
         super.onDestroy()
     }
 }
