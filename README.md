@@ -332,6 +332,20 @@ Watch the conversation view fill up with screenshots and actions. 🎉
 
 Lucy asks *"Do you need any further help?"* after each completed task. Answer **"no"** (or "stop", "nothing") and she shuts down cleanly.
 
+### Lucy's personality and memory
+
+Lucy keeps a small, structured memory on this device. You can explicitly save a fact, preference, routine, relationship or contact, set the name/nickname Lucy uses, review saved entries, or ask Lucy to forget one or all entries.
+
+Voice commands are supported in English, Japanese, Arabic, Hindi and Kannada. Examples:
+
+- `Remember that I prefer short explanations`
+- `Call me Alex` or `My nickname is Alex`
+- `What do you remember about me?`
+- `Forget my nickname`
+- `Forget everything`
+
+Memory is not learned silently from conversations or repeated app behavior. Lucy saves only details you explicitly ask her to remember or approve. Up to 50 entries are stored locally with a category, timestamps and confidence value. Only a small relevance-ranked subset is attached to an AI request when it helps with that request. You can inspect or delete entries in **Lucy tools → Manage saved memory**.
+
 ### Switching language 🌍
 
 Tap the 🌐 **language selector** in the top bar to pick **English**, **日本語** or **العربية**. This sets the speech-recognition locale.
