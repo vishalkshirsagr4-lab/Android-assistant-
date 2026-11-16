@@ -91,6 +91,26 @@ void main() {
     expect(prefs.getString('lucy_structured_memories_v2'), isNull);
   });
 
+  test('stores contact category, confidence and timestamps', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    final before = DateTime.now();
+    await store.remember(
+      'Mom contact number is saved with approval',
+      category: 'contact',
+      confidence: 0.85,
+    );
+
+    final item = store.items.single;
+    expect(item.category, 'contact');
+    expect(item.confidence, 0.85);
+    expect(item.userApproved, isTrue);
+    expect(item.createdAt.isAfter(before.subtract(const Duration(seconds: 1))), isTrue);
+    expect(item.updatedAt, item.createdAt);
+  });
+
   test('does not store blank or oversized memory values', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = LucyMemoryStore(prefs);
