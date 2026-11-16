@@ -1647,6 +1647,7 @@ class AgentController extends ChangeNotifier {
     AgentAction action,
     _UiSnapshot? beforeSnapshot,
   ) async {
+    _lastActionDispatchSucceeded = true;
     // Ordinary navigation is hands-free. Consequential actions pause the
     // task, ask for spoken approval, and resume the same agent loop on approval.
     String? targetLabel;
@@ -1726,6 +1727,7 @@ class AgentController extends ChangeNotifier {
           'Please enable it in Settings → Accessibility → Lucy.',
           false,
         );
+        _lastActionDispatchSucceeded = false;
         return beforeSnapshot;
       }
     }
@@ -1736,9 +1738,12 @@ class AgentController extends ChangeNotifier {
           final package = action.params['package'] as String? ?? '';
           if (package.isNotEmpty) {
             final success = await _screenCapture.openApp(package);
-            if (!success) {
-              print('Failed to open app: $package');
-            }
+            _lastActionDispatchSucceeded = success;
+            LucyReliabilityLog.event(
+              'action_dispatch',
+              action: action.type,
+              success: success,
+            );
           }
           break;
 
@@ -1764,13 +1769,18 @@ class AgentController extends ChangeNotifier {
             );
             return beforeSnapshot;
           }
-          await _screenCapture.performTap(coords['x']!, coords['y']!);
+          _lastActionDispatchSucceeded = await _screenCapture.performTap(
+            coords['x']!,
+            coords['y']!,
+          );
           break;
 
         case 'type':
           final text = action.params['text'] as String? ?? '';
           if (text.isNotEmpty) {
-            await _screenCapture.performType(text);
+            _lastActionDispatchSucceeded = await _screenCapture.performType(text);
+          } else {
+            _lastActionDispatchSucceeded = false;
           }
           break;
 
@@ -1779,15 +1789,20 @@ class AgentController extends ChangeNotifier {
           final startY = (action.params['startY'] as num?)?.toDouble() ?? 0;
           final endX = (action.params['endX'] as num?)?.toDouble() ?? 0;
           final endY = (action.params['endY'] as num?)?.toDouble() ?? 0;
-          await _screenCapture.performSwipe(startX, startY, endX, endY);
+          _lastActionDispatchSucceeded = await _screenCapture.performSwipe(
+            startX,
+            startY,
+            endX,
+            endY,
+          );
           break;
 
         case 'back':
-          await _screenCapture.pressBack();
+          _lastActionDispatchSucceeded = await _screenCapture.pressBack();
           break;
 
         case 'home':
-          await _screenCapture.pressHome();
+          _lastActionDispatchSucceeded = await _screenCapture.pressHome();
           break;
 
         case 'schedule_reminder':
@@ -1812,6 +1827,7 @@ class AgentController extends ChangeNotifier {
             delayMinutes: delayMinutes,
             repeatIntervalMinutes: repeatMinutes,
           );
+          _lastActionDispatchSucceeded = true;
           _addConversation(
             repeatMinutes >= 15
                 ? 'Reminder scheduled: $title. It will repeat every $repeatMinutes minutes.'
@@ -1840,19 +1856,35 @@ class AgentController extends ChangeNotifier {
           break;
 
         case 'wait':
+          final delay = ((action.params['ms'] as num?)?.toInt() ?? 1000)
+              .clamp(0, 10000);
+          await Future<void>.delayed(Duration(milliseconds: delay));
+          _lastActionDispatchSucceeded = true;
           break;
 
         default:
-          debugPrint('Unknown action type: ${action.type}');
+          _lastActionDispatchSucceeded = false;
+          LucyReliabilityLog.event(
+            'unsupported_action',
+            action: action.type,
+            success: false,
+          );
       }
-    } catch (e) {
-      print('Error executing action ${action.type}: $e');
+    } catch (error) {
+      _lastActionDispatchSucceeded = false;
+      LucyReliabilityLog.event(
+        'action_exception',
+        action: action.type,
+        success: false,
+        errorType: error.runtimeType.toString(),
+      );
     }
 
     return _waitForActionReadiness(action, beforeSnapshot);
   }
 
   Future<void> _executeNativePhoneAction(AgentAction action) async {
+    _lastActionDispatchSucceeded = false;
     dynamic nativeResult;
     try {
       nativeResult = await _phoneActions.execute(action.type, action.params);
@@ -1876,6 +1908,7 @@ class AgentController extends ChangeNotifier {
         (action.type == 'set_brightness' && needsBrightnessAccess);
 
     if (needsBrightnessAccess) {
+      _lastActionDispatchSucceeded = true;
       const message =
           'Android opened special access settings. Allow Lucy to change system brightness, then repeat your brightness command.';
       _addConversation(message, false);
@@ -1900,6 +1933,7 @@ class AgentController extends ChangeNotifier {
       if (packageName != null) {
         final opened = await _screenCapture.openApp(packageName);
         if (opened) {
+          _lastActionDispatchSucceeded = true;
           _addConversation(
             'The direct Android action was unavailable, so I opened the related app for screen-based control.',
             false,
@@ -1911,9 +1945,11 @@ class AgentController extends ChangeNotifier {
         'Android could not complete that action, and the related app could not be opened. Nothing was sent or called.',
         false,
       );
+      _lastActionDispatchSucceeded = false;
       return;
     }
 
+    _lastActionDispatchSucceeded = true;
     if (action.type == 'get_device_status') {
       final battery = resultMap['batteryPercent'];
       final charging = resultMap['charging'] == true;
