@@ -257,7 +257,7 @@ class LucyMemoryStore {
   }
 
   String _normalizeCategory(String value) {
-    const allowed = {'fact', 'preference', 'routine', 'relationship', 'goal'};
+    const allowed = {'fact', 'preference', 'routine', 'relationship', 'contact', 'goal'};
     final normalized = value.trim().toLowerCase();
     return allowed.contains(normalized) ? normalized : 'fact';
   }
