@@ -114,6 +114,14 @@ class PhoneActionHandler(private val activity: Activity) {
             result.error("INVALID_ARGUMENT", "A phone number is required.", null)
             return
         }
+        val keyguard = activity.getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        if (keyguard.isKeyguardLocked) {
+            // Never try to dismiss or bypass the user's secure lock screen.
+            // The caller can retry after the user authenticates.
+            result.success(mapOf("success" to false, "requiresUnlock" to true))
+            return
+        }
+        // ACTION_DIAL leaves the final call decision with the user.
         result.success(launch(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))))
     }
 
