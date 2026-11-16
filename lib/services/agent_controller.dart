@@ -164,6 +164,18 @@ class AgentController extends ChangeNotifier {
       return true;
     }
 
+    if (lower == 'forget my name' ||
+        lower == 'forget my nickname' ||
+        lower == 'forget my preferred name') {
+      final removed = await forgetUserMemory('prefers to be addressed as');
+      await _replyToMemoryCommand(
+        removed > 0
+            ? 'I forgot your saved preferred name.'
+            : 'I do not have a preferred name saved.',
+      );
+      return true;
+    }
+
     if (lower.startsWith('forget ') || lower.startsWith('forget that ')) {
       final query = trimmed
           .replaceFirst(RegExp(r'^forget\s+(that\s+)?', caseSensitive: false), '')
