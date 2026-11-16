@@ -495,7 +495,7 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
             if (_readOnlyCache.length >= 12) {
               _readOnlyCache.remove(_readOnlyCache.keys.first);
             }
-            _readOnlyCache[cacheKey!] = _CachedAgentResponse(
+            _readOnlyCache[cacheKey] = _CachedAgentResponse(
               parsed,
               DateTime.now(),
             );
