@@ -9,6 +9,8 @@ class LucySettingsStore {
   static const directPhoneActions = 'lucy_cap_direct_phone_actions';
   static const memory = 'lucy_cap_memory';
   static const scheduledReminders = 'lucy_cap_scheduled_reminders';
+  static const aiRequests = 'lucy_cap_ai_requests';
+  static const providerFallback = 'lucy_cap_provider_fallback';
 
   static const Map<String, bool> defaults = <String, bool>{
     voiceInput: true,
@@ -18,6 +20,8 @@ class LucySettingsStore {
     directPhoneActions: true,
     memory: true,
     scheduledReminders: true,
+    aiRequests: true,
+    providerFallback: true,
   };
 
   Future<bool> isEnabled(String key) async {
