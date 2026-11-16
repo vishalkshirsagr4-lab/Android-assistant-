@@ -4,6 +4,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'grok_service.dart';
 import 'groq_service.dart';
+import 'hms_service.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
@@ -70,17 +71,32 @@ class AiService {
   static const _geminiKeyName = 'lucy_gemini_api_key';
   bool _useGrok = false;
   bool _useGroq = false;
+  bool _useHms = false;
   final GrokService _grokService = GrokService();
   final GroqService _groqService = GroqService();
+  final HmsService _hmsService = HmsService();
 
-  bool get isConfigured => _useGrok || _useGroq || (_apiKey != null && _apiKey!.isNotEmpty);
+  bool get isConfigured => _useGrok || _useGroq || _useHms ||
+      (_apiKey != null && _apiKey!.isNotEmpty);
   bool get isUsingGrok => _useGrok;
   bool get isUsingGroq => _useGroq;
-  void useGrok(bool enabled) { _useGrok = enabled; if (enabled) _useGroq = false; }
-  void useGroq(bool enabled) { _useGroq = enabled; if (enabled) _useGrok = false; }
+  bool get isUsingHms => _useHms;
+  void useGrok(bool enabled) {
+    _useGrok = enabled;
+    if (enabled) { _useGroq = false; _useHms = false; }
+  }
+  void useGroq(bool enabled) {
+    _useGroq = enabled;
+    if (enabled) { _useGrok = false; _useHms = false; }
+  }
+  void useHms(bool enabled) {
+    _useHms = enabled;
+    if (enabled) { _useGrok = false; _useGroq = false; }
+  }
   Future<bool> isProviderReady() async {
     if (_useGrok) return _grokService.isConfigured();
     if (_useGroq) return _groqService.isConfigured();
+    if (_useHms) return _hmsService.isConfigured();
     return _apiKey != null && _apiKey!.isNotEmpty;
   }
 
@@ -246,36 +262,66 @@ RESPONSE FORMAT (strict JSON, one action only):
       buffer.write(message);
       final fullMessage = buffer.toString();
 
-      if (_useGrok) {
-        final text = await _grokService.complete(
-          fullMessage,
-          systemPrompt: _systemPrompt,
-          imageBytes: imageBytes,
-        );
-        return _parseAgentResponse(text);
-      }
-      if (_useGroq) {
-        final text = await _groqService.complete(
-          fullMessage,
-          systemPrompt: _systemPrompt,
-          imageBytes: imageBytes,
-        );
-        return _parseAgentResponse(text);
+      // Prefer the selected provider, then automatically fail over when it is
+      // overloaded, rate-limited, unavailable, or returns a network error.
+      // HMS is text-only until its image-input support is explicitly documented.
+      final preferred = _useGrok ? 'grok' : _useGroq ? 'groq' : _useHms ? 'hms' : 'gemini';
+      final order = <String>[
+        preferred,
+        'gemini',
+        'hms',
+        'groq',
+        'grok',
+      ].toSet().toList();
+      final failures = <String>[];
+
+      for (final provider in order) {
+        try {
+          String? text;
+          if (provider == 'hms') {
+            if (imageBytes != null || !await _hmsService.isConfigured()) continue;
+            text = await _hmsService.complete(
+              fullMessage,
+              systemPrompt: _systemPrompt,
+            );
+          } else if (provider == 'groq') {
+            if (!await _groqService.isConfigured()) continue;
+            text = await _groqService.complete(
+              fullMessage,
+              systemPrompt: _systemPrompt,
+              imageBytes: imageBytes,
+            );
+          } else if (provider == 'grok') {
+            if (!await _grokService.isConfigured()) continue;
+            text = await _grokService.complete(
+              fullMessage,
+              systemPrompt: _systemPrompt,
+              imageBytes: imageBytes,
+            );
+          } else {
+            if (_chat == null) continue;
+            Content content;
+            if (imageBytes != null) {
+              content = Content.multi([
+                TextPart(fullMessage),
+                DataPart('image/jpeg', imageBytes),
+              ]);
+            } else {
+              content = Content('user', [TextPart(fullMessage)]);
+            }
+            final response = await _chat!.sendMessage(content);
+            text = response.text ?? '{}';
+          }
+          return _parseAgentResponse(text);
+        } catch (error) {
+          failures.add('$provider: ${error.toString()}');
+        }
       }
 
-      Content content;
-      if (imageBytes != null) {
-        content = Content.multi([
-          TextPart(fullMessage),
-          DataPart('image/jpeg', imageBytes),
-        ]);
-      } else {
-        content = Content('user', [TextPart(fullMessage)]);
-      }
-
-      final response = await _chat!.sendMessage(content);
-      final text = response.text ?? '{}';
-      return _parseAgentResponse(text);
+      final detail = failures.isEmpty
+          ? 'No configured provider can handle this request. Add a Gemini, Groq, Grok, or 100milionseek key in Lucy tools.'
+          : 'All available AI providers failed. ${failures.join(' | ')}';
+      return AgentResponse.fallback(detail);
     } catch (e) {
       return AgentResponse.fallback('Error: ${e.toString()}');
     }
@@ -310,5 +356,6 @@ RESPONSE FORMAT (strict JSON, one action only):
       _chat = _model!.startChat();
     }
     _groqService.resetChat();
+    _hmsService.resetChat();
   }
 }
