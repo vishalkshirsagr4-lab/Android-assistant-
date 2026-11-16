@@ -82,31 +82,35 @@ void main() {
     expect(context, contains('1 from Delivery'));
   });
 
-  test('does not include notifications unless Lucy notification context is enabled',
-      () async {
-    snapshot['notificationContextEnabled'] = false;
+  test(
+    'does not include notifications unless Lucy notification context is enabled',
+    () async {
+      snapshot['notificationContextEnabled'] = false;
 
-    final context = await LucyContextBuilder().buildPromptContext();
+      final context = await LucyContextBuilder().buildPromptContext();
 
-    expect(context, isNot(contains('Dinner plan')));
-    expect(context, isNot(contains('Meet at 7 pm')));
-  });
+      expect(context, isNot(contains('Dinner plan')));
+      expect(context, isNot(contains('Meet at 7 pm')));
+    },
+  );
 
-  test('continues to provide basic context when optional sources are absent',
-      () async {
-    snapshot = <String, dynamic>{
-      'batteryPercent': 20,
-      'charging': false,
-      'network': 'offline',
-      'notifications': <dynamic>[],
-      'calendarEvents': <dynamic>[],
-    };
+  test(
+    'continues to provide basic context when optional sources are absent',
+    () async {
+      snapshot = <String, dynamic>{
+        'batteryPercent': 20,
+        'charging': false,
+        'network': 'offline',
+        'notifications': <dynamic>[],
+        'calendarEvents': <dynamic>[],
+      };
 
-    final context = await LucyContextBuilder().buildPromptContext();
+      final context = await LucyContextBuilder().buildPromptContext();
 
-    expect(context, contains('Battery: 20%, not charging.'));
-    expect(context, contains('Network: offline.'));
-    expect(context, isNot(contains('Recent notifications')));
-    expect(context, isNot(contains('Approximate location')));
-  });
+      expect(context, contains('Battery: 20%, not charging.'));
+      expect(context, contains('Network: offline.'));
+      expect(context, isNot(contains('Recent notifications')));
+      expect(context, isNot(contains('Approximate location')));
+    },
+  );
 }
