@@ -201,7 +201,7 @@ class LucyContextBuilder {
       'Saturday',
       'Sunday',
     ];
-    return names[(weekday - 1).clamp(0, 6)];
+    return names[weekday - 1];
   }
 
   static String _relativeTime(DateTime now, DateTime timestamp) {
