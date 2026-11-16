@@ -149,6 +149,7 @@ class ScreenActionService : AccessibilityService() {
             val contentDesc = node.contentDescription?.toString()
             val isClickable = node.isClickable
             val isEditable = node.isEditable
+            val isPassword = node.isPassword
             val isCheckable = node.isCheckable
             val isScrollable = node.isScrollable
             val isVisible = node.isVisibleToUser
@@ -179,6 +180,7 @@ class ScreenActionService : AccessibilityService() {
                     if (!contentDesc.isNullOrBlank()) put("desc", contentDesc)
                     if (isClickable) put("clickable", true)
                     if (isEditable) put("editable", true)
+                    if (isPassword) put("password", true)
                     if (isFocused) put("focused", true)
                     if (isCheckable) {
                         put("checkable", true)
