@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'lucy_settings_store.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 /// Owns the Flutter TTS engine and Lucy's user-started native Android
@@ -210,6 +211,8 @@ class VoiceService {
 
   Future<void> speak(String text, {String? lang}) async {
     if (_disposed || text.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
     if (!_isInitialized && !await initialize()) return;
 
     if (_isListening) {
