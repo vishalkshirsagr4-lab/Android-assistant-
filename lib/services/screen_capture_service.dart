@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'agent_reliability.dart';
+
 class ScreenCaptureManager {
   static const _channel = MethodChannel('com.poc.screen_aware_ai/screen');
 
@@ -29,7 +31,7 @@ class ScreenCaptureManager {
       _hasPermission = result ?? false;
       return _hasPermission;
     } catch (e) {
-      print('Error requesting screen capture: $e');
+      LucyReliabilityLog.event('screen_permission_request_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -51,7 +53,7 @@ class ScreenCaptureManager {
         // Service exists but lost its MediaProjection — wait for
         // reinitialization (MainActivity attempts it automatically)
         // then retry once.
-        print('Screen capture not initialized, waiting and retrying...');
+        LucyReliabilityLog.event('screen_capture_not_initialized', attempt: 1, success: false);
         await Future.delayed(const Duration(milliseconds: 800));
         try {
           final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
@@ -60,7 +62,7 @@ class ScreenCaptureManager {
           if (retryError.code == 'NOT_INITIALIZED' ||
               retryError.code == 'NO_SERVICE') {
             // Reinitialization failed — need fresh permission grant
-            print('Reinitialization failed, re-requesting permission...');
+            LucyReliabilityLog.event('screen_capture_reinitialize_failed', attempt: 2, success: false);
             _hasPermission = false;
             final granted = await requestPermission();
             if (!granted) return null;
@@ -71,16 +73,16 @@ class ScreenCaptureManager {
               );
               return bytes;
             } catch (finalError) {
-              print('Final capture attempt failed: $finalError');
+              LucyReliabilityLog.event('screen_capture_final_attempt_failed', errorType: finalError.runtimeType.toString(), success: false);
               return null;
             }
           }
-          print('Retry capture failed: $retryError');
+          LucyReliabilityLog.event('screen_capture_retry_failed', errorType: retryError.runtimeType.toString(), success: false);
           return null;
         }
       } else if (e.code == 'NO_SERVICE') {
         // Service not running at all — request permission to start it
-        print('Screen capture service not running, requesting permission...');
+        LucyReliabilityLog.event('screen_capture_service_missing', success: false);
         _hasPermission = false;
         final granted = await requestPermission();
         if (!granted) return null;
@@ -88,14 +90,14 @@ class ScreenCaptureManager {
           final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
           return bytes;
         } catch (retryError) {
-          print('Capture after permission re-request failed: $retryError');
+          LucyReliabilityLog.event('screen_capture_after_permission_failed', errorType: retryError.runtimeType.toString(), success: false);
           return null;
         }
       }
-      print('Error capturing screen: $e');
+      LucyReliabilityLog.event('screen_capture_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     } catch (e) {
-      print('Error capturing screen: $e');
+      LucyReliabilityLog.event('screen_capture_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     }
   }
@@ -107,7 +109,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<String>('getUITree');
       return result;
     } catch (e) {
-      print('Error getting UI tree: $e');
+      LucyReliabilityLog.event('ui_tree_capture_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     }
   }
@@ -129,7 +131,7 @@ class ScreenCaptureManager {
     try {
       await _channel.invokeMethod('openAccessibilitySettings');
     } catch (e) {
-      print('Error opening settings: $e');
+      LucyReliabilityLog.event('accessibility_settings_open_failed', errorType: e.runtimeType.toString(), success: false);
     }
   }
 
@@ -141,7 +143,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error opening app: $e');
+      LucyReliabilityLog.event('open_app_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -155,7 +157,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error performing tap: $e');
+      LucyReliabilityLog.event('tap_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -168,7 +170,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error performing type: $e');
+      LucyReliabilityLog.event('type_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -189,7 +191,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error performing swipe: $e');
+      LucyReliabilityLog.event('swipe_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -200,7 +202,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<bool>('pressBack');
       return result ?? false;
     } catch (e) {
-      print('Error pressing back: $e');
+      LucyReliabilityLog.event('back_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -217,7 +219,7 @@ class ScreenCaptureManager {
       }
       return null;
     } catch (e) {
-      print('Error getting screen size: $e');
+      LucyReliabilityLog.event('screen_size_read_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     }
   }
@@ -228,7 +230,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<bool>('pressHome');
       return result ?? false;
     } catch (e) {
-      print('Error pressing home: $e');
+      LucyReliabilityLog.event('home_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -242,7 +244,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<bool>('showStopOverlay');
       return result ?? false;
     } catch (e) {
-      print('Error showing stop controls: $e');
+      LucyReliabilityLog.event('stop_controls_show_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -252,7 +254,7 @@ class ScreenCaptureManager {
     try {
       await _channel.invokeMethod('hideStopOverlay');
     } catch (e) {
-      print('Error hiding stop controls: $e');
+      LucyReliabilityLog.event('stop_controls_hide_failed', errorType: e.runtimeType.toString(), success: false);
     }
   }
 }
