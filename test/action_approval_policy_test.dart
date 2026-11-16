@@ -64,6 +64,39 @@ void main() {
       );
     });
 
+    test('typing into a password field always requires approval', () {
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'type',
+          sensitiveInput: true,
+          modelRisk: 'low',
+          confidence: 0.99,
+        ),
+        isTrue,
+      );
+      expect(
+        LucyActionApprovalPolicy.effectiveRisk(
+          'type',
+          sensitiveInput: true,
+          modelRisk: 'low',
+          confidence: 0.99,
+        ),
+        'high',
+      );
+    });
+
+    test('typing in a financial app requires approval', () {
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'type',
+          packageName: 'com.example.upi.wallet',
+          modelRisk: 'low',
+          confidence: 0.99,
+        ),
+        isTrue,
+      );
+    });
+
     test('model cannot downgrade a locally high-risk action', () {
       expect(
         LucyActionApprovalPolicy.effectiveRisk(
