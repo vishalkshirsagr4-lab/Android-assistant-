@@ -525,7 +525,7 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
   String? _readOnlyCacheKey(String message) {
     var query = message.trim();
     query = query.replaceFirst(
-      RegExp(r'^\\[Device local date/time:[^\\]]+\\]\\s*'),
+      RegExp(r'^\[Device local date/time:[^\]]+\]\s*'),
       '',
     );
     final contextStart = query.indexOf('[DEVICE_CONTEXT]');
@@ -548,11 +548,11 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
       'payment', 'password', 'otp', 'one time code',
     ];
     if (dynamicTerms.any(lower.contains) ||
-        RegExp(r'\\b[0-9]{7,}\\b').hasMatch(query) ||
-        RegExp(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+').hasMatch(query)) {
+        RegExp(r'\b[0-9]{7,}\b').hasMatch(query) ||
+        RegExp(r'[^\s@]+@[^\s@]+\.[^\s@]+').hasMatch(query)) {
       return null;
     }
-    return lower.replaceAll(RegExp(r'\\s+'), ' ');
+    return lower.replaceAll(RegExp(r'\s+'), ' ');
   }
 
   /// Parse the AI's JSON response into an AgentResponse.
