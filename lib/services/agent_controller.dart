@@ -1274,12 +1274,16 @@ class AgentController extends ChangeNotifier {
     AgentAction action,
     String? targetLabel, {
     required String requiredRisk,
+    bool sensitiveInput = false,
   }) async {
     if (!_isActive || _pendingVoiceApproval != null) return false;
     final details = <String>[
       action.type.replaceAll('_', ' '),
       if (targetLabel != null && targetLabel.isNotEmpty) 'target $targetLabel',
-      if (action.params['text'] is String) 'message: ${action.params['text']}',
+      if (action.params['text'] is String && sensitiveInput)
+        'text: [hidden sensitive input]',
+      if (action.params['text'] is String && !sensitiveInput)
+        'text: ${action.params['text']}',
       if (action.params['message'] is String)
         'message: ${action.params['message']}',
       if (action.params['recipient'] is String)
@@ -1288,8 +1292,9 @@ class AgentController extends ChangeNotifier {
       if (action.params['reason'] is String)
         'reason: ${action.params['reason']}',
     ].join('. ');
-    final prompt =
-        'Lucy wants to $details. Say approve to continue, or cancel to stop.';
+    final prompt = requiredRisk == 'medium'
+        ? 'Lucy wants to $details. Is that okay? Say yes or no.'
+        : 'Lucy wants to $details. This is a high-risk action. Say approve to continue, or cancel to stop.';
     _setState(AgentState.waitingConfirmation);
     _statusMessage = 'Waiting for your spoken approval...';
     _addConversation(prompt, false);
@@ -1396,6 +1401,7 @@ class AgentController extends ChangeNotifier {
         action,
         targetLabel,
         requiredRisk: requiredRisk,
+        sensitiveInput: sensitiveInput,
       );
       if (!approved) {
         _cancelRequested = true;
