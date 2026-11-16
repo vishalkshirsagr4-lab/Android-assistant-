@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'grok_service.dart';
 import 'groq_service.dart';
 import 'hms_service.dart';
+import 'agent_reliability.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
@@ -25,6 +26,8 @@ class AgentResponse {
   final bool done;
   final String lang; // BCP-47-ish short code: "en", "ja". Empty if unknown.
   final String rawResponse;
+  final List<String> plan;
+  final String provider;
 
   AgentResponse({
     required this.actions,
@@ -32,17 +35,45 @@ class AgentResponse {
     required this.done,
     required this.lang,
     required this.rawResponse,
+    this.plan = const <String>[],
+    this.provider = 'unknown',
   });
 
-  factory AgentResponse.fromJson(Map<String, dynamic> json, String raw) {
-    final actionsList = (json['actions'] as List<dynamic>? ?? [])
-        .map(
-          (a) => AgentAction(
-            type: a['type'] as String? ?? 'wait',
-            params: Map<String, dynamic>.from(a as Map)..remove('type'),
-          ),
-        )
-        .toList();
+  factory AgentResponse.fromJson(
+    Map<String, dynamic> json,
+    String raw, {
+    String provider = 'unknown',
+  }) {
+    final rawActions = json['actions'] as List<dynamic>? ?? <dynamic>[];
+    final actionsList = rawActions.map((value) {
+      if (value is! Map) {
+        throw const FormatException('Lucy action must be a JSON object.');
+      }
+      final action = Map<String, dynamic>.from(value);
+      final type = action.remove('type');
+      if (type is! String || type.trim().isEmpty) {
+        throw const FormatException('Lucy action is missing its type.');
+      }
+      final confidence = action['confidence'];
+      final risk = action['risk'];
+      final reason = action['reason'];
+      if (confidence is! num || confidence < 0 || confidence > 1 ||
+          risk is! String || !const {'low', 'medium', 'high'}.contains(risk) ||
+          reason is! String || reason.trim().isEmpty) {
+        throw const FormatException(
+          'Lucy action is missing valid confidence, risk or reason metadata.',
+        );
+      }
+      return AgentAction(type: type, params: action);
+    }).toList(growable: false);
+    if (actionsList.length > 1) {
+      throw const FormatException('Lucy must return at most one action per step.');
+    }
+    final rawPlan = json['plan'];
+    final plan = rawPlan is List
+        ? rawPlan.whereType<String>().map((item) => item.trim())
+            .where((item) => item.isNotEmpty).take(8).toList(growable: false)
+        : const <String>[];
 
     return AgentResponse(
       actions: actionsList,
@@ -50,6 +81,8 @@ class AgentResponse {
       done: json['done'] as bool? ?? true,
       lang: (json['lang'] as String? ?? '').toLowerCase(),
       rawResponse: raw,
+      plan: plan,
+      provider: provider,
     );
   }
 
@@ -60,8 +93,15 @@ class AgentResponse {
       done: true,
       lang: '',
       rawResponse: raw,
+      provider: 'none',
     );
   }
+}
+
+class _CachedAgentResponse {
+  const _CachedAgentResponse(this.response, this.createdAt);
+  final AgentResponse response;
+  final DateTime createdAt;
 }
 
 class AiService {
@@ -76,6 +116,9 @@ class AiService {
   final GrokService _grokService = GrokService();
   final GroqService _groqService = GroqService();
   final HmsService _hmsService = HmsService();
+  final Map<String, _CachedAgentResponse> _readOnlyCache =
+      <String, _CachedAgentResponse>{};
+  static const Duration _readOnlyCacheTtl = Duration(seconds: 20);
 
   bool get isConfigured =>
       _useGrok ||
@@ -231,8 +274,15 @@ LANGUAGE RULES:
 - Keep this language consistent across the whole task until the user switches language.
 - Action JSON keys/values (type, package, text) stay as-is — only "speak" is localized. When typing into an input field, the "text" value should match what the user asked to type (in whichever language they used).
 
-RESPONSE FORMAT (strict JSON, one action only):
+PLANNING AND RELIABILITY:
+- Before the first action, provide a short ordered "plan" array with no more than 8 concise steps. Keep the plan stable across the task; update it only when the screen or a blocker requires a different approach.
+- Still return at most ONE action in "actions" per response. After each action Lucy will capture a fresh screen and verify the result before asking you to continue.
+- If the previous action did not change the expected screen or device state, do not repeat it blindly. Choose a different safe approach, explain the blocker, or ask the user for help.
+- Never claim success from an attempted action alone. Use the next screenshot/UI tree to verify visible outcomes. For system permission dialogs, explain which permission is requested and wait for the user to choose; never automatically grant permissions.
+
+RESPONSE FORMAT (strict JSON, plan first, at most one action):
 {
+  "plan": ["Open the target app", "Find the requested item", "Verify the result"],
   "actions": [
     {
       "type": "open_app",
@@ -335,6 +385,20 @@ RESPONSE FORMAT (strict JSON, one action only):
       }
       buffer.write(message);
       final fullMessage = buffer.toString();
+      final cacheAllowed = imageBytes == null &&
+          uiTree == null &&
+          memoryContext.trim().isEmpty &&
+          !fullMessage.contains('[DEVICE_CONTEXT]') &&
+          !fullMessage.contains('[Device local date/time:');
+      if (cacheAllowed) {
+        final cached = _readOnlyCache[fullMessage];
+        if (cached != null &&
+            DateTime.now().difference(cached.createdAt) <= _readOnlyCacheTtl) {
+          LucyReliabilityLog.event('ai_cache_hit', cacheHit: true);
+          return cached.response;
+        }
+        _readOnlyCache.remove(fullMessage);
+      }
 
       // Prefer the selected provider, then automatically fail over when it is
       // overloaded, rate-limited, unavailable, or returns a network error.
@@ -356,6 +420,8 @@ RESPONSE FORMAT (strict JSON, one action only):
       final failures = <String>[];
 
       for (final provider in order) {
+        final providerStopwatch = Stopwatch()..start();
+        LucyReliabilityLog.event('provider_attempt', provider: provider);
         try {
           String? text;
           if (provider == 'hms') {
@@ -400,9 +466,31 @@ RESPONSE FORMAT (strict JSON, one action only):
           }
           // Parsing is inside the provider attempt: malformed output must also
           // trigger fallback rather than being presented as a successful reply.
-          return _parseAgentResponse(text);
+          final parsed = _parseAgentResponse(text, provider: provider);
+          providerStopwatch.stop();
+          LucyReliabilityLog.event(
+            'provider_success',
+            provider: provider,
+            elapsedMs: providerStopwatch.elapsedMilliseconds,
+            success: true,
+          );
+          if (cacheAllowed && parsed.actions.isEmpty && parsed.done) {
+            if (_readOnlyCache.length >= 12) _readOnlyCache.remove(_readOnlyCache.keys.first);
+            _readOnlyCache[fullMessage] = _CachedAgentResponse(parsed, DateTime.now());
+          }
+          return parsed;
         } catch (error) {
-          failures.add('$provider: ${error.toString()}');
+          providerStopwatch.stop();
+          LucyReliabilityLog.event(
+            'provider_failure',
+            provider: provider,
+            elapsedMs: providerStopwatch.elapsedMilliseconds,
+            success: false,
+            errorType: error.runtimeType.toString(),
+          );
+          // Keep diagnostics private and terse; do not copy provider response
+          // bodies, prompt content or credentials into structured logs.
+          failures.add('$provider: ${error.runtimeType}');
         }
       }
 
@@ -416,7 +504,7 @@ RESPONSE FORMAT (strict JSON, one action only):
   }
 
   /// Parse the AI's JSON response into an AgentResponse.
-  AgentResponse _parseAgentResponse(String text) {
+  AgentResponse _parseAgentResponse(String text, {required String provider}) {
     // Lucy requires structured actions. If a provider returns plain text or
     // malformed JSON, throw so agentChat can try the next configured provider.
     var jsonStr = text.trim();
@@ -442,11 +530,12 @@ RESPONSE FORMAT (strict JSON, one action only):
         'Provider response is missing Lucy action fields.',
       );
     }
-    return AgentResponse.fromJson(decoded, text);
+    return AgentResponse.fromJson(decoded, text, provider: provider);
   }
 
   /// Reset chat history for a fresh conversation.
   void resetChat() {
+    _readOnlyCache.clear();
     if (_model != null) {
       _chat = _model!.startChat();
     }
