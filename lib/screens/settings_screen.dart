@@ -64,6 +64,9 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
 
   Future<void> _setCapability(String key, bool enabled) async {
     await _settings.setEnabled(key, enabled);
+    if (key == LucySettingsStore.voiceInput && !enabled && widget.controller.isActive) {
+      await widget.controller.stopAgent();
+    }
     if (!mounted) return;
     setState(() => _values[key] = enabled);
   }
