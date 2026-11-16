@@ -346,6 +346,16 @@ Voice commands are supported in English, Japanese, Arabic, Hindi and Kannada. Ex
 
 Memory is not learned silently from conversations or repeated app behavior. Lucy saves only details you explicitly ask her to remember or approve. Up to 50 entries are stored locally with a category, timestamps and confidence value. Only a small relevance-ranked subset is attached to an AI request when it helps with that request. You can inspect or delete entries in **Lucy tools → Manage saved memory**.
 
+### Proactive suggestions and action approval
+
+Lucy can optionally check local device signals and post a small number of suggestions. Enable this in **Lucy tools → Proactive suggestions**. You can configure quiet hours, a daily limit and a cooldown, and ask **Why did Lucy suggest that?** to see the stored reason, confidence and risk.
+
+The checks are local-only: low battery, a calendar event starting soon, or a recent notification. For a known messaging app Lucy may offer to help draft a reply, but it does not read the notification body in the background, draft or send a message automatically, or call an AI provider from WorkManager. If you choose to ask Lucy to draft a reply, the normal on-demand context and provider privacy rules apply.
+
+Android WorkManager periodic jobs have a 15-minute minimum interval and may run later under Doze or OEM battery restrictions. This is not an exact timer. Lucy's existing foreground services are used only during active, user-started voice or screen-control sessions; there is no always-on polling foreground service.
+
+Every AI action carries `confidence`, `risk` and `reason` metadata. A local policy can raise the model's risk but cannot lower it. Low-risk actions can proceed; medium-risk actions ask for a yes/no answer; high-risk actions require an explicit approval. Password-field typing and text entry in financial apps are treated as high risk, and Lucy does not repeat sensitive text in the approval prompt.
+
 ### Switching language 🌍
 
 Tap the 🌐 **language selector** in the top bar to pick **English**, **日本語** or **العربية**. This sets the speech-recognition locale.
@@ -547,7 +557,7 @@ Found a security issue? Please read **[SECURITY.md](SECURITY.md)** — don't ope
 
 Ideas that would make great contributions. Comment on an issue or open one to claim it:
 
-- [ ] 🔒 **Confirmation gate** for destructive actions (sending messages, purchases, deletions)
+- [x] 🔒 **Confirmation gate** for consequential actions (sending messages, purchases, deletions)
 - [ ] 🧩 **Pluggable AI backends** — OpenAI, Anthropic, or a local model behind the `AiService` interface
 - [ ] 🚫 **App allowlist/blocklist** so Lucy can never touch chosen apps
 - [ ] 💾 **Persistent conversation history** across restarts
