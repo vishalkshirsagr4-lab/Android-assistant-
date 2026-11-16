@@ -149,7 +149,12 @@ class PhoneContextHandler(private val activity: Activity) {
             ).getBoolean(NotificationContextListener.NOTIFICATION_ENABLED_KEY, false),
             "usageAccessEnabled" to hasUsageAccess(),
             "calendarAccessEnabled" to hasCalendarAccess(),
-            "calendarEvents" to getUpcomingCalendarEvents(),
+            "calendarContextEnabled" to activity.getSharedPreferences(
+                "LucyContextPreferences", Context.MODE_PRIVATE
+            ).getBoolean("calendar_context_enabled", false),
+            "calendarEvents" to if (activity.getSharedPreferences(
+                "LucyContextPreferences", Context.MODE_PRIVATE
+            ).getBoolean("calendar_context_enabled", false)) getUpcomingCalendarEvents() else emptyList<Map<String, Any>>(),
             "locationEnabled" to isLocationContextEnabled(),
             "approximateLocation" to getApproximateLocation()
         )
