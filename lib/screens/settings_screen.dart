@@ -64,7 +64,13 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
 
   Future<void> _setCapability(String key, bool enabled) async {
     await _settings.setEnabled(key, enabled);
-    if (key == LucySettingsStore.voiceInput && !enabled && widget.controller.isActive) {
+    if (!enabled && widget.controller.isActive && const {
+      LucySettingsStore.voiceInput,
+      LucySettingsStore.aiRequests,
+      LucySettingsStore.aiScreenSharing,
+      LucySettingsStore.screenAutomation,
+      LucySettingsStore.directPhoneActions,
+    }.contains(key)) {
       await widget.controller.stopAgent();
     }
     if (!mounted) return;
@@ -242,6 +248,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       await widget.controller.stopAgent();
       await widget.controller.clearUserMemories();
       await widget.controller.aiService.clearGeminiKey();
+      widget.controller.aiService.resetChat();
       await _grok.clearApiKey();
       await _groq.clearApiKey();
       await _hms.clearApiKey();
