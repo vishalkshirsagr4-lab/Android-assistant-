@@ -228,7 +228,13 @@ LANGUAGE RULES:
 RESPONSE FORMAT (strict JSON, one action only):
 {
   "actions": [
-    {"type": "open_app", "package": "com.whatsapp"}
+    {
+      "type": "open_app",
+      "package": "com.whatsapp",
+      "confidence": 0.96,
+      "risk": "low",
+      "reason": "Opening the app is a reversible navigation action."
+    }
   ],
   "speak": "",
   "done": false,
