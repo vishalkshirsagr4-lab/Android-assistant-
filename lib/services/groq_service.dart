@@ -52,13 +52,15 @@ class GroqService {
     if (key.isEmpty) throw ArgumentError('Paste your Groq API key.');
     final client = http.Client();
     try {
-      final response = await client.get(
-        Uri.parse(_modelsEndpoint),
-        headers: {
-          'Authorization': 'Bearer $key',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 25));
+      final response = await client
+          .get(
+            Uri.parse(_modelsEndpoint),
+            headers: {
+              'Authorization': 'Bearer $key',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 25));
       if (response.statusCode != 200) {
         throw GroqRequestException(
           _errorMessage(response.statusCode, response.body),
@@ -68,10 +70,15 @@ class GroqService {
       final decoded = jsonDecode(response.body);
       final data = decoded is Map ? decoded['data'] : null;
       if (data is! List) {
-        throw const FormatException('Groq returned an unexpected models response.');
+        throw const FormatException(
+          'Groq returned an unexpected models response.',
+        );
       }
-      final models = data.whereType<Map>()
-          .map((item) => item['id']?.toString()).whereType<String>().toSet();
+      final models = data
+          .whereType<Map>()
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .toSet();
       if (!models.contains(model)) {
         throw GroqRequestException(
           'The key is valid, but $model is not available to this Groq account.',
@@ -79,7 +86,9 @@ class GroqService {
         );
       }
     } on TimeoutException {
-      throw TimeoutException('Groq key check timed out. Check your connection.');
+      throw TimeoutException(
+        'Groq key check timed out. Check your connection.',
+      );
     } finally {
       client.close();
     }
@@ -128,23 +137,25 @@ class GroqService {
 
     final client = http.Client();
     try {
-      final response = await client.post(
-        Uri.parse(_chatEndpoint),
-        headers: {
-          'Authorization': 'Bearer ${key.trim()}',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'model': model,
-          'messages': messages,
-          'response_format': {'type': 'json_object'},
-          'temperature': 0.2,
-          'max_completion_tokens': 4096,
-          'reasoning_effort': 'none',
-          'stream': false,
-        }),
-      ).timeout(timeout);
+      final response = await client
+          .post(
+            Uri.parse(_chatEndpoint),
+            headers: {
+              'Authorization': 'Bearer ${key.trim()}',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'model': model,
+              'messages': messages,
+              'response_format': {'type': 'json_object'},
+              'temperature': 0.2,
+              'max_completion_tokens': 4096,
+              'reasoning_effort': 'none',
+              'stream': false,
+            }),
+          )
+          .timeout(timeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw GroqRequestException(
@@ -155,11 +166,13 @@ class GroqService {
 
       final decoded = jsonDecode(response.body);
       final choices = decoded is Map ? decoded['choices'] : null;
-      final message = choices is List && choices.isNotEmpty &&
-              choices.first is Map
+      final message =
+          choices is List && choices.isNotEmpty && choices.first is Map
           ? (choices.first as Map)['message']
           : null;
-      final text = message is Map ? message['content']?.toString().trim() : null;
+      final text = message is Map
+          ? message['content']?.toString().trim()
+          : null;
       if (text == null || text.isEmpty) {
         throw const FormatException('Groq returned an empty response.');
       }
@@ -185,7 +198,9 @@ class GroqService {
       }
       return text;
     } on TimeoutException {
-      throw TimeoutException('Groq request timed out. Check your connection and retry.');
+      throw TimeoutException(
+        'Groq request timed out. Check your connection and retry.',
+      );
     } finally {
       client.close();
     }
@@ -204,11 +219,16 @@ class GroqService {
     }
     if (detail.length > 350) detail = detail.substring(0, 350);
     if (status == 400) return 'Groq rejected the request (HTTP 400): $detail';
-    if (status == 401) return 'Groq rejected this API key (HTTP 401). Check that it came from console.groq.com.';
-    if (status == 403) return 'This Groq key or model is not permitted (HTTP 403): $detail';
-    if (status == 404) return 'Groq model or endpoint not found (HTTP 404): $detail';
-    if (status == 429) return 'Groq rate limit or account quota reached (HTTP 429): $detail';
-    if (status >= 500) return 'Groq service error (HTTP $status). Try again later.';
+    if (status == 401)
+      return 'Groq rejected this API key (HTTP 401). Check that it came from console.groq.com.';
+    if (status == 403)
+      return 'This Groq key or model is not permitted (HTTP 403): $detail';
+    if (status == 404)
+      return 'Groq model or endpoint not found (HTTP 404): $detail';
+    if (status == 429)
+      return 'Groq rate limit or account quota reached (HTTP 429): $detail';
+    if (status >= 500)
+      return 'Groq service error (HTTP $status). Try again later.';
     return 'Groq request failed (HTTP $status): $detail';
   }
 }
