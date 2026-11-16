@@ -1018,6 +1018,10 @@ class AgentController extends ChangeNotifier {
     }
 
     if (asksBattery) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+        await _speakLocalReply('Direct phone actions are disabled in Privacy & settings.');
+        return true;
+      }
       try {
         final result = await _phoneActions.execute(
           'get_device_status',
@@ -1051,6 +1055,10 @@ class AgentController extends ChangeNotifier {
     }
 
     if (asksFlashlight) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+        await _speakLocalReply('Direct phone actions are disabled in Privacy & settings.');
+        return true;
+      }
       final turnOff = RegExp(
         r"(turn off|switch off|disable|off|बंद|ಆಫ್|消して|关闭|إيقاف)",
       ).hasMatch(command);
