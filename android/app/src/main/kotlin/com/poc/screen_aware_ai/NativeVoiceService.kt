@@ -75,6 +75,11 @@ class NativeVoiceService : Service() {
     override fun onCreate() {
         super.onCreate()
         activeInstance = this
+        deviceLocked = try {
+            (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
+        } catch (_: Exception) {
+            false
+        }
         val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
