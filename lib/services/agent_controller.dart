@@ -1981,6 +1981,15 @@ class AgentController extends ChangeNotifier {
         ? Map<String, dynamic>.from(nativeResult)
         : <String, dynamic>{};
     final needsBrightnessAccess = resultMap['requiresSettingsAccess'] == true;
+    if (resultMap['requiresUnlock'] == true) {
+      _lastActionDispatchSucceeded = false;
+      const message =
+          'Your phone is locked. Unlock it first, then say the call command again. I will not bypass your phone lock.';
+      _addConversation(message, false);
+      await _voiceService.speak(message, lang: _currentLang);
+      _cancelRequested = true;
+      return;
+    }
     final succeeded =
         nativeResult == true ||
         resultMap['success'] == true ||
