@@ -919,12 +919,12 @@ class AgentController extends ChangeNotifier {
     _addConversation(text, true);
     _currentTranscript = '';
 
-    if (await _handleOfflineCommand(text)) {
+    if (await _handleMemoryCommand(text)) {
       await _resumeOrFinishListening();
       return;
     }
 
-    if (await _handleMemoryCommand(text)) {
+    if (await _handleOfflineCommand(text)) {
       await _resumeOrFinishListening();
       return;
     }
