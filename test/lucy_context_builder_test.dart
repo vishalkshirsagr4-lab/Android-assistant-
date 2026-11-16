@@ -67,6 +67,21 @@ void main() {
     expect(context, contains('Approximate location (rounded)'));
   });
 
+  test('summarizes notification counts by sender', () async {
+    snapshot['notifications'] = <Map<String, dynamic>>[
+      <String, dynamic>{'sender': 'Mom', 'app': 'Messages'},
+      <String, dynamic>{'sender': 'Mom', 'app': 'Messages'},
+      <String, dynamic>{'sender': 'Mom', 'app': 'Messages'},
+      <String, dynamic>{'sender': 'Delivery', 'app': 'Courier'},
+    ];
+
+    final context = await LucyContextBuilder().buildPromptContext();
+
+    expect(context, contains('Notification summary (last 24 hours):'));
+    expect(context, contains('3 from Mom'));
+    expect(context, contains('1 from Delivery'));
+  });
+
   test('does not include notifications unless Lucy notification context is enabled',
       () async {
     snapshot['notificationContextEnabled'] = false;
