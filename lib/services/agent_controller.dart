@@ -247,7 +247,8 @@ class AgentController extends ChangeNotifier {
     r'(いいえ|いえ|けっこう|結構|もういい|もう大丈夫|大丈夫|終了|終わり|やめて|止めて|停止|いらない|不要|ない)',
   );
   // Arabic forms: "no", "stop", "enough", "done", "nothing".
-  static final RegExp _negativeHiKn = RegExp(r'(नहीं|रुको|बंद|बस|ಸಾಕು|ಬೇಡ|ನಿಲ್ಲಿಸು)');\n  static final RegExp _negativeAr = RegExp(
+  static final RegExp _negativeHiKn = RegExp(r'(नहीं|रुको|बंद|बस|ಸಾಕು|ಬೇಡ|ನಿಲ್ಲಿಸು)');
+  static final RegExp _negativeAr = RegExp(
     r'(لا|كلا|توقف|قف|اوقف|أوقف|اكتفي|يكفي|كفى|انتهى|انتهيت|خلاص|لا شيء|لا شكرا|لا شكرًا)',
   );
 
