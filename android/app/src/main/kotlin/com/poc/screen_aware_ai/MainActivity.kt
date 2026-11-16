@@ -119,7 +119,9 @@ class MainActivity : FlutterActivity() {
                 val permission = call.argument<String>("permission")
                 val allowedPermissions = setOf(
                     android.Manifest.permission.READ_CONTACTS,
-                    android.Manifest.permission.CAMERA
+                    android.Manifest.permission.CAMERA,
+                    android.Manifest.permission.READ_CALENDAR,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
                 )
                 if (permission == null || permission !in allowedPermissions) {
                     result.error("INVALID_PERMISSION", "This permission cannot be requested by Lucy.", null)
@@ -135,6 +137,36 @@ class MainActivity : FlutterActivity() {
                     requestPermissions(arrayOf(permission), PHONE_PERMISSION_REQUEST_CODE)
                 }
             } else if (!phoneActionHandler.handle(call, result)) {
+                result.notImplemented()
+            }
+        }
+
+        // Context is fetched on demand for each AI request. No background polling.
+        val contextHandler = PhoneContextHandler(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.poc.screen_aware_ai/context"
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "requestPermission") {
+                val permission = call.argument<String>("permission")
+                val allowedPermissions = setOf(
+                    android.Manifest.permission.READ_CALENDAR,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+                if (permission == null || permission !in allowedPermissions) {
+                    result.error("INVALID_PERMISSION", "This context permission cannot be requested by Lucy.", null)
+                } else if (androidx.core.content.ContextCompat.checkSelfPermission(
+                        this, permission
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    result.success(true)
+                } else if (pendingPhonePermissionResult != null) {
+                    result.error("PERMISSION_REQUEST_BUSY", "Another permission request is active.", null)
+                } else {
+                    pendingPhonePermissionResult = result
+                    requestPermissions(arrayOf(permission), PHONE_PERMISSION_REQUEST_CODE)
+                }
+            } else if (!contextHandler.handle(call, result)) {
                 result.notImplemented()
             }
         }
