@@ -9,32 +9,41 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('migrates legacy explicitly saved memories into structured records', () async {
-    SharedPreferences.setMockInitialValues({
-      'lucy_user_approved_memories_v1': [
-        'I prefer simple English explanations',
-        'My goal is to learn Flutter',
-      ],
-    });
-    final prefs = await SharedPreferences.getInstance();
-    final store = LucyMemoryStore(prefs);
+  test(
+    'migrates legacy explicitly saved memories into structured records',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'lucy_user_approved_memories_v1': [
+          'I prefer simple English explanations',
+          'My goal is to learn Flutter',
+        ],
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final store = LucyMemoryStore(prefs);
 
-    await store.initialize();
+      await store.initialize();
 
-    expect(store.items, hasLength(2));
-    expect(store.items.first.category, 'fact');
-    expect(store.items.first.userApproved, isTrue);
-    expect(store.summary, contains('I prefer simple English explanations'));
-    expect(prefs.getStringList('lucy_user_approved_memories_v1'), isNull);
-  });
+      expect(store.items, hasLength(2));
+      expect(store.items.first.category, 'fact');
+      expect(store.items.first.userApproved, isTrue);
+      expect(store.summary, contains('I prefer simple English explanations'));
+      expect(prefs.getStringList('lucy_user_approved_memories_v1'), isNull);
+    },
+  );
 
   test('stores structured categories and avoids duplicate records', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = LucyMemoryStore(prefs);
     await store.initialize();
 
-    await store.remember('I prefer Kannada explanations', category: 'preference');
-    await store.remember('I prefer Kannada explanations', category: 'preference');
+    await store.remember(
+      'I prefer Kannada explanations',
+      category: 'preference',
+    );
+    await store.remember(
+      'I prefer Kannada explanations',
+      category: 'preference',
+    );
 
     expect(store.items, hasLength(1));
     expect(store.items.single.category, 'preference');
@@ -47,9 +56,18 @@ void main() {
     final store = LucyMemoryStore(prefs);
     await store.initialize();
 
-    await store.remember('The user is learning Flutter and Dart', category: 'goal');
-    await store.remember('The user prefers short Kannada explanations', category: 'preference');
-    await store.remember('The user studies database management', category: 'routine');
+    await store.remember(
+      'The user is learning Flutter and Dart',
+      category: 'goal',
+    );
+    await store.remember(
+      'The user prefers short Kannada explanations',
+      category: 'preference',
+    );
+    await store.remember(
+      'The user studies database management',
+      category: 'routine',
+    );
 
     final context = store.relevantContext('Help me with Flutter widgets');
 
