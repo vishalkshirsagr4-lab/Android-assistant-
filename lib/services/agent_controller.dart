@@ -1916,10 +1916,11 @@ class AgentController extends ChangeNotifier {
         (action.type == 'set_brightness' && needsBrightnessAccess);
 
     if (needsBrightnessAccess) {
-      _lastActionDispatchSucceeded = true;
+      _lastActionDispatchSucceeded = false;
       const message =
-          'Android opened special access settings. Allow Lucy to change system brightness, then repeat your brightness command.';
+          'Android opened special access settings. Review the permission yourself, then repeat your brightness command. Lucy will not change this access automatically.';
       _addConversation(message, false);
+      _cancelRequested = true;
       return;
     }
 
@@ -1941,7 +1942,9 @@ class AgentController extends ChangeNotifier {
       if (packageName != null) {
         final opened = await _screenCapture.openApp(packageName);
         if (opened) {
-          _lastActionDispatchSucceeded = true;
+          // Opening the fallback app is not proof the requested operation
+          // succeeded. Let the next model turn continue with visible UI control.
+          _lastActionDispatchSucceeded = false;
           _addConversation(
             'The direct Android action was unavailable, so I opened the related app for screen-based control.',
             false,
