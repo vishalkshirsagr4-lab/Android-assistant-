@@ -94,6 +94,21 @@ class PhoneContextHandler(private val activity: Activity) {
                 }
                 return true
             }
+            "setCalendarContextEnabled" -> {
+                val enabled = call.argument<Boolean>("enabled") == true
+                val granted = ContextCompat.checkSelfPermission(
+                    activity,
+                    Manifest.permission.READ_CALENDAR
+                ) == PackageManager.PERMISSION_GRANTED
+                if (enabled && !granted) {
+                    result.success(false)
+                } else {
+                    activity.getSharedPreferences("LucyContextPreferences", Context.MODE_PRIVATE)
+                        .edit().putBoolean("calendar_context_enabled", enabled).apply()
+                    result.success(true)
+                }
+                return true
+            }
             else -> return false
         }
     }
