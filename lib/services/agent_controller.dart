@@ -386,6 +386,22 @@ class AgentController extends ChangeNotifier {
         }
         final factLower = fact.toLowerCase();
         final category = _containsAny(factLower, [
+          'contact',
+          'phone number',
+          'mobile number',
+          'email address',
+          'contact number',
+          'संपर्क',
+          'फोन नंबर',
+          'ಸಂಪರ್ಕ',
+          'ದೂರವಾಣಿ ಸಂಖ್ಯೆ',
+          '連絡先',
+          '電話番号',
+          'جهة الاتصال',
+          'رقم الهاتف',
+        ])
+            ? 'contact'
+            : _containsAny(factLower, [
           'prefer',
           'like',
           'favorite',
