@@ -19,8 +19,10 @@ class LucyPerformanceSnapshot {
   final int? lastResponseMs;
 
   String get ramLabel => '${(rssBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  String get cpuLabel => cpuPercent == null ? 'Unavailable' : '${cpuPercent!.toStringAsFixed(1)}%';
-  String get batteryLabel => batteryPercent == null ? 'Unavailable' : '$batteryPercent%';
+  String get cpuLabel =>
+      cpuPercent == null ? 'Unavailable' : '${cpuPercent!.toStringAsFixed(1)}%';
+  String get batteryLabel =>
+      batteryPercent == null ? 'Unavailable' : '$batteryPercent%';
 }
 
 /// Samples lightweight process/device metrics only when the tools screen opens.
@@ -40,7 +42,11 @@ class LucyPerformanceMonitor {
       try {
         await _channel.invokeMapMethod<dynamic, dynamic>('getDeviceMetrics');
         await Future<void>.delayed(const Duration(milliseconds: 250));
-        native = await _channel.invokeMapMethod<dynamic, dynamic>('getDeviceMetrics') ?? const {};
+        native =
+            await _channel.invokeMapMethod<dynamic, dynamic>(
+              'getDeviceMetrics',
+            ) ??
+            const {};
       } on PlatformException {
         // Keep RAM and latency visible even if an OEM blocks a metric.
       }
