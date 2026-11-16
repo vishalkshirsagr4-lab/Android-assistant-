@@ -532,7 +532,7 @@ Please read this before installing. Lucy is powerful precisely because she has d
 - Gemini, Groq and Grok can receive screen images. The optional 100milionseek/HMS provider is text-only and is skipped when a screenshot is attached.
 - Lucy tries the selected provider first, then Gemini, Groq, Grok and HMS as available. A fallback provider may therefore receive the same current task context if an earlier provider fails.
 - 🎤 **Voice** is transcribed by Android's speech-recognition service. Audio handling depends on the recognizer and Android/device settings.
-- If enabled, notification summaries/details, calendar events and approximate location may be included in the AI prompt context. These sources are permission- and setting-dependent.
+- If enabled, foreground-app name, notification summaries/details, calendar events and approximate location may be included in the AI prompt context. These sources are permission- and setting-dependent.
 
 **What does not**
 
