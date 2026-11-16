@@ -6,6 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
@@ -55,10 +58,33 @@ class NativeVoiceService : Service() {
     private var restartScheduled = false
     private var retryMs = 1000L
     private var notificationStatus = "Listening for your command"
+    private var deviceLocked = false
+
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> deviceLocked = true
+                Intent.ACTION_USER_PRESENT -> deviceLocked = false
+                else -> return
+            }
+            // Keep task state intact; only add/remove the lock-screen context.
+            updateNotificationStatus(notificationStatus)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         activeInstance = this
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenStateReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(screenStateReceiver, screenFilter)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Lucy microphone", NotificationManager.IMPORTANCE_LOW)
@@ -214,9 +240,20 @@ class NativeVoiceService : Service() {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
+        val isWorking = pausedForProcessing || !notificationStatus.startsWith("Listening")
+        val title = when {
+            isWorking -> "Lucy is working"
+            deviceLocked -> "Lucy is ready"
+            else -> "Lucy is listening"
+        }
+        val visibleStatus = if (deviceLocked) {
+            "Phone locked • $notificationStatus"
+        } else {
+            notificationStatus
+        }
         return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle(if (notificationStatus.startsWith("Listening")) "Lucy is listening" else "Lucy is working")
-            .setContentText(notificationStatus)
+            .setContentTitle(title)
+            .setContentText(visibleStatus)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "Stop Lucy", stopAction).build())
             .build()
@@ -227,6 +264,7 @@ class NativeVoiceService : Service() {
     override fun onDestroy() {
         stopped = true
         if (activeInstance === this) activeInstance = null
+        try { unregisterReceiver(screenStateReceiver) } catch (_: Exception) {}
         handler.removeCallbacksAndMessages(null)
         try { recognizer?.cancel() } catch (_: Exception) {}
         recognizer?.destroy()
