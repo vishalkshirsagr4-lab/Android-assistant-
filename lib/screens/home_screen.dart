@@ -714,7 +714,8 @@ class _HomeScreenState extends State<HomeScreen>
     'kn': 'KN',
   };
 
-  Widget _buildLanguageToggle() {    final current = widget.controller.currentLang;
+  Widget _buildLanguageToggle() {
+    final current = widget.controller.currentLang;
     return PopupMenuButton<String>(
       tooltip: 'Input / reply language',
       initialValue: current,
@@ -1340,7 +1341,8 @@ class _HomeScreenState extends State<HomeScreen>
                     TextButton(
                       onPressed: hmsConfigured
                           ? () async {
-                              if (widget.controller.isHmsProvider) {                                await widget.controller.setHmsProvider(false);
+                              if (widget.controller.isHmsProvider) {
+                                await widget.controller.setHmsProvider(false);
                               }
                               await hmsService.clearApiKey();
                               hmsConfigured = false;
