@@ -11,6 +11,7 @@ import '../services/hms_service.dart';
 import '../services/lucy_activity_store.dart';
 import '../services/performance_monitor.dart';
 import '../services/routine_scheduler.dart';
+import '../services/lucy_context_builder.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen>
   final AppUpdateService _appUpdateService = AppUpdateService();
   final GrokService _grokService = GrokService();
   final LucyActivityStore _activityStore = LucyActivityStore();
+  final LucyContextBuilder _contextBuilder = LucyContextBuilder();
   final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
   bool _updateCheckStarted = false;
   DateTime? _lastUpdateCheckAt;
@@ -963,6 +965,7 @@ class _HomeScreenState extends State<HomeScreen>
     final snapshot = await _performanceMonitor.snapshot();
     final templates = await _activityStore.readAutomationTemplates();
     final configured = await _grokService.isConfigured();
+    final contextStatusFuture = _contextBuilder.readStatus();
     if (!mounted) {
       grokController.dispose();
       groqController.dispose();
@@ -984,6 +987,143 @@ class _HomeScreenState extends State<HomeScreen>
                 Text('CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}'),
                 Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
                 const Text('Smart fallback is enabled: if a model is busy or reaches a limit, Lucy tries another configured provider.'),
+                const SizedBox(height: 16),
+                const Divider(),
+                const Text(
+                  'Context & privacy',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const Text(
+                  'Lucy reads optional phone context only while you use Lucy. Notification text can contain private information; enable it only if you want Lucy to use recent notifications in AI requests. Context is not collected when the related access is off.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                FutureBuilder<Map<String, dynamic>>(
+                  future: contextStatusFuture,
+                  builder: (context, snapshot) {
+                    final status = snapshot.data ?? const <String, dynamic>{};
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: LinearProgressIndicator(),
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Notification access: ${status['notificationAccessEnabled'] == true ? 'granted' : 'off'} · Lucy notification context: ${status['notificationContextEnabled'] == true ? 'enabled' : 'disabled'}',
+                        ),
+                        Text(
+                          'Usage access: ${status['usageAccessEnabled'] == true ? 'granted' : 'off'}',
+                        ),
+                        Text(
+                          'Calendar access: ${status['calendarAccessEnabled'] == true ? 'granted' : 'off'}',
+                        ),
+                        Text(
+                          'Approximate location: ${status['locationEnabled'] == true ? 'enabled' : 'off'}',
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () async {
+                        await _contextBuilder.setNotificationContextEnabled(true);
+                        final opened = await _contextBuilder.openNotificationAccessSettings();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                opened
+                                    ? 'Enable Lucy under Android Notification access, then reopen Lucy tools.'
+                                    : 'Could not open Notification access settings.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Enable notifications'),
+                    ),
+                    OutlinedButton(
+                      onPressed: () async {
+                        await _contextBuilder.setNotificationContextEnabled(false);
+                        await _contextBuilder.clearNotificationHistory();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Lucy notification context disabled and local history cleared.')),
+                          );
+                        }
+                      },
+                      child: const Text('Disable & clear notifications'),
+                    ),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final opened = await _contextBuilder.openUsageAccessSettings();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                opened
+                                    ? 'Grant Usage access to Lucy if you want foreground-app context.'
+                                    : 'Could not open Usage access settings.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Usage access'),
+                    ),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final granted = await _contextBuilder.requestCalendarAccess();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                granted
+                                    ? 'Calendar access granted.'
+                                    : 'Calendar access was not granted.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Calendar access'),
+                    ),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final enabled = await _contextBuilder.enableApproximateLocation();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                enabled
+                                    ? 'Approximate location context enabled.'
+                                    : 'Location permission was not granted.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Enable approximate location'),
+                    ),
+                    OutlinedButton(
+                      onPressed: () async {
+                        await _contextBuilder.disableApproximateLocation();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Approximate location context disabled.')),
+                          );
+                        }
+                      },
+                      child: const Text('Disable location'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 const Text('Groq Cloud provider', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text(groqConfigured ? 'Groq API key saved securely on this device.' : 'No Groq API key configured.'),
