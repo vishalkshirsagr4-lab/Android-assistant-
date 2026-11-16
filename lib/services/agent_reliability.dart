@@ -49,7 +49,10 @@ class LucyAgentLoopGuard {
   LucyAgentLoopGuard({this.maxReplans = 2});
 
   final int maxReplans;
-  final Map<String, int> _attempts = <String, int>{};
+  final Map<String, int> _actionAttempts = <String, int>{};
+  final Map<String, Set<String>> _actionsPerScreen =
+      <String, Set<String>>{};
+  final Map<String, int> _attemptsPerScreen = <String, int>{};
   int _replans = 0;
 
   int get replans => _replans;
@@ -60,20 +63,30 @@ class LucyAgentLoopGuard {
     required String? packageName,
     required String uiSignature,
   }) {
-    final key = '${actionType.toLowerCase()}|${packageName ?? ''}|'
-        '${uiSignature.hashCode}';
-    final count = (_attempts[key] ?? 0) + 1;
-    _attempts[key] = count;
-    return count >= 2;
+    final screenKey = '${packageName ?? ''}|${uiSignature.hashCode}';
+    final actionKey = '$screenKey|${actionType.toLowerCase()}';
+    final actionCount = (_actionAttempts[actionKey] ?? 0) + 1;
+    _actionAttempts[actionKey] = actionCount;
+    final screenCount = (_attemptsPerScreen[screenKey] ?? 0) + 1;
+    _attemptsPerScreen[screenKey] = screenCount;
+    _actionsPerScreen.putIfAbsent(screenKey, () => <String>{})
+      ..add(actionType.toLowerCase());
+
+    return actionCount >= 2 ||
+        (screenCount >= 3 && _actionsPerScreen[screenKey]!.length >= 3);
   }
 
   void markReplanned() {
     _replans++;
-    _attempts.clear();
+    _actionAttempts.clear();
+    _actionsPerScreen.clear();
+    _attemptsPerScreen.clear();
   }
 
   void reset() {
-    _attempts.clear();
+    _actionAttempts.clear();
+    _actionsPerScreen.clear();
+    _attemptsPerScreen.clear();
     _replans = 0;
   }
 }
