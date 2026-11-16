@@ -79,7 +79,7 @@ void main() {
     await store.initialize();
 
     await store.remember('   ');
-    await store.remember('x' * 241);
+    await store.remember(List<String>.filled(241, 'x').join());
 
     expect(store.items, isEmpty);
   });
