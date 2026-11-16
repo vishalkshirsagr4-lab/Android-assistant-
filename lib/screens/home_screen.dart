@@ -994,7 +994,7 @@ class _HomeScreenState extends State<HomeScreen>
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const Text(
-                  'Lucy reads optional phone context only while you use Lucy. Notification text can contain private information; enable it only if you want Lucy to use recent notifications in AI requests. Context is not collected when the related access is off.',
+                  'Lucy reads device status when you use Lucy. If enabled, Android delivers notifications in the background and Lucy keeps at most 20 recent items on this device. Up to 5 short, redacted snippets may be included in requests to your selected AI provider while you use Lucy. Do not enable this if you do not want notification content processed.',
                   style: TextStyle(fontSize: 12),
                 ),
                 FutureBuilder<Map<String, dynamic>>(
