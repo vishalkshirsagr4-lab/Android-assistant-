@@ -39,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen>
       LucyPerformanceMonitor.shared;
   bool _updateCheckStarted = false;
   DateTime? _lastUpdateCheckAt;
+  bool _holdToTalkActive = false;
+  Future<void>? _holdToTalkStartFuture;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -322,6 +324,11 @@ class _HomeScreenState extends State<HomeScreen>
         actions: [
           _buildLanguageToggle(),
           IconButton(
+            icon: const Icon(Icons.record_voice_over_outlined),
+            tooltip: 'Voice settings',
+            onPressed: _showVoiceSettingsDialog,
+          ),
+          IconButton(
             icon: const Icon(Icons.tune),
             tooltip: 'Lucy tools and activity',
             onPressed: _showToolsDialog,
@@ -596,6 +603,166 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Future<void> _endHoldToTalk() async {
+    final startFuture = _holdToTalkStartFuture;
+    if (startFuture != null) {
+      await startFuture;
+    }
+    _holdToTalkStartFuture = null;
+    if (widget.controller.isActive) {
+      await widget.controller.stopAgent();
+    }
+  }
+
+  Future<void> _showVoiceSettingsDialog() async {
+    var rate = widget.controller.voiceSpeechRate;
+    var pitch = widget.controller.voicePitch;
+    var volume = widget.controller.voiceVolume;
+    var style = 'custom';
+
+    if ((rate - 0.42).abs() < 0.015 && (pitch - 0.92).abs() < 0.03) {
+      style = 'calm';
+    } else if ((rate - 0.54).abs() < 0.015 &&
+        (pitch - 1.08).abs() < 0.03) {
+      style = 'bright';
+    } else if ((rate - 0.48).abs() < 0.015 &&
+        (pitch - 1.0).abs() < 0.03) {
+      style = 'balanced';
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Lucy voice'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Voice style'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Calm'),
+                      selected: style == 'calm',
+                      onSelected: (_) {
+                        setDialogState(() {
+                          style = 'calm';
+                          rate = 0.42;
+                          pitch = 0.92;
+                        });
+                        unawaited(
+                          widget.controller.configureVoice(
+                            speechRate: rate,
+                            pitch: pitch,
+                          ),
+                        );
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('Balanced'),
+                      selected: style == 'balanced',
+                      onSelected: (_) {
+                        setDialogState(() {
+                          style = 'balanced';
+                          rate = 0.48;
+                          pitch = 1.0;
+                        });
+                        unawaited(
+                          widget.controller.configureVoice(
+                            speechRate: rate,
+                            pitch: pitch,
+                          ),
+                        );
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('Bright'),
+                      selected: style == 'bright',
+                      onSelected: (_) {
+                        setDialogState(() {
+                          style = 'bright';
+                          rate = 0.54;
+                          pitch = 1.08;
+                        });
+                        unawaited(
+                          widget.controller.configureVoice(
+                            speechRate: rate,
+                            pitch: pitch,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text('Speaking speed · ${rate.toStringAsFixed(2)}'),
+                Slider(
+                  value: rate,
+                  min: 0.35,
+                  max: 0.65,
+                  divisions: 12,
+                  onChanged: (value) {
+                    setDialogState(() {
+                      rate = value;
+                      style = 'custom';
+                    });
+                    unawaited(
+                      widget.controller.configureVoice(speechRate: value),
+                    );
+                  },
+                ),
+                Text('Pitch · ${pitch.toStringAsFixed(2)}'),
+                Slider(
+                  value: pitch,
+                  min: 0.8,
+                  max: 1.2,
+                  divisions: 8,
+                  onChanged: (value) {
+                    setDialogState(() {
+                      pitch = value;
+                      style = 'custom';
+                    });
+                    unawaited(
+                      widget.controller.configureVoice(pitch: value),
+                    );
+                  },
+                ),
+                Text('Volume · ${(volume * 100).round()}%'),
+                Slider(
+                  value: volume,
+                  min: 0.3,
+                  max: 1.0,
+                  divisions: 7,
+                  onChanged: (value) {
+                    setDialogState(() => volume = value);
+                    unawaited(
+                      widget.controller.configureVoice(volume: value),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Voice quality depends on the speech engine and voices installed on Android. Settings are saved on this device.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomBar(ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -623,44 +790,84 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
 
-            // Main mic button
-            ScaleTransition(
-              scale: widget.controller.state == AgentState.listening
-                  ? _pulseAnimation
-                  : const AlwaysStoppedAnimation(1.0),
-              child: GestureDetector(
-                onTap: () => widget.controller.toggleAgent(),
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: widget.controller.isActive
-                          ? [Colors.redAccent, Colors.red[700]!]
-                          : [colorScheme.primary, colorScheme.tertiary],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color:
-                            (widget.controller.isActive
-                                    ? Colors.redAccent
-                                    : colorScheme.primary)
-                                .withOpacity(0.4),
-                        blurRadius: 16,
-                        spreadRadius: 2,
+            // Tap toggles continuous conversation. Hold starts push-to-talk.
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ScaleTransition(
+                  scale: widget.controller.state == AgentState.listening
+                      ? _pulseAnimation
+                      : const AlwaysStoppedAnimation(1.0),
+                  child: GestureDetector(
+                    onTap: () {
+                      if (widget.controller.state == AgentState.speaking) {
+                        unawaited(widget.controller.interruptSpeaking());
+                      } else {
+                        unawaited(widget.controller.toggleAgent());
+                      }
+                    },
+                    onLongPressStart: (_) {
+                      if (!widget.controller.isActive) {
+                        _holdToTalkActive = true;
+                        _holdToTalkStartFuture =
+                            widget.controller.startAgent(voiceOnly: true);
+                      }
+                    },
+                    onLongPressEnd: (_) {
+                      if (_holdToTalkActive) {
+                        _holdToTalkActive = false;
+                        unawaited(_endHoldToTalk());
+                      }
+                    },
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: widget.controller.isActive
+                              ? [Colors.redAccent, Colors.red[700]!]
+                              : [colorScheme.primary, colorScheme.tertiary],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                (widget.controller.isActive
+                                        ? Colors.redAccent
+                                        : colorScheme.primary)
+                                    .withOpacity(0.4),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    widget.controller.isActive ? Icons.stop : Icons.mic,
-                    color: Colors.white,
-                    size: 32,
+                      child: Icon(
+                        widget.controller.state == AgentState.speaking
+                            ? Icons.hearing
+                            : widget.controller.isActive
+                            ? Icons.stop
+                            : Icons.mic,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 5),
+                Text(
+                  widget.controller.state == AgentState.speaking
+                      ? 'Tap to interrupt'
+                      : widget.controller.isActive
+                      ? 'Tap to stop'
+                      : 'Tap to talk · Hold to push-to-talk',
+                  style: TextStyle(
+                    color: colorScheme.onSurface.withOpacity(0.62),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
             ),
 
             // Right area: spacer for layout balance
