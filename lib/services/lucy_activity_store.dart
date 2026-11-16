@@ -19,9 +19,24 @@ class LucyActivityStore {
       await prefs.setString(
         _routinesKey,
         jsonEncode([
-          {'id': 'morning_brief', 'name': 'Morning briefing', 'enabled': false, 'requiresApproval': true},
-          {'id': 'focus_mode', 'name': 'Focus session', 'enabled': false, 'requiresApproval': true},
-          {'id': 'quick_notes', 'name': 'Quick note capture', 'enabled': false, 'requiresApproval': true},
+          {
+            'id': 'morning_brief',
+            'name': 'Morning briefing',
+            'enabled': false,
+            'requiresApproval': true,
+          },
+          {
+            'id': 'focus_mode',
+            'name': 'Focus session',
+            'enabled': false,
+            'requiresApproval': true,
+          },
+          {
+            'id': 'quick_notes',
+            'name': 'Quick note capture',
+            'enabled': false,
+            'requiresApproval': true,
+          },
         ]),
       );
     }
@@ -81,8 +96,12 @@ class LucyActivityStore {
   String _safeSummary(String type) {
     // Store metadata only. Never persist chat text, screenshots, UI labels or typed values.
     switch (type) {
-      case 'user_message': return 'User message received';
-      case 'assistant_message': return 'Lucy response generated';
-      default: return 'Activity event';
+      case 'user_message':
+        return 'User message received';
+      case 'assistant_message':
+        return 'Lucy response generated';
+      default:
+        return 'Activity event';
     }
-  }}
+  }
+}
