@@ -12,6 +12,7 @@ import 'hms_service.dart';
 import 'performance_monitor.dart';
 import 'action_approval_policy.dart';
 import 'routine_scheduler.dart';
+import 'phone_action_service.dart';
 
 enum AgentState {
   idle,
@@ -62,6 +63,7 @@ class AgentController extends ChangeNotifier {
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
   final LucyActivityStore _activityStore = LucyActivityStore();
   final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
+  final PhoneActionService _phoneActions = PhoneActionService();
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -1090,17 +1092,146 @@ class AgentController extends ChangeNotifier {
           );
           break;
 
+        case 'set_alarm':
+        case 'set_timer':
+        case 'place_call':
+        case 'send_sms':
+        case 'open_url':
+        case 'start_navigation':
+        case 'music_search':
+        case 'set_flashlight':
+        case 'set_volume':
+        case 'set_brightness':
+        case 'get_device_status':
+        case 'read_contact':
+        case 'create_calendar_event':
+        case 'open_settings':
+        case 'take_photo':
+        case 'share_text':
+          await _executeNativePhoneAction(action);
+          break;
+
         case 'wait':
           break;
 
         default:
-          print('Unknown action type: ${action.type}');
+          debugPrint('Unknown action type: ${action.type}');
       }
     } catch (e) {
       print('Error executing action ${action.type}: $e');
     }
 
     return _waitForActionReadiness(action, beforeSnapshot);
+  }
+
+  Future<void> _executeNativePhoneAction(AgentAction action) async {
+    dynamic nativeResult;
+    try {
+      nativeResult = await _phoneActions.execute(action.type, action.params);
+    } catch (error) {
+      debugPrint('Native phone action ${action.type} failed; trying UI fallback: $error');
+      nativeResult = false;
+    }
+
+    final resultMap = nativeResult is Map
+        ? Map<String, dynamic>.from(nativeResult)
+        : <String, dynamic>{};
+    final needsBrightnessAccess = resultMap['requiresSettingsAccess'] == true;
+    final succeeded = nativeResult == true ||
+        resultMap['success'] == true ||
+        resultMap.containsKey('batteryPercent') ||
+        resultMap.containsKey('phoneNumber') ||
+        (action.type == 'set_volume' && resultMap.containsKey('level')) ||
+        (action.type == 'set_brightness' && needsBrightnessAccess);
+
+    if (needsBrightnessAccess) {
+      const message =
+          'Android opened special access settings. Allow Lucy to change system brightness, then repeat your brightness command.';
+      _addConversation(message, false);
+      return;
+    }
+
+    if (!succeeded) {
+      const fallbackPackages = <String, String>{
+        'set_alarm': 'com.google.android.deskclock',
+        'set_timer': 'com.google.android.deskclock',
+        'place_call': 'com.google.android.dialer',
+        'send_sms': 'com.google.android.apps.messaging',
+        'start_navigation': 'com.google.android.apps.maps',
+        'music_search': 'com.google.android.youtube',
+        'read_contact': 'com.google.android.contacts',
+        'create_calendar_event': 'com.google.android.calendar',
+        'open_settings': 'com.android.settings',
+        'take_photo': 'com.android.camera2',
+      };
+      final packageName = fallbackPackages[action.type];
+      if (packageName != null) {
+        final opened = await _screenCapture.openApp(packageName);
+        if (opened) {
+          _addConversation(
+            'The direct Android action was unavailable, so I opened the related app for screen-based control.',
+            false,
+          );
+          return;
+        }
+      }
+      _addConversation(
+        'Android could not complete that action, and the related app could not be opened. Nothing was sent or called.',
+        false,
+      );
+      return;
+    }
+
+    if (action.type == 'get_device_status') {
+      final battery = resultMap['batteryPercent'];
+      final charging = resultMap['charging'] == true;
+      final total = (resultMap['storageTotalBytes'] as num?)?.toDouble() ?? 0;
+      final free = (resultMap['storageFreeBytes'] as num?)?.toDouble() ?? 0;
+      final usedGb = total > 0 ? (total - free) / (1024 * 1024 * 1024) : 0;
+      final totalGb = total / (1024 * 1024 * 1024);
+      final message = 'Battery: ${battery ?? 'unknown'} percent, '
+          '${charging ? 'charging' : 'not charging'}. '
+          'Storage used: ${usedGb.toStringAsFixed(1)} of ${totalGb.toStringAsFixed(1)} GB.';
+      _addConversation(message, false);
+      await _voiceService.speak(message, lang: _currentLang);
+    } else if (action.type == 'read_contact') {
+      final name = resultMap['name']?.toString();
+      final number = resultMap['phoneNumber']?.toString();
+      final message = name == null || number == null
+          ? 'I could not find a matching contact.'
+          : 'I found $name. The saved number is $number.';
+      _addConversation(message, false);
+      await _voiceService.speak(message, lang: _currentLang);
+    } else if (action.type == 'set_brightness' && resultMap['success'] == true) {
+      final level = resultMap['level'] ?? action.params['level'] ?? '';
+      _addConversation('Brightness set to $level percent.', false);
+    } else if (action.type == 'set_flashlight') {
+      final enabled = action.params['enabled'] != false;
+      _addConversation(enabled ? 'Flashlight turned on.' : 'Flashlight turned off.', false);
+    } else if (action.type == 'place_call') {
+      _addConversation(
+        'I opened the dialer with the requested number. Review it and tap Call when you are ready.',
+        false,
+      );
+    } else if (action.type == 'send_sms') {
+      _addConversation(
+        'I opened your SMS app with the message filled in. Review it and tap Send when you are ready.',
+        false,
+      );
+    } else if (action.type == 'create_calendar_event') {
+      _addConversation(
+        'I opened your calendar with the event details. Review them and save the event.',
+        false,
+      );
+    } else if (action.type == 'take_photo') {
+      _addConversation('Camera opened. Take the photo when you are ready.', false);
+    } else if (action.type == 'share_text') {
+      _addConversation('The Android share sheet is ready. Choose where to share the text.', false);
+    } else if (action.type == 'set_alarm') {
+      _addConversation('Your alarm details are ready in the Clock app.', false);
+    } else if (action.type == 'set_timer') {
+      _addConversation('Your timer is ready in the Clock app.', false);
+    }
   }
 
   String _trimForTts(String text) {
