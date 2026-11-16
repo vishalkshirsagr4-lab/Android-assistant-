@@ -92,6 +92,8 @@ class AgentController extends ChangeNotifier {
   bool _listenRestartScheduled = false;
   Timer? _silenceTimeoutTimer;
   static const Duration _conversationSilenceTimeout = Duration(seconds: 60);
+  bool _pushToTalkMode = false;
+  Completer<void>? _pushToTalkFinalResult;
 
   static const int _maxStepsPerCommand = 50;
   static const Duration _uiPollInterval = Duration(milliseconds: 120);
@@ -589,6 +591,10 @@ class AgentController extends ChangeNotifier {
 
     _voiceService.onResult = (text, isFinal) {
       _currentTranscript = text;
+      if (isFinal) {
+        final completed = _pushToTalkFinalResult;
+        if (completed != null && !completed.isCompleted) completed.complete();
+      }
       if (text.trim().isNotEmpty) _resetSilenceTimeout();
       final pendingApproval = _pendingVoiceApproval;
       if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
@@ -772,6 +778,8 @@ class AgentController extends ChangeNotifier {
 
   Future<void> startAgent({bool voiceOnly = false}) async {
     final providerReady = await _aiService.isProviderReady();
+    _pushToTalkMode = voiceOnly;
+    _pushToTalkFinalResult = voiceOnly ? Completer<void>() : null;
     _isActive = true;
     _addConversation(
       voiceOnly
@@ -814,6 +822,8 @@ class AgentController extends ChangeNotifier {
 
   Future<void> stopAgent() async {
     _isActive = false;
+    _pushToTalkMode = false;
+    _pushToTalkFinalResult = null;
     _listenRestartScheduled = false;
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
@@ -861,6 +871,31 @@ class AgentController extends ChangeNotifier {
     }
   }
 
+  Future<void> finishPushToTalk() async {
+    if (!_isActive || !_pushToTalkMode) return;
+    final finalResult = _pushToTalkFinalResult;
+    if (_state == AgentState.listening && finalResult != null) {
+      await Future.any<void>([
+        finalResult.future,
+        Future<void>.delayed(const Duration(seconds: 2)),
+      ]);
+    }
+    // If no final utterance arrived, stop the voice-only session. If a command
+    // is already being processed, its completion path stops the session.
+    if (_isActive && _state == AgentState.listening) {
+      await stopAgent();
+    }
+  }
+
+  Future<void> _resumeOrFinishListening() async {
+    if (!_isActive) return;
+    if (_pushToTalkMode) {
+      await stopAgent();
+    } else {
+      await _startListening();
+    }
+  }
+
   void _resetSilenceTimeout() {
     _silenceTimeoutTimer?.cancel();
     if (!_isActive || _state != AgentState.listening) return;
@@ -885,12 +920,12 @@ class AgentController extends ChangeNotifier {
     _currentTranscript = '';
 
     if (await _handleOfflineCommand(text)) {
-      if (_isActive) await _startListening();
+      await _resumeOrFinishListening();
       return;
     }
 
     if (await _handleMemoryCommand(text)) {
-      if (_isActive) _startListening();
+      await _resumeOrFinishListening();
       return;
     }
 
@@ -898,7 +933,7 @@ class AgentController extends ChangeNotifier {
       await _speakLocalReply(
         'I can help offline with the time, battery and flashlight. Add an AI provider key in Lucy tools for screen and app tasks.',
       );
-      if (_isActive) await _startListening();
+      await _resumeOrFinishListening();
       return;
     }
 
@@ -933,10 +968,8 @@ class AgentController extends ChangeNotifier {
 
     await _runAgentLoop(text);
 
-    // Resume listening after the loop completes
-    if (_isActive) {
-      _startListening();
-    }
+    // Continuous mode resumes; push-to-talk closes after one completed turn.
+    await _resumeOrFinishListening();
   }
 
   Future<void> _speakLocalReply(String reply) async {
