@@ -134,7 +134,23 @@ class LucyContextBuilder {
         ? status['notifications']
         : null;
     if (notifications is List && notifications.isNotEmpty) {
-      lines.add('Recent notifications (up to 5; locally cached):');
+      final counts = <String, int>{};
+      for (final raw in notifications) {
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final sender = _clean(item['sender']?.toString() ?? '', 40);
+        final app = _clean(item['app']?.toString() ?? 'App', 40);
+        final label = sender.isNotEmpty ? sender : app;
+        counts.update(label, (count) => count + 1, ifAbsent: () => 1);
+      }
+      if (counts.isNotEmpty) {
+        final summary = counts.entries
+            .take(6)
+            .map((entry) => '${entry.value} from ${entry.key}')
+            .join('; ');
+        lines.add('Notification summary (last 24 hours): $summary.');
+      }
+      lines.add('Recent notification details (up to 5; locally cached):');
       for (final raw in notifications.take(5)) {
         if (raw is! Map) continue;
         final item = Map<String, dynamic>.from(raw);
