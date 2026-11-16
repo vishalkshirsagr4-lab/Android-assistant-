@@ -929,7 +929,7 @@ class AgentController extends ChangeNotifier {
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
     _setState(AgentState.analyzing);
-    await _voiceService.stopListening();
+    await _voiceService.pauseListeningForProcessing();
 
     _addConversation(text, true);
     _currentTranscript = '';
