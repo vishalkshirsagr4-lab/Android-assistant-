@@ -914,6 +914,7 @@ class AgentController extends ChangeNotifier {
       action.type.replaceAll('_', ' '),
       if (targetLabel != null && targetLabel.isNotEmpty) 'target $targetLabel',
       if (action.params['text'] is String) 'message: ${action.params['text']}',
+      if (action.params['message'] is String) 'message: ${action.params['message']}',
       if (action.params['recipient'] is String) 'recipient: ${action.params['recipient']}',
     ].join('. ');
     final prompt = 'Lucy wants to $details. Say approve to continue, or cancel to stop.';
