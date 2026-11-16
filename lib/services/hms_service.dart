@@ -117,7 +117,6 @@ class HmsService {
         body: jsonEncode({
           'model': model,
           'messages': messages,
-          'response_format': {'type': 'json_object'},
           'temperature': 0.2,
           'max_tokens': 4096,
           'stream': false,
