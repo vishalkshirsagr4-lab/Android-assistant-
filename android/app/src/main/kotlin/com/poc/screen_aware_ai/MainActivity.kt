@@ -326,7 +326,25 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {\n        super.onRequestPermissionsResult(requestCode, permissions, grantResults)\n        if (requestCode == NATIVE_PERMISSION_REQUEST) {\n            val result = pendingNativeResult\n            val action = pendingNativeAction\n            pendingNativeResult = null\n            pendingNativeAction = null\n            if (result == null || action == null) return\n            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {\n                try { result.success(NativePhoneActions.execute(this, action, pendingNativeParams)) }\n                catch (error: Exception) { result.success(mapOf("success" to false, "message" to (error.message ?: "Native action failed"))) }\n            } else {\n                result.success(mapOf("success" to false, "permission_denied" to true, "message" to "Required permission was denied"))\n            }\n            pendingNativeParams = emptyMap()\n        }\n    }\n\n    private fun startCaptureService(resultCode: Int, data: Intent) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NATIVE_PERMISSION_REQUEST) {
+            val result = pendingNativeResult
+            val action = pendingNativeAction
+            pendingNativeResult = null
+            pendingNativeAction = null
+            if (result == null || action == null) return
+            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                try { result.success(NativePhoneActions.execute(this, action, pendingNativeParams)) }
+                catch (error: Exception) { result.success(mapOf("success" to false, "message" to (error.message ?: "Native action failed"))) }
+            } else {
+                result.success(mapOf("success" to false, "permission_denied" to true, "message" to "Required permission was denied"))
+            }
+            pendingNativeParams = emptyMap()
+        }
+    }
+
+    private fun startCaptureService(resultCode: Int, data: Intent) {
         val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
             putExtra("resultCode", resultCode)
             putExtra("data", data)
