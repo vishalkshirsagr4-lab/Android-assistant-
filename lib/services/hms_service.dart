@@ -56,10 +56,15 @@ class HmsService {
     if (key.isEmpty) throw ArgumentError('Paste your 100milionseek API key.');
     final client = http.Client();
     try {
-      final response = await client.get(
-        Uri.parse(_modelsEndpoint),
-        headers: {'Authorization': 'Bearer $key', 'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 25));
+      final response = await client
+          .get(
+            Uri.parse(_modelsEndpoint),
+            headers: {
+              'Authorization': 'Bearer $key',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 25));
       if (response.statusCode != 200) {
         throw HmsRequestException(
           _errorMessage(response.statusCode, response.body),
@@ -73,9 +78,11 @@ class HmsService {
           '100milionseek returned an unexpected models response.',
         );
       }
-      final models = data.whereType<Map>()
+      final models = data
+          .whereType<Map>()
           .map((item) => item['id']?.toString())
-          .whereType<String>().toSet();
+          .whereType<String>()
+          .toSet();
       if (!models.contains(model)) {
         throw const HmsRequestException(
           'The key is valid, but the advertised Lucy model is not available.',
@@ -83,7 +90,9 @@ class HmsService {
         );
       }
     } on TimeoutException {
-      throw TimeoutException('100milionseek key check timed out. Check your connection.');
+      throw TimeoutException(
+        '100milionseek key check timed out. Check your connection.',
+      );
     } finally {
       client.close();
     }
@@ -108,21 +117,23 @@ class HmsService {
     ];
     final client = http.Client();
     try {
-      final response = await client.post(
-        Uri.parse(_chatEndpoint),
-        headers: {
-          'Authorization': 'Bearer $key',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'model': model,
-          'messages': messages,
-          'temperature': 0.2,
-          'max_tokens': 4096,
-          'stream': false,
-        }),
-      ).timeout(timeout);
+      final response = await client
+          .post(
+            Uri.parse(_chatEndpoint),
+            headers: {
+              'Authorization': 'Bearer $key',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'model': model,
+              'messages': messages,
+              'temperature': 0.2,
+              'max_tokens': 4096,
+              'stream': false,
+            }),
+          )
+          .timeout(timeout);
 
       _quotaRemaining = response.headers['x-quota-remaining'];
       _quotaResetAt = response.headers['x-quota-reset'];
@@ -135,15 +146,17 @@ class HmsService {
       }
       final decoded = jsonDecode(response.body);
       final choices = decoded is Map ? decoded['choices'] : null;
-      final message = choices is List && choices.isNotEmpty &&
-              choices.first is Map
+      final message =
+          choices is List && choices.isNotEmpty && choices.first is Map
           ? (choices.first as Map)['message']
           : null;
       final answer = message is Map
           ? message['content']?.toString().trim()
           : null;
       if (answer == null || answer.isEmpty) {
-        throw const FormatException('100milionseek returned an empty response.');
+        throw const FormatException(
+          '100milionseek returned an empty response.',
+        );
       }
 
       _history
