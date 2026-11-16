@@ -83,6 +83,8 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       LucySettingsStore.aiScreenSharing,
       LucySettingsStore.screenAutomation,
       LucySettingsStore.directPhoneActions,
+      LucySettingsStore.memory,
+      LucySettingsStore.voiceOutput,
     }.contains(key)) {
       await widget.controller.stopAgent();
     }
@@ -91,6 +93,9 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   }
 
   Future<void> _setNotifications(bool enabled) async {
+    if (!enabled && widget.controller.isActive) {
+      await widget.controller.stopAgent();
+    }
     final saved = await _context.setNotificationContextEnabled(enabled);
     if (!saved) {
       _message('Could not update notification context.');
@@ -108,6 +113,9 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   }
 
   Future<void> _setLocation(bool enabled) async {
+    if (!enabled && widget.controller.isActive) {
+      await widget.controller.stopAgent();
+    }
     final result = enabled
         ? await _context.enableApproximateLocation()
         : await _context.disableApproximateLocation();
@@ -118,6 +126,9 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   }
 
   Future<void> _setCalendar(bool enabled) async {
+    if (!enabled && widget.controller.isActive) {
+      await widget.controller.stopAgent();
+    }
     if (enabled) {
       final granted = await _context.requestCalendarAccess();
       if (!granted) {
@@ -134,6 +145,9 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   }
 
   Future<void> _setForegroundContext(bool enabled) async {
+    if (!enabled && widget.controller.isActive) {
+      await widget.controller.stopAgent();
+    }
     await _settings.setEnabled(LucySettingsStore.foregroundAppContext, enabled);
     if (enabled) {
       await _context.openUsageAccessSettings();
