@@ -491,7 +491,7 @@ class AgentController extends ChangeNotifier {
 
     // Ordinary conversation never triggers screenshot or accessibility capture.
     final lower = text.toLowerCase().trim();
-    final needsPhone = RegExp(r'\b(open|launch|tap|click|press|select|scroll|swipe|type|enter|send|reply|message|call|dial|search in|install|uninstall|enable|disable|set alarm|set timer|read screen|read this|what is on my screen|look at my screen|describe this screen|book|order|upload|download|share|navigate|delete)\b').hasMatch(lower);
+    final needsPhone = RegExp(r'\b(open|launch|tap|click|press|select|scroll|swipe|type|enter|send|reply|message|call|dial|search in|install|uninstall|enable|disable|set alarm|set timer|alarm|timer|flashlight|torch|brightness|volume|battery|storage|contact|calendar|music|song|read screen|read this|what is on my screen|look at my screen|describe this screen|book|order|upload|download|share|navigate|delete)\b').hasMatch(lower);
     if (!needsPhone) {
       final reply = await _aiService.agentChat(text, memoryContext: memorySummary);
       if (!_cancelRequested) {
@@ -919,6 +919,45 @@ class AgentController extends ChangeNotifier {
 
     try {
       switch (action.type) {
+        case 'native_action':
+          final nativeAction = action.params['action'] as String? ?? '';
+          final nativeParams = action.params['params'];
+          if (nativeAction.isEmpty || nativeParams is! Map) {
+            _addConversation('I could not understand that native phone action.', false);
+            break;
+          }
+          final nativeResult = await _screenCapture.performNativeAction(
+            nativeAction,
+            params: Map<String, dynamic>.from(nativeParams),
+          );
+          if (nativeResult['success'] != true) {
+            final message = nativeResult['message']?.toString() ?? 'The Android action could not be completed.';
+            _addConversation('Native action unavailable: $message. I can try the on-screen method next.', false);
+          } else if (nativeAction == 'battery_status') {
+            final level = nativeResult['level_percent'] as int? ?? -1;
+            final charging = nativeResult['charging'] == true;
+            final message = level >= 0
+                ? 'Battery is at $level percent and ${charging ? 'charging' : 'not charging'}.'
+                : 'I could not read the battery level.';
+            _addConversation(message, false);
+            await _voiceService.speak(message, lang: _currentLang);
+          } else if (nativeAction == 'storage_status') {
+            final available = (nativeResult['available_bytes'] as num?)?.toDouble() ?? 0;
+            final total = (nativeResult['total_bytes'] as num?)?.toDouble() ?? 0;
+            final freeGb = (available / 1073741824).toStringAsFixed(1);
+            final totalGb = (total / 1073741824).toStringAsFixed(1);
+            final message = 'You have $freeGb gigabytes free out of $totalGb gigabytes of device storage.';
+            _addConversation(message, false);
+            await _voiceService.speak(message, lang: _currentLang);
+          } else if (nativeAction == 'find_contact') {
+            final name = nativeResult['name']?.toString() ?? 'That contact';
+            final number = nativeResult['phone_number']?.toString() ?? '';
+            final message = number.isEmpty ? 'I found $name, but no phone number was saved.' : 'I found $name. The number is $number.';
+            _addConversation(message, false);
+            await _voiceService.speak(message, lang: _currentLang);
+          }
+          break;
+
         case 'open_app':
           final package = action.params['package'] as String? ?? '';
           if (package.isNotEmpty) {
