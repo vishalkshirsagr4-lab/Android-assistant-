@@ -7,6 +7,7 @@ import '../services/agent_controller.dart';
 import '../services/app_update_service.dart';
 import '../services/grok_service.dart';
 import '../services/groq_service.dart';
+import '../services/hms_service.dart';
 import '../services/lucy_activity_store.dart';
 import '../services/performance_monitor.dart';
 import '../services/routine_scheduler.dart';
@@ -954,14 +955,18 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _showToolsDialog() async {
     final grokController = TextEditingController();
     final groqController = TextEditingController();
+    final hmsController = TextEditingController();
     final groqService = GroqService();
+    final hmsService = HmsService();
     var groqConfigured = await groqService.isConfigured();
+    var hmsConfigured = await hmsService.isConfigured();
     final snapshot = await _performanceMonitor.snapshot();
     final templates = await _activityStore.readAutomationTemplates();
     final configured = await _grokService.isConfigured();
     if (!mounted) {
       grokController.dispose();
       groqController.dispose();
+      hmsController.dispose();
       return;
     }
     await showDialog<void>(
@@ -978,6 +983,7 @@ class _HomeScreenState extends State<HomeScreen>
                 Text('Performance · RAM: ${snapshot.ramLabel}'),
                 Text('CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}'),
                 Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
+                const Text('Smart fallback is enabled: if a model is busy or reaches a limit, Lucy tries another configured provider.'),
                 const SizedBox(height: 12),
                 const Text('Groq Cloud provider', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text(groqConfigured ? 'Groq API key saved securely on this device.' : 'No Groq API key configured.'),
@@ -1044,6 +1050,82 @@ class _HomeScreenState extends State<HomeScreen>
                             }
                           : null,
                       child: const Text('Remove Groq key'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('100milionseek · DeepSeek V4.1 Flash', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(hmsConfigured
+                    ? 'API key saved securely on this device.'
+                    : 'No 100milionseek API key configured.'),
+                const Text(
+                  'Advertised allowance: 100M tokens per UTC day. Text requests only; screen-image requests use a vision-capable provider.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use 100milionseek for Lucy'),
+                  subtitle: const Text('Also used automatically when Gemini is overloaded on text-only requests.'),
+                  value: widget.controller.isHmsProvider,
+                  onChanged: hmsConfigured
+                      ? (enabled) => widget.controller.setHmsProvider(enabled)
+                      : null,
+                ),
+                TextField(
+                  controller: hmsController,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: '100milionseek API key',
+                    hintText: 'Paste your hms-… key',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        final key = hmsController.text.trim();
+                        if (key.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Paste your 100milionseek API key first.')),
+                          );
+                          return;
+                        }
+                        try {
+                          await hmsService.validateApiKey(key);
+                          await hmsService.saveApiKey(key);
+                          hmsConfigured = true;
+                          await widget.controller.setHmsProvider(true);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('100milionseek key verified and saved securely.')),
+                            );
+                          }
+                        } catch (error) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('100milionseek setup failed: $error')),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Verify & enable'),
+                    ),
+                    TextButton(
+                      onPressed: hmsConfigured
+                          ? () async {
+                              if (widget.controller.isHmsProvider) {
+                                await widget.controller.setHmsProvider(false);
+                              }
+                              await hmsService.clearApiKey();
+                              hmsConfigured = false;
+                              if (mounted) setState(() {});
+                            }
+                          : null,
+                      child: const Text('Remove key'),
                     ),
                   ],
                 ),
@@ -1187,6 +1269,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
     grokController.dispose();
     groqController.dispose();
+    hmsController.dispose();
   }
 
   Future<void> _manualCapture() async {
