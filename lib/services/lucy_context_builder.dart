@@ -45,6 +45,20 @@ class LucyContextBuilder {
   Future<bool> openUsageAccessSettings() async =>
       _invokeBoolean('openUsageAccessSettings');
 
+  Future<bool> setNotificationContextEnabled(bool enabled) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'setNotificationContextEnabled',
+            <String, dynamic>{'enabled': enabled},
+          ) ??
+          false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> clearNotificationHistory() async =>
       _invokeBoolean('clearNotificationHistory');
 
