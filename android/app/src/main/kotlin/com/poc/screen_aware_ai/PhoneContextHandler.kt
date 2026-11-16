@@ -121,6 +121,10 @@ class PhoneContextHandler(private val activity: Activity) {
             "foregroundApp" to getForegroundApp(),
             "notifications" to getRecentNotifications(),
             "notificationAccessEnabled" to isNotificationAccessEnabled(),
+            "notificationContextEnabled" to activity.getSharedPreferences(
+                NotificationContextListener.PREFERENCES_NAME,
+                Context.MODE_PRIVATE
+            ).getBoolean(NotificationContextListener.NOTIFICATION_ENABLED_KEY, false),
             "usageAccessEnabled" to hasUsageAccess(),
             "calendarAccessEnabled" to hasCalendarAccess(),
             "calendarEvents" to getUpcomingCalendarEvents(),
