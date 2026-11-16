@@ -54,6 +54,7 @@ class _UiSnapshot {
 
 class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
+  final GrokService _grokService = GrokService();
   final GroqService _groqService = GroqService();
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
