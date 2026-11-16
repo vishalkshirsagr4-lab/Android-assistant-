@@ -553,6 +553,7 @@ Open the shield icon on Lucy's top bar to control cloud AI requests, provider fa
 
 - `RECORD_AUDIO`: voice input, only while you start listening.
 - `INTERNET`: requests to the AI provider and update checks.
+- `ACCESS_NETWORK_STATE`: read the current network connectivity type for local context.
 - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `FOREGROUND_SERVICE_SPECIAL_USE`: visible microphone, screen-capture and stop-control sessions.
 - `POST_NOTIFICATIONS`: stop control and scheduled/proactive reminder notifications on Android 13+.
 - `ACCESS_COARSE_LOCATION`: optional approximate location context; disabled until opted in.
