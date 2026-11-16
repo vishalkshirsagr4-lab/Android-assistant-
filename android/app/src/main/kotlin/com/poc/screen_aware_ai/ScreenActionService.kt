@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.app.KeyguardManager
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -39,7 +40,16 @@ class ScreenActionService : AccessibilityService() {
      * Dispatch a gesture and wait for completion (up to 2 seconds).
      * Returns true if completed, false if cancelled or timed out.
      */
+    fun isDeviceLocked(): Boolean {
+        val keyguard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        return keyguard.isKeyguardLocked
+    }
+
     private fun dispatchGestureSync(gesture: GestureDescription): Boolean {
+        if (isDeviceLocked()) {
+            Log.i(TAG, "Ignoring screen gesture while the device is locked")
+            return false
+        }
         val latch = CountDownLatch(1)
         var success = false
 
@@ -79,8 +89,9 @@ class ScreenActionService : AccessibilityService() {
         return dispatchGestureSync(gestureBuilder.build())
     }
 
-    fun performType(text: String) {
-        val rootNode = rootInActiveWindow ?: return
+    fun performType(text: String): Boolean {
+        if (isDeviceLocked()) return false
+        val rootNode = rootInActiveWindow ?: return false
         val focusedNode = findFocusedEditText(rootNode)
 
         if (focusedNode != null) {
@@ -89,9 +100,13 @@ class ScreenActionService : AccessibilityService() {
                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                 text
             )
-            focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            val changed = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            focusedNode.recycle()
+            rootNode.recycle()
+            return changed
         }
         rootNode.recycle()
+        return false
     }
 
     private fun findFocusedEditText(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -119,12 +134,14 @@ class ScreenActionService : AccessibilityService() {
         return dispatchGestureSync(gestureBuilder.build())
     }
 
-    fun pressBack() {
-        performGlobalAction(GLOBAL_ACTION_BACK)
+    fun pressBack(): Boolean {
+        if (isDeviceLocked()) return false
+        return performGlobalAction(GLOBAL_ACTION_BACK)
     }
 
-    fun pressHome() {
-        performGlobalAction(GLOBAL_ACTION_HOME)
+    fun pressHome(): Boolean {
+        if (isDeviceLocked()) return false
+        return performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
     /**
@@ -134,6 +151,13 @@ class ScreenActionService : AccessibilityService() {
      * Limits: max ~200 elements, max depth ~20.
      */
     fun getUITree(): String {
+        if (isDeviceLocked()) {
+            return JSONObject().apply {
+                put("package", "locked")
+                put("locked", true)
+                put("elements", JSONArray())
+            }.toString()
+        }
         val elements = JSONArray()
         var elementCount = 0
         val maxElements = 200
