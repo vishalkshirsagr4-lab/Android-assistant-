@@ -68,7 +68,7 @@ class LucyActionApprovalPolicy {
           : 'medium';
     } else if (action == 'tap') {
       final label = (targetLabel ?? '').trim().toLowerCase();
-      if (_sensitiveTapLabels.any(label.contains) ||
+      if (_sensitiveTapLabels.any((sensitive) => label.contains(sensitive)) ||
           (label.isEmpty && _messagingPackages.contains(packageName))) {
         localRisk = 'high';
       } else {
