@@ -1169,7 +1169,7 @@ class AgentController extends ChangeNotifier {
     final modelConfidence = rawConfidence is num
         ? rawConfidence.toDouble().clamp(0.0, 1.0).toDouble()
         : 0.5;
-    if (modelConfidence != null && modelConfidence < 0.30) {
+    if (modelConfidence < 0.30) {
       _addConversation(
         'I am not confident I understood that action correctly. Please repeat or clarify the request.',
         false,
