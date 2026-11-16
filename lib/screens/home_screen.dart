@@ -1009,6 +1009,15 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _showRoutineSchedulerDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('lucy_cap_scheduled_reminders') == false) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Scheduled reminders are disabled in Privacy & settings.')),
+        );
+      }
+      return;
+    }
     final titleController = TextEditingController(text: 'Lucy reminder');
     final bodyController = TextEditingController();
     final minutesController = TextEditingController(text: '30');
