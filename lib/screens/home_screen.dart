@@ -177,8 +177,7 @@ class _HomeScreenState extends State<HomeScreen>
     _apiKeyController.clear();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gemini key saved securely on this device.')),
-      );
+        const SnackBar(content: Text('Gemini key saved securely on this device.')),      );
     }
   }
 
@@ -357,8 +356,7 @@ class _HomeScreenState extends State<HomeScreen>
                     bottom: 12,
                     height: MediaQuery.sizeOf(context).height * 0.22,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: DecoratedBox(
+                      borderRadius: BorderRadius.circular(20),                      child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: colorScheme.surface.withOpacity(0.82),
                           border: Border.all(
@@ -537,8 +535,7 @@ class _HomeScreenState extends State<HomeScreen>
                     height: 60,
                     color: Colors.grey[800],
                     child: const Center(
-                      child: Icon(Icons.broken_image, size: 24),
-                    ),
+                      child: Icon(Icons.broken_image, size: 24),                    ),
                   ),
                 ),
               ),
@@ -717,8 +714,7 @@ class _HomeScreenState extends State<HomeScreen>
     'kn': 'KN',
   };
 
-  Widget _buildLanguageToggle() {
-    final current = widget.controller.currentLang;
+  Widget _buildLanguageToggle() {    final current = widget.controller.currentLang;
     return PopupMenuButton<String>(
       tooltip: 'Input / reply language',
       initialValue: current,
@@ -897,8 +893,7 @@ class _HomeScreenState extends State<HomeScreen>
     repeatController.dispose();
   }
 
-  Future<void> _showScheduledRoutinesDialog() async {
-    try {
+  Future<void> _showScheduledRoutinesDialog() async {    try {
       final routines = await LucyRoutineScheduler.listRoutines();
       if (!mounted) return;
       await showDialog<void>(
@@ -952,6 +947,86 @@ class _HomeScreenState extends State<HomeScreen>
         );
       }
     }
+  }
+
+  Future<void> _showMemoryManagerDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final memories = widget.controller.savedMemories;
+          return AlertDialog(
+            title: const Text('Lucy memory'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 340,
+              child: memories.isEmpty
+                  ? const Text(
+                      'No saved memories. Say “remember that…” to save a detail, or “call me …” to set how Lucy addresses you.',
+                    )
+                  : ListView.separated(
+                      itemCount: memories.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = memories[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(item.content),
+                          subtitle: Text(
+                            '${item.category} · updated ${item.updatedAt.toLocal()}',
+                          ),
+                          trailing: IconButton(
+                            tooltip: 'Forget this memory',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () async {
+                              await widget.controller.forgetUserMemory(item.content);
+                              setDialogState(() {});
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: memories.isEmpty
+                    ? null
+                    : () async {
+                        final confirmed = await showDialog<bool>(
+                          context: dialogContext,
+                          builder: (confirmContext) => AlertDialog(
+                            title: const Text('Clear all Lucy memories?'),
+                            content: const Text(
+                              'This permanently clears the memories saved by Lucy on this device.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(confirmContext, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(confirmContext, true),
+                                child: const Text('Clear all'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          await widget.controller.clearUserMemories();
+                          setDialogState(() {});
+                        }
+                      },
+                child: const Text('Clear all'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _showToolsDialog() async {
@@ -1026,6 +1101,14 @@ class _HomeScreenState extends State<HomeScreen>
                     );
                   },
                 ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showMemoryManagerDialog();
+                  },
+                  icon: const Icon(Icons.psychology_alt_outlined),
+                  label: Text('Manage saved memory · ${widget.controller.savedMemories.length}'),
+                ),
                 Wrap(
                   spacing: 8,
                   runSpacing: 4,
@@ -1077,8 +1160,7 @@ class _HomeScreenState extends State<HomeScreen>
                       },
                       child: const Text('Usage access'),
                     ),
-                    OutlinedButton(
-                      onPressed: () async {
+                    OutlinedButton(                      onPressed: () async {
                         final granted = await _contextBuilder.requestCalendarAccess();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1257,8 +1339,7 @@ class _HomeScreenState extends State<HomeScreen>
                     TextButton(
                       onPressed: hmsConfigured
                           ? () async {
-                              if (widget.controller.isHmsProvider) {
-                                await widget.controller.setHmsProvider(false);
+                              if (widget.controller.isHmsProvider) {                                await widget.controller.setHmsProvider(false);
                               }
                               await hmsService.clearApiKey();
                               hmsConfigured = false;
