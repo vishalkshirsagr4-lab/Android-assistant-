@@ -14,6 +14,7 @@ import 'performance_monitor.dart';
 import 'action_approval_policy.dart';
 import 'routine_scheduler.dart';
 import 'phone_action_service.dart';
+import 'lucy_memory_store.dart';
 
 enum AgentState {
   idle,
@@ -109,53 +110,127 @@ class AgentController extends ChangeNotifier {
   static const String _langPrefKey = 'lucy_lang';
   static const String _providerPrefKey = 'lucy_ai_provider';
   static const String _legacyProviderPrefKey = 'lucy_use_grok';
-  static const String _memoryPrefKey = 'lucy_user_approved_memories_v1';
   static const Set<String> _supportedLangs = {'en', 'ja', 'ar', 'hi', 'kn'};
-  final List<String> _userMemories = <String>[];
-  String get memorySummary => _userMemories.join('\n');
+  LucyMemoryStore? _memoryStore;
+  String get memorySummary => _memoryStore?.summary ?? '';
+  List<LucyMemory> get savedMemories =>
+      _memoryStore?.items ?? const <LucyMemory>[];
 
-  Future<void> _loadUserMemories(SharedPreferences prefs) async {
-    _userMemories
-      ..clear()
-      ..addAll(prefs.getStringList(_memoryPrefKey) ?? const <String>[]);
+  Future<void> rememberUserMemory(String content, {String category = 'fact'}) async {
+    await _memoryStore?.remember(content, category: category);
+    notifyListeners();
   }
 
-  Future<void> _saveUserMemory(String memory) async {
-    final cleaned = memory.trim();
-    if (cleaned.isEmpty || cleaned.length > 240) return;
-    if (_userMemories.any((item) => item.toLowerCase() == cleaned.toLowerCase())) return;
-    _userMemories.add(cleaned);
-    if (_userMemories.length > 30) _userMemories.removeAt(0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_memoryPrefKey, _userMemories);
+  Future<int> forgetUserMemory(String query) async {
+    final removed = await _memoryStore?.forgetMatching(query) ?? 0;
+    notifyListeners();
+    return removed;
+  }
+
+  Future<void> clearUserMemories() async {
+    await _memoryStore?.clear();
+    notifyListeners();
+  }
+
+  Future<void> _replyToMemoryCommand(String reply) async {
+    _addConversation(reply, false);
+    _setState(AgentState.speaking);
+    await _voiceService.speak(reply, lang: _currentLang);
   }
 
   Future<bool> _handleMemoryCommand(String text) async {
     final trimmed = text.trim();
     final lower = trimmed.toLowerCase();
+
+    if (lower == 'what do you remember' ||
+        lower == 'what do you remember about me' ||
+        lower == 'show my memories' ||
+        lower == 'list memories') {
+      final summary = memorySummary;
+      await _replyToMemoryCommand(
+        summary.isEmpty
+            ? 'I do not have any saved memories yet. Say “remember that…” when you want me to save something.'
+            : 'Here is what I have saved, only because you asked me to remember it: $summary',
+      );
+      return true;
+    }
+
+    if (lower == 'forget all memories' ||
+        lower == 'forget everything' ||
+        lower == 'clear my memories' ||
+        lower == 'delete all memories') {
+      await clearUserMemories();
+      await _replyToMemoryCommand('I cleared the memories Lucy saved on this device.');
+      return true;
+    }
+
+    if (lower.startsWith('forget ') || lower.startsWith('forget that ')) {
+      final query = trimmed
+          .replaceFirst(RegExp(r'^forget\s+(that\s+)?', caseSensitive: false), '')
+          .trim();
+      if (query.isEmpty || query == 'this') {
+        await _replyToMemoryCommand('Tell me the saved detail you want me to forget.');
+      } else {
+        final removed = await forgetUserMemory(query);
+        await _replyToMemoryCommand(
+          removed > 0
+              ? 'I forgot $removed matching saved memory items.'
+              : 'I could not find a saved memory matching that detail.',
+        );
+      }
+      return true;
+    }
+
+    if (lower.startsWith('call me ')) {
+      final preferredName = trimmed.substring('call me '.length).trim();
+      if (preferredName.isNotEmpty && preferredName.length <= 60) {
+        await rememberUserMemory(
+          'The user prefers to be addressed as $preferredName.',
+          category: 'preference',
+        );
+        await _replyToMemoryCommand('Okay. I will use $preferredName when addressing you.');
+      } else {
+        await _replyToMemoryCommand('Tell me what you would like me to call you.');
+      }
+      return true;
+    }
+
     const prefixes = ['remember that ', 'remember: ', 'lucy remember '];
     for (final prefix in prefixes) {
       if (lower.startsWith(prefix)) {
         final fact = trimmed.substring(prefix.length).trim();
-        final reply = fact.isEmpty
-            ? 'Tell me what you want me to remember.'
-            : 'I saved that on this device. You can ask me to forget it later.';
-        if (fact.isNotEmpty) await _saveUserMemory(fact);
-        _addConversation(reply, false);
-        _setState(AgentState.speaking);
-        await _voiceService.speak(reply, lang: _currentLang);
+        if (fact.isEmpty) {
+          await _replyToMemoryCommand('Tell me what you want me to remember.');
+          return true;
+        }
+        final factLower = fact.toLowerCase();
+        final category = factLower.contains('prefer') ||
+                factLower.contains('like') ||
+                factLower.contains('favorite') ||
+                factLower.contains('favourite')
+            ? 'preference'
+            : factLower.contains('every day') ||
+                    factLower.contains('every morning') ||
+                    factLower.contains('every evening') ||
+                    factLower.contains('routine')
+                ? 'routine'
+                : factLower.contains('my friend') ||
+                        factLower.contains('my mother') ||
+                        factLower.contains('my father') ||
+                        factLower.contains('my brother') ||
+                        factLower.contains('my sister')
+                    ? 'relationship'
+                    : factLower.contains('goal') ||
+                            factLower.contains('want to become') ||
+                            factLower.contains('planning to')
+                        ? 'goal'
+                        : 'fact';
+        await rememberUserMemory(fact, category: category);
+        await _replyToMemoryCommand(
+          'Saved on this device as a $category. You can ask what I remember or tell me to forget it.',
+        );
         return true;
       }
-    }
-    if (lower == 'forget all memories' || lower == 'clear my memories') {
-      _userMemories.clear();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_memoryPrefKey);
-      const reply = 'I cleared the memories saved by Lucy on this device.';
-      _addConversation(reply, false);
-      _setState(AgentState.speaking);
-      await _voiceService.speak(reply, lang: _currentLang);
-      return true;
     }
     return false;
   }
@@ -177,8 +252,7 @@ class AgentController extends ChangeNotifier {
   }
 
   static const Map<String, String> _followUps = {
-    'en': 'Do you need any further help?',
-    'ja': '他に何かお手伝いできることはありますか？',
+    'en': 'Do you need any further help?',    'ja': '他に何かお手伝いできることはありますか？',
     'ar': 'هل تحتاج إلى أي مساعدة أخرى؟',
     'hi': 'क्या आपको और किसी मदद की ज़रूरत है?',
     'kn': 'ನಿಮಗೆ ಇನ್ನೇನಾದರೂ ಸಹಾಯ ಬೇಕೇ?',
@@ -226,7 +300,8 @@ class AgentController extends ChangeNotifier {
     if (prefs.containsKey('gemini_api_key')) {
       await prefs.remove('gemini_api_key');
     }
-    await _loadUserMemories(prefs);
+    _memoryStore = LucyMemoryStore(prefs);
+    await _memoryStore!.initialize();
     final savedProvider = prefs.getString(_providerPrefKey);
     final provider = savedProvider ??
         ((prefs.getBool(_legacyProviderPrefKey) ?? false) ? 'grok' : 'gemini');
@@ -357,8 +432,7 @@ class AgentController extends ChangeNotifier {
     await _aiService.configure(apiKey);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('gemini_api_key');
-    notifyListeners();
-  }
+    notifyListeners();  }
 
   Future<void> removeGeminiKey() async {
     await _aiService.clearGeminiKey();
@@ -537,8 +611,7 @@ class AgentController extends ChangeNotifier {
 
       // 1. Capture screenshot (with retries for reliability after app switches)
       _setState(AgentState.capturing);
-      _statusMessage = '📸 Capturing screen... (step $step)';
-      notifyListeners();
+      _statusMessage = '📸 Capturing screen... (step $step)';      notifyListeners();
 
       final screenshotFuture = _captureScreenWithRetry();
       final uiSnapshotFuture = _fetchUiSnapshot();
@@ -572,7 +645,7 @@ class AgentController extends ChangeNotifier {
         imageBytes: screenshotBytes,
         screenSize: screenSize,
         uiTree: uiTree,
-        memoryContext: memorySummary,
+        memoryContext: _memoryStore?.relevantContext(userMessage) ?? '',
       );
       aiStopwatch.stop();
       _performanceMonitor.recordResponse(aiStopwatch.elapsed);
@@ -717,8 +790,7 @@ class AgentController extends ChangeNotifier {
         return {
           'x': (bounds['cx'] as num).toDouble(),
           'y': (bounds['cy'] as num).toDouble(),
-        };
-      }
+        };      }
     }
     return null;
   }
@@ -897,8 +969,7 @@ class AgentController extends ChangeNotifier {
         return currentSnapshot;
       }
 
-      final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) {
+      final remaining = deadline.difference(DateTime.now());      if (remaining <= Duration.zero) {
         break;
       }
 
@@ -1077,8 +1148,7 @@ class AgentController extends ChangeNotifier {
           final delayMinutes =
               (action.params['delayMinutes'] as num?)?.toInt() ?? 0;
           final repeatMinutes =
-              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;
-          if (title.isEmpty || delayMinutes < 1) {
+              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;          if (title.isEmpty || delayMinutes < 1) {
             _addConversation(
               'I need a reminder title and a future time. Please say when you want it.',
               false,
@@ -1257,8 +1327,7 @@ class AgentController extends ChangeNotifier {
   }
 
   void _setState(AgentState newState) {
-    _state = newState;
-    notifyListeners();
+    _state = newState;    notifyListeners();
   }
 
   Future<bool> capturePreview() async {
