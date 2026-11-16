@@ -65,9 +65,15 @@ class VoiceService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      _speechRate = (prefs.getDouble(_rateKey) ?? 0.48).clamp(0.35, 0.65);
-      _pitch = (prefs.getDouble(_pitchKey) ?? 1.0).clamp(0.8, 1.2);
-      _volume = (prefs.getDouble(_volumeKey) ?? 1.0).clamp(0.3, 1.0);
+      _speechRate = (prefs.getDouble(_rateKey) ?? 0.48)
+          .clamp(0.35, 0.65)
+          .toDouble();
+      _pitch = (prefs.getDouble(_pitchKey) ?? 1.0)
+          .clamp(0.8, 1.2)
+          .toDouble();
+      _volume = (prefs.getDouble(_volumeKey) ?? 1.0)
+          .clamp(0.3, 1.0)
+          .toDouble();
 
       // speech_to_text requests RECORD_AUDIO while Lucy is visible. The native
       // service owns the actual recognizer so there is only one microphone.
@@ -113,13 +119,13 @@ class VoiceService {
     if (_disposed) return;
 
     if (speechRate != null) {
-      _speechRate = speechRate.clamp(0.35, 0.65);
+      _speechRate = speechRate.clamp(0.35, 0.65).toDouble();
     }
     if (pitch != null) {
-      _pitch = pitch.clamp(0.8, 1.2);
+      _pitch = pitch.clamp(0.8, 1.2).toDouble();
     }
     if (volume != null) {
-      _volume = volume.clamp(0.3, 1.0);
+      _volume = volume.clamp(0.3, 1.0).toDouble();
     }
 
     if (_isInitialized) {
@@ -244,9 +250,27 @@ class VoiceService {
     if (_disposed) return;
     _disposed = true;
     _native.setMethodCallHandler(null);
-    unawaited(_native.invokeMethod<bool>('stop'));
-    unawaited(_speech.stop());
-    unawaited(_speech.cancel());
-    unawaited(_tts.stop());
+    unawaited(_disposeNative());
+    unawaited(_disposeSpeech());
+    unawaited(_disposeTts());
+  }
+
+  Future<void> _disposeNative() async {
+    try {
+      await _native.invokeMethod<bool>('stop');
+    } catch (_) {}
+  }
+
+  Future<void> _disposeSpeech() async {
+    try {
+      await _speech.stop();
+      await _speech.cancel();
+    } catch (_) {}
+  }
+
+  Future<void> _disposeTts() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
   }
 }
