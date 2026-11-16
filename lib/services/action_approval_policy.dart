@@ -6,7 +6,7 @@ class LucyActionApprovalPolicy {
     'remove', 'buy', 'purchase', 'pay', 'checkout', 'confirm payment',
     'submit order', 'uninstall', 'call', 'video call', 'place call',
     'make call', 'start call', 'dial', 'confirm', 'submit', 'transfer',
-    'install', 'allow', 'grant', 'enable administrator'
+    'install', 'allow', 'grant', 'enable administrator',
   };
 
   static const Set<String> _messagingPackages = {
@@ -18,6 +18,14 @@ class LucyActionApprovalPolicy {
     'com.android.dialer',
     'com.google.android.dialer',
     'com.android.contacts',
+  };
+
+  static const Set<String> _sensitivePackageMarkers = {
+    'bank',
+    'wallet',
+    'payment',
+    'upi',
+    'finance',
   };
 
   static const Set<String> _lowRiskActions = {
@@ -39,15 +47,25 @@ class LucyActionApprovalPolicy {
     'get_device_status',
   };
 
+  /// Computes risk locally. A model may raise risk, but cannot lower it.
+  ///
+  /// [sensitiveInput] is true when the focused accessibility field is a
+  /// password field. Financial-app text entry is also treated as high risk.
   static String effectiveRisk(
     String action, {
     String? targetLabel,
     String? packageName,
     String? modelRisk,
     double? confidence,
+    bool sensitiveInput = false,
   }) {
+    final package = (packageName ?? '').toLowerCase();
+    final sensitivePackage = _sensitivePackageMarkers.any(package.contains);
     var localRisk = 'high';
-    if (_lowRiskActions.contains(action)) {
+
+    if (action == 'type') {
+      localRisk = sensitiveInput || sensitivePackage ? 'high' : 'low';
+    } else if (_lowRiskActions.contains(action)) {
       localRisk = 'low';
     } else if (action == 'place_call' ||
         action == 'send_sms' ||
@@ -68,17 +86,9 @@ class LucyActionApprovalPolicy {
           : 'medium';
     } else if (action == 'tap') {
       final label = (targetLabel ?? '').trim().toLowerCase();
-      final package = (packageName ?? '').toLowerCase();
-      final sensitivePackage = [
-        'bank',
-        'wallet',
-        'payment',
-        'upi',
-        'finance',
-      ].any((marker) => package.contains(marker));
       if (sensitivePackage ||
-          _sensitiveTapLabels.any((sensitive) => label.contains(sensitive)) ||
-          (label.isEmpty && _messagingPackages.contains(packageName))) {
+          _sensitiveTapLabels.any(label.contains) ||
+          (label.isEmpty && _messagingPackages.contains(package))) {
         localRisk = 'high';
       } else if (label.isEmpty) {
         localRisk = 'medium';
@@ -88,7 +98,8 @@ class LucyActionApprovalPolicy {
     }
 
     var rank = _rank(localRisk);
-    rank = rank > _rank(_normalizeRisk(modelRisk)) ? rank : _rank(_normalizeRisk(modelRisk));
+    final modelRank = _rank(_normalizeRisk(modelRisk));
+    if (modelRank > rank) rank = modelRank;
     if (confidence != null && confidence < 0.55 && rank < 1) {
       rank = 1;
     }
@@ -101,6 +112,7 @@ class LucyActionApprovalPolicy {
     String? packageName,
     String? modelRisk,
     double? confidence,
+    bool sensitiveInput = false,
   }) {
     return effectiveRisk(
           action,
@@ -108,6 +120,7 @@ class LucyActionApprovalPolicy {
           packageName: packageName,
           modelRisk: modelRisk,
           confidence: confidence,
+          sensitiveInput: sensitiveInput,
         ) !=
         'low';
   }
@@ -132,6 +145,7 @@ class LucyActionApprovalPolicy {
         return 'medium';
       case 'high':
       default:
+        // Unknown metadata fails closed rather than silently becoming low.
         return 'high';
     }
   }
