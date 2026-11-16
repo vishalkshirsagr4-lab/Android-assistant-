@@ -80,7 +80,7 @@ class AgentController extends ChangeNotifier {
   static const int _maxListenRetries = 3;
 
   static const int _maxStepsPerCommand = 50;
-  static const Duration _uiPollInterval = Duration(milliseconds: 120);
+  static const Duration _uiPollInterval = Duration(milliseconds: 80);
   static const Duration _tapReadyTimeout = Duration(milliseconds: 900);
   static const Duration _typeReadyTimeout = Duration(milliseconds: 900);
   static const Duration _navigationReadyTimeout = Duration(milliseconds: 1200);
@@ -163,7 +163,56 @@ class AgentController extends ChangeNotifier {
   String get currentLang => _currentLang;
 
   static const String _langPrefKey = 'lucy_lang';
-  static const Set<String> _supportedLangs = {'en', 'ja', 'ar'};
+  static const Set<String> _supportedLangs = {'en', 'ja', 'ar', 'hi', 'kn'};
+  static const String _memoryPrefKey = 'lucy_user_approved_memories_v1';
+  final List<String> _userMemories = <String>[];
+
+  String get memorySummary => _userMemories.join('\\n');
+
+  Future<void> _loadUserMemories(SharedPreferences prefs) async {
+    _userMemories
+      ..clear()
+      ..addAll(prefs.getStringList(_memoryPrefKey) ?? const <String>[]);
+  }
+
+  Future<void> _saveUserMemory(String memory) async {
+    final cleaned = memory.trim();
+    if (cleaned.isEmpty || cleaned.length > 240) return;
+    if (_userMemories.any((item) => item.toLowerCase() == cleaned.toLowerCase())) return;
+    _userMemories.add(cleaned);
+    if (_userMemories.length > 30) _userMemories.removeAt(0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_memoryPrefKey, _userMemories);
+  }
+
+  Future<bool> _handleMemoryCommand(String text) async {
+    final trimmed = text.trim();
+    final lower = trimmed.toLowerCase();
+    const rememberPrefixes = ['remember that ', 'remember: ', 'lucy remember '];
+    for (final prefix in rememberPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final fact = trimmed.substring(prefix.length).trim();
+        await _saveUserMemory(fact);
+        final reply = fact.isEmpty ? 'Tell me what you want me to remember.' : 'I saved that on this device. You can ask me to forget it later.';
+        _addConversation(reply, false);
+        _setState(AgentState.speaking);
+        await _voiceService.speak(reply, lang: _currentLang);
+        return true;
+      }
+    }
+    if (lower == 'forget all memories' || lower == 'clear my memories') {
+      _userMemories.clear();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_memoryPrefKey);
+      const reply = 'I cleared the memories saved by Lucy on this device.';
+      _addConversation(reply, false);
+      _setState(AgentState.speaking);
+      await _voiceService.speak(reply, lang: _currentLang);
+      return true;
+    }
+    return false;
+  }
+
 
   /// Set the UI/voice language. Persists across restarts. Restarts the
   /// listener if currently active so STT picks up the new locale.
@@ -185,6 +234,8 @@ class AgentController extends ChangeNotifier {
     'en': 'Alright, stopping the agent.',
     'ja': 'わかりました。エージェントを停止します。',
     'ar': 'حسنًا، سأوقف المساعد الآن.',
+    'hi': 'ठीक है, मैं Lucy को रोक रहा हूँ।',
+    'kn': 'ಸರಿ, Lucy ಅನ್ನು ನಿಲ್ಲಿಸುತ್ತಿದ್ದೇನೆ.',
   };
 
   // Patterns that mean "no, I'm done" when replying to the follow-up prompt.
@@ -196,7 +247,7 @@ class AgentController extends ChangeNotifier {
     r'(いいえ|いえ|けっこう|結構|もういい|もう大丈夫|大丈夫|終了|終わり|やめて|止めて|停止|いらない|不要|ない)',
   );
   // Arabic forms: "no", "stop", "enough", "done", "nothing".
-  static final RegExp _negativeAr = RegExp(
+  static final RegExp _negativeHiKn = RegExp(r'(नहीं|रुको|बंद|बस|ಸಾಕು|ಬೇಡ|ನಿಲ್ಲಿಸು)');\n  static final RegExp _negativeAr = RegExp(
     r'(لا|كلا|توقف|قف|اوقف|أوقف|اكتفي|يكفي|كفى|انتهى|انتهيت|خلاص|لا شيء|لا شكرا|لا شكرًا)',
   );
 
@@ -244,6 +295,7 @@ class AgentController extends ChangeNotifier {
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
+    await _loadUserMemories(prefs);
     final savedProvider = prefs.getString(_providerPrefKey);
     // Migrate the old boolean preference used by previous Lucy builds.
     final provider = savedProvider ??
@@ -434,7 +486,7 @@ class AgentController extends ChangeNotifier {
     final lower = text.toLowerCase().trim();
     final needsPhone = RegExp(r'\b(open|launch|tap|click|press|select|scroll|swipe|type|enter|send|reply|message|call|dial|search in|install|uninstall|enable|disable|set alarm|set timer|read screen|read this|what is on my screen|look at my screen|describe this screen|book|order|upload|download|share|navigate|delete)\b').hasMatch(lower);
     if (!needsPhone) {
-      final reply = await _aiService.agentChat(text);
+      final reply = await _aiService.agentChat(text, memoryContext: memorySummary);
       if (!_cancelRequested) {
         final answer = reply.speak.trim().isEmpty ? 'I’m here. What would you like to do?' : reply.speak.trim();
         _addConversation(answer, false);
