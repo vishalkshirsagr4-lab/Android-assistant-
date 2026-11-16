@@ -39,6 +39,7 @@ class VoiceService {
   bool _nativeHandlerInstalled = false;
   bool _isInitialized = false;
   bool _isListening = false;
+  bool _isPausedForProcessing = false;
   bool _isSpeaking = false;
   bool _disposed = false;
   String _currentTtsLanguage = 'en-US';
@@ -151,7 +152,17 @@ class VoiceService {
     if (_isSpeaking) {
       await stopSpeaking();
     }
-    if (_isListening) return true;
+    if (_isListening && !_isPausedForProcessing) return true;
+    if (_isListening && _isPausedForProcessing) {
+      try {
+        final resumed = await _native.invokeMethod<bool>('resumeAfterProcessing');
+        _isPausedForProcessing = false;
+        return resumed == true;
+      } catch (error) {
+        onError?.call('Could not resume listening: $error');
+        return false;
+      }
+    }
 
     if (!_nativeHandlerInstalled) {
       _nativeHandlerInstalled = true;
@@ -211,10 +222,23 @@ class VoiceService {
     }
   }
 
+  /// Pauses recognition but keeps the foreground service and Stop notification
+  /// alive while Lucy processes a command or speaks its response.
+  Future<void> pauseListeningForProcessing() async {
+    if (!_isListening || _isPausedForProcessing || _disposed) return;
+    try {
+      await _native.invokeMethod<bool>('pauseForProcessing');
+      _isPausedForProcessing = true;
+    } catch (_) {
+      // Continue processing even if Android cannot pause recognition cleanly.
+    }
+  }
+
   Future<void> stopListening() async {
-    // Clear the flag before Android's onDestroy broadcast arrives so a
+    // Clear the flags before Android's onDestroy broadcast arrives so a
     // deliberate stop is never interpreted as an unexpected disconnect.
     _isListening = false;
+    _isPausedForProcessing = false;
     try {
       await _native.invokeMethod<bool>('stop');
     } catch (_) {
@@ -228,7 +252,7 @@ class VoiceService {
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
     if (!_isInitialized && !await initialize()) return;
 
-    if (_isListening) {
+    if (_isListening && !_isPausedForProcessing) {
       await stopListening();
     }
     if (_isSpeaking) {
