@@ -11,6 +11,7 @@ class LucySettingsStore {
   static const scheduledReminders = 'lucy_cap_scheduled_reminders';
   static const aiRequests = 'lucy_cap_ai_requests';
   static const providerFallback = 'lucy_cap_provider_fallback';
+  static const foregroundAppContext = 'lucy_context_foreground_app_enabled';
 
   static const Map<String, bool> defaults = <String, bool>{
     voiceInput: true,
@@ -22,6 +23,7 @@ class LucySettingsStore {
     scheduledReminders: true,
     aiRequests: true,
     providerFallback: true,
+    foregroundAppContext: true,
   };
 
   Future<bool> isEnabled(String key) async {
