@@ -130,7 +130,9 @@ class LucyContextBuilder {
       lines.add('Foreground app: ${_clean(foregroundApp, 60)}.');
     }
 
-    final notifications = status['notifications'];
+    final notifications = status['notificationContextEnabled'] == true
+        ? status['notifications']
+        : null;
     if (notifications is List && notifications.isNotEmpty) {
       lines.add('Recent notifications (up to 5; locally cached):');
       for (final raw in notifications.take(5)) {
@@ -215,7 +217,7 @@ class LucyContextBuilder {
   }
 
   static String _clean(String value, int maxLength) {
-    final normalized = value.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.length <= maxLength) return normalized;
     return '${normalized.substring(0, maxLength - 1)}…';
   }
