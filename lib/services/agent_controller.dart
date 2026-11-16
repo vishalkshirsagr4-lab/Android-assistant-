@@ -15,6 +15,7 @@ import 'action_approval_policy.dart';
 import 'routine_scheduler.dart';
 import 'phone_action_service.dart';
 import 'lucy_memory_store.dart';
+import 'agent_reliability.dart';
 
 enum AgentState {
   idle,
@@ -103,6 +104,7 @@ class AgentController extends ChangeNotifier {
   static const Duration _openAppReadyTimeout = Duration(milliseconds: 2500);
 
   bool _cancelRequested = false;
+  bool _lastActionDispatchSucceeded = true;
   Completer<bool>? _pendingVoiceApproval;
 
   bool _isAskingForFurtherHelp = false;
@@ -1080,7 +1082,11 @@ class AgentController extends ChangeNotifier {
     // network, foreground-app and calendar changes are visible to Lucy.
     // Android omits optional sources unless the user granted access.
     final screenSize = await _screenCapture.getScreenSize();
+    final loopGuard = LucyAgentLoopGuard();
+    var currentPlan = <String>[];
+    var completedPlanSteps = 0;
 
+    LucyReliabilityLog.event('agent_task_started');
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
       step++;
 
@@ -1105,19 +1111,34 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
 
-      // 2. Send to AI (with screenshot + UI tree)
+      if (_isPermissionPrompt(uiSnapshot)) {
+        const message =
+            'Android is showing a permission prompt. Please review it and choose the option you want. Lucy will not grant permissions automatically. Restart the task after you finish.';
+        _addConversation(message, false);
+        await _voiceService.speak(message, lang: _currentLang);
+        break;
+      }
+
+      // 2. Ask for a plan and one action. The model's plan is retained locally
+      // and included in subsequent turns so a provider switch does not lose it.
       _setState(AgentState.analyzing);
-      _statusMessage = '🤖 Thinking... (step $step)';
+      _statusMessage = '🤖 Planning and thinking... (step $step)';
       notifyListeners();
 
       final aiStopwatch = Stopwatch()..start();
       final deviceContext = await _contextBuilder.buildPromptContext();
       if (_cancelRequested) break;
       final localNow = DateTime.now();
+      final planContext = currentPlan.isEmpty
+          ? ''
+          : '[CURRENT_PLAN]\n'
+                '${currentPlan.asMap().entries.map((entry) => '${entry.key + 1}. ${entry.value}').join('\n')}\n'
+                'Completed steps: $completedPlanSteps\n'
+                '[/CURRENT_PLAN]\n';
       final requestWithClock =
           '[Device local date/time: ${localNow.toIso8601String()}]\n'
           '${deviceContext.isEmpty ? '' : '$deviceContext\n'}'
-          '${currentMessage}';
+          '${planContext}${currentMessage}';
       final agentResponse = await _aiService.agentChat(
         requestWithClock,
         imageBytes: screenshotBytes,
@@ -1127,14 +1148,30 @@ class AgentController extends ChangeNotifier {
       );
       aiStopwatch.stop();
       _performanceMonitor.recordResponse(aiStopwatch.elapsed);
+      LucyReliabilityLog.event(
+        'agent_model_response',
+        provider: agentResponse.provider,
+        step: step,
+        elapsedMs: aiStopwatch.elapsedMilliseconds,
+        success: agentResponse.provider != 'none',
+      );
 
       if (_cancelRequested) break;
+
+      if (agentResponse.plan.isNotEmpty) {
+        currentPlan = agentResponse.plan;
+        if (step == 1) {
+          _addConversation(
+            'Plan: ${currentPlan.join(' → ')}',
+            false,
+          );
+        }
+      }
 
       // Update the current language from the AI's tag (falls back to previous).
       if (_supportedLangs.contains(agentResponse.lang) &&
           agentResponse.lang != _currentLang) {
         _currentLang = agentResponse.lang;
-        // Persist so next launch + STT locale match what the user actually spoke.
         unawaited(
           SharedPreferences.getInstance().then(
             (prefs) => prefs.setString(_langPrefKey, _currentLang),
@@ -1142,9 +1179,76 @@ class AgentController extends ChangeNotifier {
         );
       }
 
-      // Show AI response and action summary in conversation
       String speakText = agentResponse.speak;
-      if (agentResponse.done) {
+      bool actionVerified = true;
+
+      // 3. Execute and verify the single returned action.
+      if (agentResponse.actions.isNotEmpty) {
+        _setState(AgentState.executingAction);
+        _statusMessage = '⚡ Executing and verifying... (step $step)';
+        notifyListeners();
+
+        var latestSnapshot = uiSnapshot;
+        for (final action in agentResponse.actions) {
+          if (_cancelRequested) break;
+          final beforeAction = latestSnapshot;
+          _lastActionDispatchSucceeded = true;
+          latestSnapshot = await _executeAction(action, beforeAction);
+          final requiresVisualChange = const {
+            'open_app', 'tap', 'type', 'swipe', 'back', 'home',
+          }.contains(action.type);
+          final changed = _didPackageChange(beforeAction, latestSnapshot) ||
+              _didTreeSignatureChange(beforeAction, latestSnapshot);
+          actionVerified = _lastActionDispatchSucceeded &&
+              (!requiresVisualChange ||
+                  _isActionReady(action, beforeAction, latestSnapshot));
+
+          LucyReliabilityLog.event(
+            'action_verified',
+            action: action.type,
+            step: step,
+            success: actionVerified,
+          );
+
+          if (!actionVerified) {
+            _isAskingForFurtherHelp = false;
+            speakText = 'I could not verify that step. I am checking another safe approach.';
+            final shouldReplan = loopGuard.shouldReplan(
+              actionType: action.type,
+              packageName: beforeAction?.packageName,
+              uiSignature: beforeAction?.signature ?? 'no-ui-snapshot',
+            );
+            if (shouldReplan) {
+              if (loopGuard.canReplan) {
+                loopGuard.markReplanned();
+                LucyReliabilityLog.event(
+                  'agent_replan',
+                  action: action.type,
+                  step: step,
+                  attempt: loopGuard.replans,
+                );
+                currentMessage =
+                    'The previous action did not succeed or did not change the screen. Do not repeat it. Choose a different safe method, or ask me to resolve the blocker. Previous plan: ${currentPlan.join('; ')}';
+              } else {
+                _addConversation(
+                  'I tried a different approach, but the screen still did not respond. I stopped to avoid repeating actions. Please check the app or permission prompt.',
+                  false,
+                );
+                _cancelRequested = true;
+              }
+            } else {
+              currentMessage =
+                  'The previous action was not verified. Do not repeat the same action. Inspect the new screen and choose a different safe approach.';
+            }
+          } else if (changed || !requiresVisualChange) {
+            completedPlanSteps++;
+          }
+        }
+      }
+
+      if (_cancelRequested) break;
+
+      if (agentResponse.done && actionVerified) {
         if (speakText.isNotEmpty &&
             !speakText.endsWith(' ') &&
             !speakText.endsWith('\n')) {
@@ -1154,6 +1258,10 @@ class AgentController extends ChangeNotifier {
         _isAskingForFurtherHelp = true;
       } else {
         _isAskingForFurtherHelp = false;
+      }
+
+      if (!actionVerified && agentResponse.done) {
+        speakText = 'I could not confirm that the requested step worked. I will not claim it is complete.';
       }
 
       String displayText = speakText;
@@ -1170,23 +1278,6 @@ class AgentController extends ChangeNotifier {
       if (displayText.trim().isNotEmpty) {
         _addConversation(displayText, false, screenshotBytes: screenshotBytes);
       }
-
-      if (_cancelRequested) break;
-
-      // 3. Execute actions
-      if (agentResponse.actions.isNotEmpty) {
-        _setState(AgentState.executingAction);
-        _statusMessage = '⚡ Executing actions... (step $step)';
-        notifyListeners();
-
-        var latestSnapshot = uiSnapshot;
-        for (final action in agentResponse.actions) {
-          if (_cancelRequested) break;
-          latestSnapshot = await _executeAction(action, latestSnapshot);
-        }
-      }
-
-      if (_cancelRequested) break;
 
       // 4. Speak the response (only speak if done or has something to say)
       if (speakText.isNotEmpty) {
@@ -1207,13 +1298,17 @@ class AgentController extends ChangeNotifier {
       if (_cancelRequested) break;
 
       // 5. Check if done
-      if (agentResponse.done) {
+      if (agentResponse.done && actionVerified) {
+        LucyReliabilityLog.event('agent_task_completed', step: step, success: true);
         break;
       }
 
-      // Not done → continue the loop with a follow-up message
-      currentMessage =
-          'I have executed the actions. Here is the updated screen. Continue with the task.';
+      // Not done, or an action was not verified: inspect the fresh screen and
+      // continue from the retained plan rather than assuming success.
+      if (actionVerified) {
+        currentMessage =
+            'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.';
+      }
       // If screenshot capture might fail next iteration, the AI will still
       // receive the message but without an image. The retry logic in
       // _captureScreenWithRetry handles this by making multiple attempts.
@@ -1222,11 +1317,13 @@ class AgentController extends ChangeNotifier {
     // Handle cancellation
     if (_cancelRequested) {
       _cancelRequested = false;
-      _addConversation('🛑 Stopped by user.', false);
+      LucyReliabilityLog.event('agent_task_stopped', step: step, success: false);
+      _addConversation('🛑 Stopped to avoid an unsafe or repeated action.', false);
       return;
     }
 
     if (step >= _maxStepsPerCommand) {
+      LucyReliabilityLog.event('agent_step_limit_reached', step: step, success: false);
       _addConversation(
         '⚠️ Reached maximum steps ($_maxStepsPerCommand). Stopping.',
         false,
@@ -1313,6 +1410,22 @@ class AgentController extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  bool _isPermissionPrompt(_UiSnapshot? snapshot) {
+    if (snapshot == null) return false;
+    final visibleText = snapshot.elements
+        .map((element) => '${element['text'] ?? ''} ${element['desc'] ?? ''}')
+        .join(' ')
+        .toLowerCase();
+    final permissionContext = visibleText.contains('permission') ||
+        visibleText.contains('while using the app') ||
+        visibleText.contains('only this time') ||
+        visibleText.contains('allow lucy');
+    final permissionChoice = visibleText.contains('allow') ||
+        visibleText.contains("don't allow") ||
+        visibleText.contains('deny');
+    return permissionContext && permissionChoice;
   }
 
   bool _didPackageChange(_UiSnapshot? before, _UiSnapshot? after) {
