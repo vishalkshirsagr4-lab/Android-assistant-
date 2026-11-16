@@ -1702,6 +1702,12 @@ class AgentController extends ChangeNotifier {
       _addConversation('Direct phone actions are disabled in Privacy & settings.', false);
       return beforeSnapshot;
     }
+    if (const {'tap', 'type', 'swipe', 'back', 'home'}.contains(action.type) &&
+        !await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Screen actions need AI screen sharing enabled so Lucy can inspect and verify the target. No action was performed.', false);
+      return beforeSnapshot;
+    }
     if (action.type == 'schedule_reminder' &&
         !await _settingsStore.isEnabled(LucySettingsStore.scheduledReminders)) {
       _lastActionDispatchSucceeded = false;
