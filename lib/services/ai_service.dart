@@ -232,12 +232,8 @@ RESPONSE FORMAT (strict JSON, one action only):
     String? uiTree,
     String memoryContext = '',
   }) async {
-    if (!isConfigured) {
-      return AgentResponse.fallback(
-        'AI not configured. Please set an AI provider key in Lucy settings.',
-      );
-    }
-
+    // Do not stop just because the selected provider is not configured.
+    // The provider loop below may still find another saved key and use it.
     try {
       // Build the text message with metadata
       final buffer = StringBuffer();
