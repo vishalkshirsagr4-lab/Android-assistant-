@@ -27,9 +27,11 @@ class LucyMemory {
       id: json['id']?.toString() ?? '',
       category: json['category']?.toString() ?? 'fact',
       content: json['content']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
+      updatedAt:
+          DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       confidence: (json['confidence'] as num?)?.toDouble() ?? 1,
       userApproved: json['userApproved'] == true,
@@ -37,14 +39,14 @@ class LucyMemory {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'category': category,
-        'content': content,
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-        'confidence': confidence,
-        'userApproved': userApproved,
-      };
+    'id': id,
+    'category': category,
+    'content': content,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'confidence': confidence,
+    'userApproved': userApproved,
+  };
 }
 
 /// Structured, bounded, on-device memory. It never learns from conversation
@@ -89,15 +91,17 @@ class LucyMemoryStore {
         final content = value.trim();
         if (content.isEmpty) continue;
         final now = DateTime.now();
-        _items.add(LucyMemory(
-          id: 'legacy_${now.microsecondsSinceEpoch}_${_items.length}',
-          category: 'fact',
-          content: content,
-          createdAt: now,
-          updatedAt: now,
-          confidence: 1,
-          userApproved: true,
-        ));
+        _items.add(
+          LucyMemory(
+            id: 'legacy_${now.microsecondsSinceEpoch}_${_items.length}',
+            category: 'fact',
+            content: content,
+            createdAt: now,
+            updatedAt: now,
+            confidence: 1,
+            userApproved: true,
+          ),
+        );
       }
       if (_items.isNotEmpty) await _persist();
     }
@@ -155,9 +159,11 @@ class LucyMemoryStore {
     final needle = query.trim().toLowerCase();
     if (needle.isEmpty) return 0;
     final before = _items.length;
-    _items.removeWhere((item) =>
-        item.content.toLowerCase().contains(needle) ||
-        item.category.toLowerCase() == needle);
+    _items.removeWhere(
+      (item) =>
+          item.content.toLowerCase().contains(needle) ||
+          item.category.toLowerCase() == needle,
+    );
     final removed = before - _items.length;
     if (removed > 0) await _persist();
     return removed;
@@ -169,25 +175,24 @@ class LucyMemoryStore {
     await _prefs.remove(_legacyKey);
   }
 
-  String get summary => _items
-      .map((item) => '[${item.category}] ${item.content}')
-      .join('\n');
+  String get summary =>
+      _items.map((item) => '[${item.category}] ${item.content}').join('\n');
 
   /// Return a small relevance-ranked subset instead of uploading all memories.
   String relevantContext(String query, {int limit = 6}) {
     if (_items.isEmpty) return '';
     final queryTokens = _tokens(query);
-    final ranked = _items.map((item) {
-      final contentTokens = _tokens('${item.category} ${item.content}');
-      final overlap = queryTokens.intersection(contentTokens).length;
-      return (item: item, score: overlap);
-    }).toList()
-      ..sort((a, b) {
-        final scoreOrder = b.score.compareTo(a.score);
-        return scoreOrder != 0
-            ? scoreOrder
-            : b.item.updatedAt.compareTo(a.item.updatedAt);
-      });
+    final ranked =
+        _items.map((item) {
+          final contentTokens = _tokens('${item.category} ${item.content}');
+          final overlap = queryTokens.intersection(contentTokens).length;
+          return (item: item, score: overlap);
+        }).toList()..sort((a, b) {
+          final scoreOrder = b.score.compareTo(a.score);
+          return scoreOrder != 0
+              ? scoreOrder
+              : b.item.updatedAt.compareTo(a.item.updatedAt);
+        });
 
     final selected = ranked
         .where((entry) => entry.score > 0)
@@ -198,17 +203,51 @@ class LucyMemoryStore {
       selected.addAll(_items.take(limit));
     }
     return selected
-        .map((item) =>
-            '[${item.category}; confidence ${item.confidence.toStringAsFixed(2)}] ${item.content}')
+        .map(
+          (item) =>
+              '[${item.category}; confidence ${item.confidence.toStringAsFixed(2)}] ${item.content}',
+        )
         .join('\n');
   }
 
   Set<String> _tokens(String value) {
     const ignored = {
-      'the', 'and', 'for', 'with', 'that', 'this', 'what', 'when', 'where',
-      'how', 'you', 'your', 'are', 'was', 'were', 'have', 'has', 'had',
-      'from', 'about', 'please', 'lucy', 'remember', 'forget', 'tell', 'me',
-      'my', 'is', 'a', 'an', 'to', 'of', 'in', 'on', 'it', 'i',
+      'the',
+      'and',
+      'for',
+      'with',
+      'that',
+      'this',
+      'what',
+      'when',
+      'where',
+      'how',
+      'you',
+      'your',
+      'are',
+      'was',
+      'were',
+      'have',
+      'has',
+      'had',
+      'from',
+      'about',
+      'please',
+      'lucy',
+      'remember',
+      'forget',
+      'tell',
+      'me',
+      'my',
+      'is',
+      'a',
+      'an',
+      'to',
+      'of',
+      'in',
+      'on',
+      'it',
+      'i',
     };
     return RegExp(r'[a-z0-9]+')
         .allMatches(value.toLowerCase())
