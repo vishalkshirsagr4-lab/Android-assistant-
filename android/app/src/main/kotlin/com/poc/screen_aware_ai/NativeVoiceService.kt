@@ -63,7 +63,13 @@ class NativeVoiceService : Service() {
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                Intent.ACTION_SCREEN_OFF -> deviceLocked = true
+                Intent.ACTION_SCREEN_OFF -> {
+                    deviceLocked = try {
+                        (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
                 Intent.ACTION_USER_PRESENT -> deviceLocked = false
                 else -> return
             }
