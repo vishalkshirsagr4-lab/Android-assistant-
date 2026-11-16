@@ -804,7 +804,10 @@ class AgentController extends ChangeNotifier {
     _isAskingForFurtherHelp = false;
     notifyListeners();
 
-    if (providerReady && !voiceOnly) {
+    final cloudAiEnabled = await _settingsStore.isEnabled(LucySettingsStore.aiRequests);
+    final screenSharingEnabled = await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing);
+    final screenAutomationEnabled = await _settingsStore.isEnabled(LucySettingsStore.screenAutomation);
+    if (providerReady && !voiceOnly && cloudAiEnabled && screenSharingEnabled) {
       final hasScreenPermission = await _screenCapture.requestPermission();
       if (!hasScreenPermission) {
         _addConversation(
@@ -812,6 +815,8 @@ class AgentController extends ChangeNotifier {
           false,
         );
       }
+    }
+    if (providerReady && !voiceOnly && cloudAiEnabled && screenAutomationEnabled) {
       final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
