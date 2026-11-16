@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
+import 'lucy_context_builder.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
 import 'lucy_activity_store.dart';
@@ -56,6 +57,7 @@ class _UiSnapshot {
 
 class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
+  final LucyContextBuilder _contextBuilder = LucyContextBuilder();
   final GrokService _grokService = GrokService();
   final GroqService _groqService = GroqService();
   final HmsService _hmsService = HmsService();
@@ -523,6 +525,9 @@ class AgentController extends ChangeNotifier {
     _cancelRequested = false;
     int step = 0;
     String currentMessage = userMessage;
+    // Read optional context once per user command, not on every agent step.
+    // The native provider omits sources whose access has not been granted.
+    final deviceContext = await _contextBuilder.buildPromptContext();
 
     // Fetch screen size once for the whole loop
     final screenSize = await _screenCapture.getScreenSize();
@@ -560,6 +565,7 @@ class AgentController extends ChangeNotifier {
       final localNow = DateTime.now();
       final requestWithClock =
           '[Device local date/time: ${localNow.toIso8601String()}]\\n'
+          '${deviceContext.isEmpty ? '' : '$deviceContext\\n'}'
           '${currentMessage}';
       final agentResponse = await _aiService.agentChat(
         requestWithClock,
