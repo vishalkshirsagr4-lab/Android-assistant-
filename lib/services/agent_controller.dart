@@ -939,6 +939,12 @@ class AgentController extends ChangeNotifier {
       return;
     }
 
+    if (!await _settingsStore.isEnabled(LucySettingsStore.aiRequests)) {
+      await _speakLocalReply('Cloud AI requests are disabled in Privacy & settings. I can still help with supported offline commands.');
+      await _resumeOrFinishListening();
+      return;
+    }
+
     if (!await _aiService.isProviderReady()) {
       await _speakLocalReply(
         'I can help offline with the time, battery and flashlight. Add an AI provider key in Lucy tools for screen and app tasks.',
