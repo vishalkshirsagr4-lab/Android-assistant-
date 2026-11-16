@@ -113,7 +113,8 @@ class LucyActionApprovalPolicy {
   }
 
   static String _normalizeRisk(String? risk) {
-    switch (risk?.toLowerCase()) {
+    if (risk == null || risk.trim().isEmpty) return 'low';
+    switch (risk.toLowerCase()) {
       case 'low':
         return 'low';
       case 'medium':
