@@ -26,6 +26,11 @@ class MainActivity : FlutterActivity() {
     private var voiceChannel: MethodChannel? = null
     private var lastMetricsElapsedMs: Long? = null
     private var lastMetricsCpuMs: Long? = null
+    private var pendingPhonePermissionResult: MethodChannel.Result? = null
+
+    companion object {
+        private const val PHONE_PERMISSION_REQUEST_CODE = 4402
+    }
 
     // Store projection data so we can reinitialize the service if needed.
     // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
@@ -101,6 +106,36 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        // Native phone actions use Android intents and APIs instead of UI tapping.
+        val phoneActionHandler = PhoneActionHandler(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.poc.screen_aware_ai/phone_actions"
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "requestPermission") {
+                val permission = call.argument<String>("permission")
+                val allowedPermissions = setOf(
+                    android.Manifest.permission.READ_CONTACTS,
+                    android.Manifest.permission.CAMERA
+                )
+                if (permission == null || permission !in allowedPermissions) {
+                    result.error("INVALID_PERMISSION", "This permission cannot be requested by Lucy.", null)
+                } else if (androidx.core.content.ContextCompat.checkSelfPermission(
+                        this, permission
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    result.success(true)
+                } else if (pendingPhonePermissionResult != null) {
+                    result.error("PERMISSION_REQUEST_BUSY", "Another phone permission request is active.", null)
+                } else {
+                    pendingPhonePermissionResult = result
+                    requestPermissions(arrayOf(permission), PHONE_PERMISSION_REQUEST_CODE)
+                }
+            } else if (!phoneActionHandler.handle(call, result)) {
+                result.notImplemented()
             }
         }
 
@@ -471,6 +506,20 @@ class MainActivity : FlutterActivity() {
             putExtra("data", data)
         }
         startForegroundService(serviceIntent)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PHONE_PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.firstOrNull() ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            pendingPhonePermissionResult?.success(granted)
+            pendingPhonePermissionResult = null
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
