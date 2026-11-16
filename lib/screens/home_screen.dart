@@ -239,6 +239,17 @@ class _HomeScreenState extends State<HomeScreen>
           title: const Text('Access Required'),
           backgroundColor: colorScheme.surface,
           elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.shield_outlined),
+              tooltip: 'Privacy & settings',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => LucySettingsScreen(controller: widget.controller),
+                ),
+              ),
+            ),
+          ],
         ),
         body: Center(
           child: Padding(
