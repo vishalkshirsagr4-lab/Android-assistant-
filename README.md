@@ -621,8 +621,8 @@ Lucy declares `com.android.alarm.permission.SET_ALARM` for Android Clock `ACTION
 Lucy supports two user-started microphone modes:
 
 - **Continuous conversation:** tap the microphone once. Lucy listens, answers, and resumes listening after each response. The session ends after 60 seconds without detected speech, or when you tap Stop.
-- **Push-to-talk:** press and hold the microphone button while speaking. Releasing it stops the microphone session. Push-to-talk does not request screen capture permission.
-- **Interrupt a spoken response:** tap the microphone while Lucy is speaking. Lucy stops the current response and reopens listening for your next command.
+- **Push-to-talk:** press and hold the microphone button while speaking. On release, Lucy allows a short recognition-finalization window, completes the captured command, then closes the microphone session. Push-to-talk does not request screen capture permission; use tap-to-start continuous mode for screen-based app automation.
+- **Interrupt a spoken response:** tap the microphone while Lucy is speaking. Lucy stops the current response and reopens listening for your next command. This is tap-to-interrupt, not full-duplex voice interruption; Lucy does not run a second microphone recognizer over her own TTS audio.
 - **Voice controls:** use the voice-settings icon to choose Calm, Balanced or Bright, then adjust speaking speed, pitch and volume. These values are saved locally.
 - **Offline commands:** the current time, battery status and flashlight on/off are handled on-device without an AI request. Flashlight control asks for Android camera permission when needed.
 - **Avatar feedback:** Lucy's face and status label react to listening, thinking, speaking, working and confirmation states.
@@ -641,5 +641,7 @@ The microphone is started only after you tap or hold Lucy's microphone control. 
 6. Leave continuous conversation silent for 60 seconds; verify Lucy closes the session.
 7. Change voice style, speed, pitch and volume; restart Lucy and verify the settings persist.
 8. Switch through English, Hindi, Kannada, Japanese and Arabic; verify the selected recognition and TTS locales where installed.
+
+**Known voice limitation:** simultaneous voice barge-in while Lucy is speaking is not enabled because the speech recognizer can mistake Lucy's own TTS for the user's command. Tap-to-interrupt is provided; reliable full-duplex barge-in needs device-tested acoustic echo cancellation and voice-activity detection.
 
 No new Android permissions or pubspec dependencies are introduced by Phase 5. The existing `RECORD_AUDIO` permission and microphone foreground service are reused. Phase 5 does not add model actions, so the Phase 4 action/decision JSON schema is unchanged.
