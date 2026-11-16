@@ -1141,8 +1141,8 @@ class _HomeScreenState extends State<HomeScreen>
                 if (enabled) {
                   final permission = await LucyRoutineScheduler.ensureNotificationPermission();
                   if (!permission) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                    if (dialogContext.mounted) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
                         const SnackBar(
                           content: Text('Allow Lucy notifications, then save these settings again.'),
                         ),
@@ -1172,8 +1172,8 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     );
                   }
-                } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                } else if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
                     const SnackBar(
                       content: Text('Could not save settings. Check notification permission and try again.'),
                     ),
@@ -1187,7 +1187,7 @@ class _HomeScreenState extends State<HomeScreen>
                 onPressed: () async {
                   final ok = await _proactiveService.runEvaluationNow();
                   if (dialogContext.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
                       SnackBar(
                         content: Text(
                           ok ? 'A local evaluation was queued.' : 'Enable suggestions and allow notifications first.',
