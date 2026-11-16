@@ -256,7 +256,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       await _context.clearNotificationHistory();
       await _context.setCalendarContextEnabled(false);
       await _context.disableApproximateLocation();
-      await _proactive.configure(enabled: false);
+      await _proactive.clearData();
       final routines = await LucyRoutineScheduler.listRoutines();
       for (final routine in routines) {
         final id = routine['id']?.toString();
