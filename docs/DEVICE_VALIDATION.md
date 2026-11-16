@@ -55,6 +55,6 @@ screenshots containing private data, or other secrets in bug reports.
 - [ ] Open **Why this suggestion?** and confirm it shows the stored reason, confidence and risk.
 - [ ] Disable proactive suggestions and verify the periodic WorkManager task is cancelled.
 - [ ] Verify medium/high-risk agent actions ask for spoken approval; cancelling or timing out must not execute them.
-- [ ] Verify normal navigation remains hands-free and an unlabeled tap in a sensitive app requests approval.
+- [ ] Verify normal navigation remains hands-free and an unlabeled tap in a sensitive app requests approval.\n- [ ] Focus a password field and ask Lucy to type; verify the new password-field signal triggers high-risk approval before typing.\n- [ ] In a banking/UPI app, ask Lucy to type a harmless test value; verify financial-app text entry requires approval.\n- [ ] Tap a proactive notification; verify Lucy opens rather than the notification being inert.
 
 **Platform timing note:** WorkManager periodic work is not an exact timer. Android enforces a 15-minute minimum interval and may delay execution further due to Doze, battery saver, OEM background limits or network constraints. Proactive checks run locally and do not call an AI provider. Notifications require Android notification permission. The worker never sends messages, places calls, changes settings or performs other phone actions.
