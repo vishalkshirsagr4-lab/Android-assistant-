@@ -1090,6 +1090,10 @@ class AgentController extends ChangeNotifier {
         'message: ${action.params['message']}',
       if (action.params['recipient'] is String)
         'recipient: ${action.params['recipient']}',
+      if (action.params['risk'] is String)
+        'model risk: ${action.params['risk']}',
+      if (action.params['reason'] is String)
+        'reason: ${action.params['reason']}',
     ].join('. ');
     final prompt =
         'Lucy wants to $details. Say approve to continue, or cancel to stop.';
@@ -1145,6 +1149,9 @@ class AgentController extends ChangeNotifier {
     String? targetLabel;
     if (action.type == 'place_call' || action.type == 'send_sms') {
       targetLabel = action.params['phoneNumber']?.toString();
+    }
+    if (action.type == 'open_settings') {
+      targetLabel = action.params['page']?.toString();
     }
     if (action.type == 'tap' && beforeSnapshot != null) {
       final elementId = (action.params['element'] as num?)?.toInt();
