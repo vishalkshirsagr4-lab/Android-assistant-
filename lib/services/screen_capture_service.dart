@@ -100,6 +100,34 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Execute a native Android action. Communications open the system dialer/composer
+  /// so the user remains in control of the final call or send operation.
+  Future<Map<String, dynamic>> performNativeAction(
+    String action, {
+    Map<String, dynamic> params = const <String, dynamic>{},
+  }) async {
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'performNativeAction',
+        <String, dynamic>{'action': action, 'params': params},
+      );
+      return result ?? <String, dynamic>{
+        'success': false,
+        'message': 'Android returned no result',
+      };
+    } on PlatformException catch (error) {
+      return <String, dynamic>{
+        'success': false,
+        'message': error.message ?? error.code,
+      };
+    } catch (error) {
+      return <String, dynamic>{
+        'success': false,
+        'message': error.toString(),
+      };
+    }
+  }
+
   /// Get the UI tree of the current foreground app via accessibility service.
   /// Returns a JSON string with package name and element list, or null on error.
   Future<String?> getUITree() async {
