@@ -243,19 +243,20 @@ class AgentController extends ChangeNotifier {
       _currentTranscript = text;
       final pendingApproval = _pendingVoiceApproval;
       if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
-        final answer = text.trim().toLowerCase();
-        final approved =
-            RegExp(r'\b(approve|approved|yes|allow|continue|go ahead|haan|han|ho|haanji|manzoor)\b').hasMatch(answer) ||
-            answer.contains('ಹೌದು') ||
-            answer.contains('मंजूर') ||
-            answer.contains('हाँ');
-        final denied =
-            RegExp(r'\b(deny|denied|no|cancel|stop|reject|beda|illa|nahi|mat karo)\b').hasMatch(answer) ||
-            answer.contains('ಬೇಡ') ||
-            answer.contains('ಇಲ್ಲ') ||
-            answer.contains('नहीं');
-        if (approved || denied) {
-          if (!pendingApproval.isCompleted) pendingApproval.complete(approved);
+        final answer = text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+        const affirmativeAnswers = {
+          'approve', 'approved', 'yes', 'allow', 'continue', 'go ahead',
+          'haan', 'han', 'ho', 'haanji', 'manzoor', 'हाँ', 'हां', 'मंजूर',
+          'ಹೌದು', 'ಮಂಜೂರು',
+        };
+        const negativeAnswers = {
+          'deny', 'denied', 'no', 'cancel', 'stop', 'reject', 'beda',
+          'illa', 'nahi', 'mat karo', 'नहीं', 'नही', 'ಬೇಡ', 'ಇಲ್ಲ',
+        };
+        final denied = negativeAnswers.contains(answer);
+        final approved = affirmativeAnswers.contains(answer);
+        if (denied || approved) {
+          if (!pendingApproval.isCompleted) pendingApproval.complete(!denied && approved);
           unawaited(_voiceService.stopListening());
         } else {
           _currentTranscript = 'Please say approve or cancel.';
