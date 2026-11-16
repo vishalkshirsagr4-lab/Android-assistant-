@@ -105,6 +105,16 @@ class LucyProactiveService {
     }
   }
 
+  Future<bool> clearData() async {
+    try {
+      return await _channel.invokeMethod<bool>('clearData') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> runEvaluationNow() async {
     try {
       return await _channel.invokeMethod<bool>('runEvaluationNow') ?? false;
