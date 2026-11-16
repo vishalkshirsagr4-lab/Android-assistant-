@@ -23,6 +23,10 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var methodChannel: MethodChannel? = null
+    private var pendingNativeResult: MethodChannel.Result? = null
+    private var pendingNativeAction: String? = null
+    private var pendingNativeParams: Map<String, Any?> = emptyMap()
+    private val NATIVE_PERMISSION_REQUEST = 1002
 
     // Store projection data so we can reinitialize the service if needed.
     // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
@@ -56,6 +60,28 @@ class MainActivity : FlutterActivity() {
         methodChannel = channel
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "performNativeAction" -> {
+                    val action = call.argument<String>("action") ?: ""
+                    val params = call.argument<Map<String, Any?>>("params") ?: emptyMap()
+                    val permission = when (action) {
+                        "find_contact" -> android.Manifest.permission.READ_CONTACTS
+                        "flashlight" -> android.Manifest.permission.CAMERA
+                        else -> null
+                    }
+                    if (permission != null && androidx.core.content.ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        pendingNativeResult = result
+                        pendingNativeAction = action
+                        pendingNativeParams = params
+                        androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(permission), NATIVE_PERMISSION_REQUEST)
+                    } else {
+                        try {
+                            result.success(NativePhoneActions.execute(this, action, params))
+                        } catch (error: Exception) {
+                            Log.w(TAG, "Native action failed: $action", error)
+                            result.success(mapOf("success" to false, "message" to (error.message ?: "Native action failed")))
+                        }
+                    }
+                }
                 "requestScreenCapture" -> {
                     pendingResult = result
                     val intent = mediaProjectionManager!!.createScreenCaptureIntent()
@@ -300,7 +326,7 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    private fun startCaptureService(resultCode: Int, data: Intent) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {\n        super.onRequestPermissionsResult(requestCode, permissions, grantResults)\n        if (requestCode == NATIVE_PERMISSION_REQUEST) {\n            val result = pendingNativeResult\n            val action = pendingNativeAction\n            pendingNativeResult = null\n            pendingNativeAction = null\n            if (result == null || action == null) return\n            if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {\n                try { result.success(NativePhoneActions.execute(this, action, pendingNativeParams)) }\n                catch (error: Exception) { result.success(mapOf("success" to false, "message" to (error.message ?: "Native action failed"))) }\n            } else {\n                result.success(mapOf("success" to false, "permission_denied" to true, "message" to "Required permission was denied"))\n            }\n            pendingNativeParams = emptyMap()\n        }\n    }\n\n    private fun startCaptureService(resultCode: Int, data: Intent) {
         val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
             putExtra("resultCode", resultCode)
             putExtra("data", data)
