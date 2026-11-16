@@ -870,6 +870,7 @@ class AgentController extends ChangeNotifier {
     if (!_isActive) return;
     _setState(AgentState.listening);
     _statusMessage = '🎤 Listening... Open notifications to stop Lucy.';
+    unawaited(_voiceService.updateNotificationStatus('Listening for your command'));
     _currentTranscript = '';
     notifyListeners();
 
@@ -987,7 +988,13 @@ class AgentController extends ChangeNotifier {
       }
     }
 
+    _updateTaskProgress('Got it · Planning your request');
+    _addConversation('Got it. I’m working on that.', false);
+    // Speak the acknowledgement without delaying the AI request. If the final
+    // answer arrives first, VoiceService safely replaces this short acknowledgement.
+    unawaited(_voiceService.speak('Got it. I’m working on that.', lang: _currentLang));
     await _runAgentLoop(text);
+    _updateTaskProgress('Task finished · Listening again');
 
     // Continuous mode resumes; push-to-talk closes after one completed turn.
     await _resumeOrFinishListening();
@@ -1119,8 +1126,7 @@ class AgentController extends ChangeNotifier {
 
       // 1. Capture screenshot (with retries for reliability after app switches)
       _setState(AgentState.capturing);
-      _statusMessage = '📸 Capturing screen... (step $step)';
-      notifyListeners();
+      _updateTaskProgress('Preparing your screen · Step $step');
 
       final screenshotFuture = _captureScreenWithRetry();
       final uiSnapshotFuture = _fetchUiSnapshot();
@@ -1149,8 +1155,7 @@ class AgentController extends ChangeNotifier {
       // 2. Ask for a plan and one action. The model's plan is retained locally
       // and included in subsequent turns so a provider switch does not lose it.
       _setState(AgentState.analyzing);
-      _statusMessage = '🤖 Planning and thinking... (step $step)';
-      notifyListeners();
+      _updateTaskProgress('Lucy is thinking and planning · Step $step');
 
       final aiStopwatch = Stopwatch()..start();
       final deviceContext = await _contextBuilder.buildPromptContext();
@@ -1220,8 +1225,7 @@ class AgentController extends ChangeNotifier {
       // 3. Execute and verify the single returned action.
       if (agentResponse.actions.isNotEmpty) {
         _setState(AgentState.executingAction);
-        _statusMessage = '⚡ Executing and verifying... (step $step)';
-        notifyListeners();
+        _updateTaskProgress('Carrying out your task · Step $step');
 
         var latestSnapshot = uiSnapshot;
         for (final action in agentResponse.actions) {
@@ -1317,8 +1321,7 @@ class AgentController extends ChangeNotifier {
       // 4. Speak the response (only speak if done or has something to say)
       if (speakText.isNotEmpty) {
         _setState(AgentState.speaking);
-        _statusMessage = '🔊 Speaking...';
-        notifyListeners();
+        _updateTaskProgress('Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
         await _voiceService.speak(ttsText, lang: _currentLang);
