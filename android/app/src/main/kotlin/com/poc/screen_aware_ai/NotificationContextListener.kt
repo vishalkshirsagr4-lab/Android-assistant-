@@ -78,7 +78,9 @@ class NotificationContextListener : NotificationListenerService() {
         )
         return value
             .replace(otpPattern, "$1[hidden]")
-            .replace(Regex("\\b\\d{6}\\b"), "[number hidden]")
+            .replace(Regex("(?i)\\b[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}\\b"), "[email hidden]")
+            .replace(Regex("(?<!\\d)(?:\\+?\\d[\\d .()-]{7,}\\d)(?!\\d)"), "[phone/number hidden]")
+            .replace(Regex("\\b\\d{4,8}\\b"), "[number hidden]")
     }
 
     companion object {
