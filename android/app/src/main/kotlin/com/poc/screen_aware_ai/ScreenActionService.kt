@@ -235,7 +235,9 @@ class ScreenActionService : AccessibilityService() {
                     for (window in allWindows) {
                         if (elementCount >= maxElements) break
                         // Focus on application windows — skip system UI, input method, etc.
-                        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
+                            window.type != AccessibilityWindowInfo.TYPE_SYSTEM
+                        ) continue
                         val windowRoot = window.root ?: continue
                         // Skip if this is the same window we already traversed
                         val windowPkg = windowRoot.packageName?.toString()
@@ -280,7 +282,9 @@ class ScreenActionService : AccessibilityService() {
         try {
             val allWindows = windows
             for (window in allWindows) {
-                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
+                            window.type != AccessibilityWindowInfo.TYPE_SYSTEM
+                        ) continue
                 val root = window.root ?: continue
                 val pkg = root.packageName?.toString()
                 try {
