@@ -41,6 +41,24 @@ class PhoneContextHandler(private val activity: Activity) {
                 openSettings(Settings.ACTION_USAGE_ACCESS_SETTINGS, result)
                 return true
             }
+            "setNotificationContextEnabled" -> {
+                val enabled = call.argument<Boolean>("enabled") == true
+                activity.getSharedPreferences(
+                    NotificationContextListener.PREFERENCES_NAME,
+                    Context.MODE_PRIVATE
+                ).edit().putBoolean(
+                    NotificationContextListener.NOTIFICATION_ENABLED_KEY,
+                    enabled
+                ).apply()
+                if (!enabled) {
+                    activity.getSharedPreferences(
+                        NotificationContextListener.PREFERENCES_NAME,
+                        Context.MODE_PRIVATE
+                    ).edit().remove(NotificationContextListener.NOTIFICATION_KEY).apply()
+                }
+                result.success(true)
+                return true
+            }
             "clearNotificationHistory" -> {
                 activity.getSharedPreferences(
                     NotificationContextListener.PREFERENCES_NAME,
