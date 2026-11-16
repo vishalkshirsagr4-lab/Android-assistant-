@@ -50,6 +50,13 @@ class PhoneContextHandler(private val activity: Activity) {
                     NotificationContextListener.NOTIFICATION_ENABLED_KEY,
                     enabled
                 ).apply()
+                activity.getSharedPreferences(
+                    ProactiveSuggestionWorker.PREFS,
+                    Context.MODE_PRIVATE
+                ).edit().putBoolean(
+                    ProactiveSuggestionWorker.KEY_NOTIFICATION_CONTEXT,
+                    enabled
+                ).apply()
                 if (!enabled) {
                     activity.getSharedPreferences(
                         NotificationContextListener.PREFERENCES_NAME,
