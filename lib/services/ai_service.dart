@@ -54,6 +54,17 @@ class AgentResponse {
       if (type is! String || type.trim().isEmpty) {
         throw const FormatException('Lucy action is missing its type.');
       }
+      const supportedActions = <String>{
+        'open_app', 'tap', 'type', 'swipe', 'back', 'home', 'wait',
+        'schedule_reminder', 'set_alarm', 'set_timer', 'place_call',
+        'send_sms', 'open_url', 'start_navigation', 'music_search',
+        'set_flashlight', 'set_volume', 'set_brightness', 'get_device_status',
+        'read_contact', 'create_calendar_event', 'open_settings', 'take_photo',
+        'share_text',
+      };
+      if (!supportedActions.contains(type)) {
+        throw FormatException('Unsupported Lucy action type: $type');
+      }
       final confidence = action['confidence'];
       final risk = action['risk'];
       final reason = action['reason'];
@@ -70,6 +81,9 @@ class AgentResponse {
       throw const FormatException('Lucy must return at most one action per step.');
     }
     final rawPlan = json['plan'];
+    if (actionsList.isNotEmpty && rawPlan is! List) {
+      throw const FormatException('Lucy action response is missing its plan.');
+    }
     final plan = rawPlan is List
         ? rawPlan.whereType<String>().map((item) => item.trim())
             .where((item) => item.isNotEmpty).take(8).toList(growable: false)
@@ -385,19 +399,19 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
       }
       buffer.write(message);
       final fullMessage = buffer.toString();
+      final cacheKey = _readOnlyCacheKey(message);
       final cacheAllowed = imageBytes == null &&
           uiTree == null &&
           memoryContext.trim().isEmpty &&
-          !fullMessage.contains('[DEVICE_CONTEXT]') &&
-          !fullMessage.contains('[Device local date/time:');
+          cacheKey != null;
       if (cacheAllowed) {
-        final cached = _readOnlyCache[fullMessage];
+        final cached = _readOnlyCache[cacheKey];
         if (cached != null &&
             DateTime.now().difference(cached.createdAt) <= _readOnlyCacheTtl) {
           LucyReliabilityLog.event('ai_cache_hit', cacheHit: true);
           return cached.response;
         }
-        _readOnlyCache.remove(fullMessage);
+        _readOnlyCache.remove(cacheKey);
       }
 
       // Prefer the selected provider, then automatically fail over when it is
@@ -413,9 +427,9 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
       final order = <String>[
         preferred,
         'gemini',
-        'hms',
         'groq',
         'grok',
+        'hms',
       ].toSet().toList();
       final failures = <String>[];
 
@@ -475,8 +489,13 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
             success: true,
           );
           if (cacheAllowed && parsed.actions.isEmpty && parsed.done) {
-            if (_readOnlyCache.length >= 12) _readOnlyCache.remove(_readOnlyCache.keys.first);
-            _readOnlyCache[fullMessage] = _CachedAgentResponse(parsed, DateTime.now());
+            if (_readOnlyCache.length >= 12) {
+              _readOnlyCache.remove(_readOnlyCache.keys.first);
+            }
+            _readOnlyCache[cacheKey!] = _CachedAgentResponse(
+              parsed,
+              DateTime.now(),
+            );
           }
           return parsed;
         } catch (error) {
@@ -501,6 +520,39 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
     } catch (e) {
       return AgentResponse.fallback('Error: ${e.toString()}');
     }
+  }
+
+  String? _readOnlyCacheKey(String message) {
+    var query = message.trim();
+    query = query.replaceFirst(
+      RegExp(r'^\\[Device local date/time:[^\\]]+\\]\\s*'),
+      '',
+    );
+    final contextStart = query.indexOf('[DEVICE_CONTEXT]');
+    final contextEnd = query.indexOf('[/DEVICE_CONTEXT]');
+    if (contextStart >= 0 && contextEnd > contextStart) {
+      query = query.replaceRange(contextStart, contextEnd + 17, '');
+    }
+    final planStart = query.indexOf('[CURRENT_PLAN]');
+    final planEnd = query.indexOf('[/CURRENT_PLAN]');
+    if (planStart >= 0 && planEnd > planStart) {
+      query = query.replaceRange(planStart, planEnd + 15, '');
+    }
+    query = query.trim();
+    if (query.isEmpty || query.length > 500) return null;
+    final lower = query.toLowerCase();
+    const dynamicTerms = <String>[
+      'today', 'tomorrow', 'now', 'current', 'time', 'battery', 'calendar',
+      'notification', 'message', 'weather', 'news', 'price', 'location',
+      'screen', 'open ', 'tap ', 'send ', 'call ', 'delete ', 'post ',
+      'payment', 'password', 'otp', 'one time code',
+    ];
+    if (dynamicTerms.any(lower.contains) ||
+        RegExp(r'\\b[0-9]{7,}\\b').hasMatch(query) ||
+        RegExp(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+').hasMatch(query)) {
+      return null;
+    }
+    return lower.replaceAll(RegExp(r'\\s+'), ' ');
   }
 
   /// Parse the AI's JSON response into an AgentResponse.
