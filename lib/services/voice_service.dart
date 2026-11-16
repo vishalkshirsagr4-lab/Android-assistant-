@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _tts = FlutterTts();
-  static const MethodChannel _native = MethodChannel('com.poc.screen_aware_ai/voice');
+  static const MethodChannel _native = MethodChannel(
+    'com.poc.screen_aware_ai/voice',
+  );
   bool _nativeHandlerInstalled = false;
 
   bool _isInitialized = false;
@@ -80,7 +82,9 @@ class VoiceService {
 
   Future<bool> startListening({String? localeId}) async {
     if (!_isInitialized && !await initialize()) {
-      onError?.call('Speech recognition is unavailable or microphone permission is missing.');
+      onError?.call(
+        'Speech recognition is unavailable or microphone permission is missing.',
+      );
       return false;
     }
     if (_disposed) return false;
@@ -101,7 +105,9 @@ class VoiceService {
           if (words.isNotEmpty) onResult?.call(words, data['isFinal'] == true);
         } else if (call.method == 'onError' && call.arguments is Map) {
           final data = Map<dynamic, dynamic>.from(call.arguments as Map);
-          onError?.call(data['message']?.toString() ?? 'Speech recognition error');
+          onError?.call(
+            data['message']?.toString() ?? 'Speech recognition error',
+          );
         } else if (call.method == 'onStopped') {
           final data = call.arguments is Map
               ? Map<dynamic, dynamic>.from(call.arguments as Map)
@@ -115,9 +121,14 @@ class VoiceService {
       });
     }
     try {
-      final started = await _native.invokeMethod<bool>('start', {'localeId': localeId ?? 'en_US'});
+      final started = await _native.invokeMethod<bool>('start', {
+        'localeId': localeId ?? 'en_US',
+      });
       _isListening = started == true;
-      if (!_isListening) onError?.call('Android did not start the microphone foreground service.');
+      if (!_isListening)
+        onError?.call(
+          'Android did not start the microphone foreground service.',
+        );
       return _isListening;
     } catch (error) {
       _isListening = false;
@@ -127,7 +138,9 @@ class VoiceService {
   }
 
   Future<void> stopListening() async {
-    try { await _native.invokeMethod<bool>('stop'); } catch (_) {}
+    try {
+      await _native.invokeMethod<bool>('stop');
+    } catch (_) {}
     _isListening = false;
   }
 
