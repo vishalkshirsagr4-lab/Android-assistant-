@@ -81,13 +81,16 @@ class AgentResponse {
       throw const FormatException('Lucy must return at most one action per step.');
     }
     final rawPlan = json['plan'];
-    if (actionsList.isNotEmpty && rawPlan is! List) {
+    if (actionsList.isNotEmpty && (rawPlan is! List || rawPlan.isEmpty)) {
       throw const FormatException('Lucy action response is missing its plan.');
     }
     final plan = rawPlan is List
         ? rawPlan.whereType<String>().map((item) => item.trim())
             .where((item) => item.isNotEmpty).take(8).toList(growable: false)
         : const <String>[];
+    if (actionsList.isNotEmpty && plan.isEmpty) {
+      throw const FormatException('Lucy action response contains no plan steps.');
+    }
 
     return AgentResponse(
       actions: actionsList,
@@ -518,7 +521,9 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
           : 'All available AI providers failed. ${failures.join(' | ')}';
       return AgentResponse.fallback(detail);
     } catch (e) {
-      return AgentResponse.fallback('Error: ${e.toString()}');
+      return AgentResponse.fallback(
+        'Lucy could not complete the AI request (${e.runtimeType}).',
+      );
     }
   }
 
