@@ -306,6 +306,16 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
           Text('Capabilities', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           _capabilitySwitch(
+            keyName: LucySettingsStore.aiRequests,
+            title: 'Cloud AI requests',
+            subtitle: 'Allow Lucy to send task text and enabled context to an external AI provider. Offline commands remain available.',
+          ),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.providerFallback,
+            title: 'Provider fallback',
+            subtitle: 'Allow the same task context to be sent to another configured provider if the selected provider fails.',
+          ),
+          _capabilitySwitch(
             keyName: LucySettingsStore.voiceInput,
             title: 'Voice input',
             subtitle: 'Allow Lucy to listen after you press the microphone control.',
