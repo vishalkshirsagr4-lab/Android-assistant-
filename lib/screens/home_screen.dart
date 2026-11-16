@@ -724,7 +724,9 @@ class _HomeScreenState extends State<HomeScreen>
   static const Map<String, String> _langBadges = {
     'en': 'EN',
     'ja': 'JA',
-    'ar': 'AR',\n    'hi': 'HI',\n    'kn': 'KN',
+    'ar': 'AR',
+    'hi': 'HI',
+    'kn': 'KN',
   };
 
   Widget _buildLanguageToggle() {
@@ -736,7 +738,9 @@ class _HomeScreenState extends State<HomeScreen>
       itemBuilder: (_) => const [
         PopupMenuItem(value: 'en', child: Text('English')),
         PopupMenuItem(value: 'ja', child: Text('日本語')),
-        PopupMenuItem(value: 'ar', child: Text('العربية')),\n        PopupMenuItem(value: 'hi', child: Text('हिन्दी')),\n        PopupMenuItem(value: 'kn', child: Text('ಕನ್ನಡ')),
+        PopupMenuItem(value: 'ar', child: Text('العربية')),
+        PopupMenuItem(value: 'hi', child: Text('हिन्दी')),
+        PopupMenuItem(value: 'kn', child: Text('ಕನ್ನಡ')),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
