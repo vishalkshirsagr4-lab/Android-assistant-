@@ -22,6 +22,8 @@ class LucyActionApprovalPolicy {
     String? targetLabel,
     String? packageName,
   }) {
+    // Native communication actions must be explicitly approved before opening composers.
+    if (action == 'place_call' || action == 'send_sms') return true;
     if (action != 'tap') return false;
     final label = (targetLabel ?? '').trim().toLowerCase();
     if (_sensitiveTapLabels.contains(label) ||
