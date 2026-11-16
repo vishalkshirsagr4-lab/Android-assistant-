@@ -90,6 +90,8 @@ class AgentController extends ChangeNotifier {
 
   int _listenRetryCount = 0;
   bool _listenRestartScheduled = false;
+  Timer? _silenceTimeoutTimer;
+  static const Duration _conversationSilenceTimeout = Duration(seconds: 60);
 
   static const int _maxStepsPerCommand = 50;
   static const Duration _uiPollInterval = Duration(milliseconds: 120);
@@ -504,6 +506,43 @@ class AgentController extends ChangeNotifier {
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
+  double get voiceSpeechRate => _voiceService.speechRate;
+  double get voicePitch => _voiceService.pitch;
+  double get voiceVolume => _voiceService.volume;
+
+  Future<void> configureVoice({
+    double? speechRate,
+    double? pitch,
+    double? volume,
+  }) async {
+    await _voiceService.setVoiceSettings(
+      speechRate: speechRate,
+      pitch: pitch,
+      volume: volume,
+    );
+    notifyListeners();
+  }
+
+  Future<void> setVoiceStyle(String style) async {
+    switch (style) {
+      case 'calm':
+        await configureVoice(speechRate: 0.42, pitch: 0.92);
+        return;
+      case 'bright':
+        await configureVoice(speechRate: 0.54, pitch: 1.08);
+        return;
+      default:
+        await configureVoice(speechRate: 0.48, pitch: 1.0);
+    }
+  }
+
+  Future<void> interruptSpeaking() async {
+    if (!_isActive || _state != AgentState.speaking) return;
+    _cancelRequested = true;
+    await _voiceService.stopSpeaking();
+    _statusMessage = 'Interrupted. Listening for you…';
+    notifyListeners();
+  }
 
   /// Whether a cancel has been requested by the user.
   bool get cancelRequested => _cancelRequested;
@@ -550,6 +589,7 @@ class AgentController extends ChangeNotifier {
 
     _voiceService.onResult = (text, isFinal) {
       _currentTranscript = text;
+      if (text.trim().isNotEmpty) _resetSilenceTimeout();
       final pendingApproval = _pendingVoiceApproval;
       if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
         final answer = text.trim().toLowerCase().replaceAll(
@@ -731,44 +771,33 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> startAgent() async {
-    if (!await _aiService.isProviderReady()) {
-      _statusMessage = _aiService.isUsingGrok
-          ? '⚠️ Please save a valid xAI API key in Lucy tools first'
-          : _aiService.isUsingGroq
-          ? '⚠️ Please save a valid Groq API key in Lucy tools first'
-          : _aiService.isUsingHms
-          ? '⚠️ Please save a valid 100milionseek API key in Lucy tools first'
-          : '⚠️ Please set your Gemini API key first';
-      notifyListeners();
-      return;
-    }
-
+    final providerReady = await _aiService.isProviderReady();
     _isActive = true;
     _addConversation(
       'Agent started. Listening for your commands. To stop Lucy while it is in another app, open notifications and tap "Stop Lucy".',
       false,
     );
-    _statusMessage = 'Listening... Open notifications to stop Lucy.';
+    _statusMessage = providerReady
+        ? 'Listening… Tap to stop, or hold the microphone for push-to-talk.'
+        : 'Offline voice commands ready. Add an AI key for screen tasks.';
     _isAskingForFurtherHelp = false;
     notifyListeners();
 
-    // Request screen capture permission
-    final hasScreenPermission = await _screenCapture.requestPermission();
-    if (!hasScreenPermission) {
-      _addConversation(
-        '⚠️ Screen capture permission denied. I can still listen and talk, but cannot see the screen.',
-        false,
-      );
-    }
-
-    // Check if accessibility service is enabled
-    final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
-    if (!hasAccessibility) {
-      _addConversation(
-        '⚠️ Accessibility service not enabled. I can see the screen but cannot perform actions (tap, type, swipe). '
-        'Go to Settings → Accessibility → Lucy to enable it.',
-        false,
-      );
+    if (providerReady) {
+      final hasScreenPermission = await _screenCapture.requestPermission();
+      if (!hasScreenPermission) {
+        _addConversation(
+          'Screen capture permission denied. I can still handle local voice commands.',
+          false,
+        );
+      }
+      final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+      if (!hasAccessibility) {
+        _addConversation(
+          'Accessibility service is not enabled. Lucy can listen, but cannot tap or type in other apps.',
+          false,
+        );
+      }
     }
 
     _listenRetryCount = 0;
@@ -782,6 +811,8 @@ class AgentController extends ChangeNotifier {
   Future<void> stopAgent() async {
     _isActive = false;
     _listenRestartScheduled = false;
+    _silenceTimeoutTimer?.cancel();
+    _silenceTimeoutTimer = null;
     _cancelRequested = false;
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
@@ -822,22 +853,48 @@ class AgentController extends ChangeNotifier {
       _scheduleListeningRestart();
     } else if (started) {
       _listenRetryCount = 0;
+      _resetSilenceTimeout();
     }
+  }
+
+  void _resetSilenceTimeout() {
+    _silenceTimeoutTimer?.cancel();
+    if (!_isActive || _state != AgentState.listening) return;
+    _silenceTimeoutTimer = Timer(_conversationSilenceTimeout, () {
+      if (_isActive && _state == AgentState.listening) {
+        _statusMessage = 'Conversation paused after 60 seconds without speech.';
+        unawaited(stopAgent());
+      }
+    });
   }
 
   /// Main handler: user says something → agent loop begins.
   Future<void> _handleUserInput(String text) async {
     if (!_isActive || _state != AgentState.listening) return;
 
-    // Immediately change state to prevent multipleSTT events or auto-restarts
+    _silenceTimeoutTimer?.cancel();
+    _silenceTimeoutTimer = null;
     _setState(AgentState.analyzing);
     await _voiceService.stopListening();
 
     _addConversation(text, true);
     _currentTranscript = '';
 
+    if (await _handleOfflineCommand(text)) {
+      if (_isActive) await _startListening();
+      return;
+    }
+
     if (await _handleMemoryCommand(text)) {
       if (_isActive) _startListening();
+      return;
+    }
+
+    if (!await _aiService.isProviderReady()) {
+      await _speakLocalReply(
+        'I can help offline with the time, battery and flashlight. Add an AI provider key in Lucy tools for screen and app tasks.',
+      );
+      if (_isActive) await _startListening();
       return;
     }
 
@@ -876,6 +933,104 @@ class AgentController extends ChangeNotifier {
     if (_isActive) {
       _startListening();
     }
+  }
+
+  Future<void> _speakLocalReply(String reply) async {
+    _addConversation(reply, false);
+    _setState(AgentState.speaking);
+    await _voiceService.speak(reply, lang: _currentLang);
+  }
+
+  Future<bool> _handleOfflineCommand(String text) async {
+    final command = text.toLowerCase().trim();
+    final asksTime = RegExp(
+      r"(what.?s the time|what time is it|tell me the time|current time|\btime\b|\bclock\b|समय|कितने बजे|ಸಮಯ|ಗಂಟೆ|時刻|時間|الوقت)",
+    ).hasMatch(command);
+    final asksBattery = RegExp(
+      r"(battery|charge level|battery status|बैटरी|ಚಾರ್ಜ್|ಬ್ಯಾಟರಿ|電池|بطارية|شحن)",
+    ).hasMatch(command);
+    final asksFlashlight = RegExp(
+      r"(flashlight|torch|टॉर्च|ಟಾರ್ಚ್|懐中電灯|مصباح)",
+    ).hasMatch(command);
+
+    if (asksTime) {
+      final now = DateTime.now();
+      final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+      final time = hour.toString() + ':' +
+          now.minute.toString().padLeft(2, '0') +
+          (now.hour >= 12 ? ' PM' : ' AM');
+      final reply = switch (_currentLang) {
+        'hi' => 'अभी ' + time + ' बजे हैं।',
+        'kn' => 'ಈಗ ಸಮಯ ' + time + '.',
+        'ja' => '現在の時刻は ' + time + ' です。',
+        'ar' => 'الوقت الآن ' + time + '.',
+        _ => "It's " + time + '.',
+      };
+      await _speakLocalReply(reply);
+      return true;
+    }
+
+    if (asksBattery) {
+      try {
+        final result = await _phoneActions.execute(
+          'get_device_status',
+          const <String, dynamic>{},
+        );
+        final data = result is Map
+            ? Map<dynamic, dynamic>.from(result)
+            : const <dynamic, dynamic>{};
+        final percent = data['batteryPercent'];
+        final charging = data['charging'] == true;
+        final value = percent is num ? percent.round().toString() : null;
+        final reply = value == null
+            ? 'I could not read the battery status on this device.'
+            : switch (_currentLang) {
+                'hi' => 'बैटरी ' + value + ' प्रतिशत है' +
+                    (charging ? ' और फोन चार्ज हो रहा है।' : '।'),
+                'kn' => 'ಬ್ಯಾಟರಿ ' + value + ' ಪ್ರತಿಶತ ಇದೆ' +
+                    (charging ? ' ಮತ್ತು ಫೋನ್ ಚಾರ್ಜ್ ಆಗುತ್ತಿದೆ.' : '.'),
+                'ja' => 'バッテリー残量は ' + value + ' パーセントです' +
+                    (charging ? '。充電中です。' : '。'),
+                'ar' => 'مستوى البطارية ' + value + ' بالمئة' +
+                    (charging ? '، والهاتف قيد الشحن.' : '.'),
+                _ => 'Battery is at ' + value + ' percent' +
+                    (charging ? ' and charging.' : '.'),
+              };
+        await _speakLocalReply(reply);
+      } catch (_) {
+        await _speakLocalReply('I could not read the battery status right now.');
+      }
+      return true;
+    }
+
+    if (asksFlashlight) {
+      final turnOff = RegExp(
+        r"(turn off|switch off|disable|off|बंद|ಆಫ್|消して|关闭|إيقاف)",
+      ).hasMatch(command);
+      try {
+        final changed = await _phoneActions.execute(
+          'set_flashlight',
+          <String, dynamic>{'enabled': !turnOff},
+        );
+        final reply = changed == true
+            ? switch (_currentLang) {
+                'hi' => turnOff ? 'टॉर्च बंद कर दी।' : 'टॉर्च चालू कर दी।',
+                'kn' => turnOff ? 'ಟಾರ್ಚ್ ಆಫ್ ಮಾಡಿದೆ.' : 'ಟಾರ್ಚ್ ಆನ್ ಮಾಡಿದೆ.',
+                'ja' => turnOff ? 'ライトを消しました。' : 'ライトをつけました。',
+                'ar' => turnOff ? 'أطفأت المصباح.' : 'شغّلت المصباح.',
+                _ => turnOff ? 'Flashlight off.' : 'Flashlight on.',
+              }
+            : 'I could not change the flashlight. Check camera permission and device support.';
+        await _speakLocalReply(reply);
+      } catch (_) {
+        await _speakLocalReply(
+          'I could not change the flashlight. Check camera permission and device support.',
+        );
+      }
+      return true;
+    }
+
+    return false;
   }
 
   /// The core agent loop: capture → analyze → act → repeat.
@@ -1728,6 +1883,7 @@ class AgentController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _silenceTimeoutTimer?.cancel();
     _voiceService.dispose();
     super.dispose();
   }
