@@ -114,6 +114,14 @@ class MainActivity : FlutterActivity() {
                     NativeVoiceService.updateStatus(status)
                     result.success(true)
                 }
+                "pauseForProcessing" -> {
+                    NativeVoiceService.pauseForProcessing()
+                    result.success(true)
+                }
+                "resumeAfterProcessing" -> {
+                    NativeVoiceService.resumeAfterProcessing()
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
