@@ -105,6 +105,15 @@ class MainActivity : FlutterActivity() {
                     stopService(Intent(this, NativeVoiceService::class.java))
                     result.success(true)
                 }
+                "updateStatus" -> {
+                    val status = call.argument<String>("status")
+                        ?.replace(Regex("\\s+"), " ")
+                        ?.take(120)
+                        ?.ifBlank { "Lucy is working" }
+                        ?: "Lucy is working"
+                    NativeVoiceService.updateStatus(status)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
