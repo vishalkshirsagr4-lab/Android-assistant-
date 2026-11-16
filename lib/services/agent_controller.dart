@@ -989,10 +989,17 @@ class AgentController extends ChangeNotifier {
     }
 
     _updateTaskProgress('Got it · Planning your request');
-    _addConversation('Got it. I’m working on that.', false);
+    final acknowledgement = switch (_currentLang) {
+      'hi' => 'समझ गया। मैं इस पर काम कर रहा हूँ।',
+      'kn' => 'ಸರಿ, ನಾನು ಇದನ್ನು ಮಾಡುತ್ತಿದ್ದೇನೆ.',
+      'ja' => 'わかりました。対応しています。',
+      'ar' => 'حسنًا، أنا أعمل على ذلك.',
+      _ => 'Got it. I’m working on that.',
+    };
+    _addConversation(acknowledgement, false);
     // Speak the acknowledgement without delaying the AI request. If the final
     // answer arrives first, VoiceService safely replaces this short acknowledgement.
-    unawaited(_voiceService.speak('Got it. I’m working on that.', lang: _currentLang));
+    unawaited(_voiceService.speak(acknowledgement, lang: _currentLang));
     await _runAgentLoop(text);
     _updateTaskProgress('Task finished · Listening again');
 
