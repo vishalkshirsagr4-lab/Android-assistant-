@@ -465,6 +465,99 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // Optional local proactive suggestions. Periodic evaluation is WorkManager-managed
+        // (Android's minimum periodic interval is 15 minutes); it never runs phone actions.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/proactive")
+            .setMethodCallHandler { call, result ->
+                val preferences = getSharedPreferences(
+                    ProactiveSuggestionWorker.PREFS,
+                    Context.MODE_PRIVATE
+                )
+                when (call.method) {
+                    "configure" -> {
+                        val enabled = call.argument<Boolean>("enabled") == true
+                        val quietStart = call.argument<Int>("quietStartHour") ?: 22
+                        val quietEnd = call.argument<Int>("quietEndHour") ?: 8
+                        val dailyLimit = call.argument<Int>("dailyLimit") ?: 3
+                        val cooldown = call.argument<Int>("cooldownMinutes") ?: 120
+                        if (quietStart !in 0..23 || quietEnd !in 0..23 ||
+                            dailyLimit !in 1..10 || cooldown !in 15..1440
+                        ) {
+                            result.error("INVALID_SETTINGS", "Invalid proactive suggestion settings.", null)
+                        } else if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            androidx.core.content.ContextCompat.checkSelfPermission(
+                                this, android.Manifest.permission.POST_NOTIFICATIONS
+                            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            result.success(false)
+                        } else {
+                            val notificationContextEnabled = getSharedPreferences(
+                                NotificationContextListener.PREFERENCES_NAME,
+                                Context.MODE_PRIVATE
+                            ).getBoolean(NotificationContextListener.NOTIFICATION_ENABLED_KEY, false)
+                            preferences.edit()
+                                .putBoolean(ProactiveSuggestionWorker.KEY_ENABLED, enabled)
+                                .putInt(ProactiveSuggestionWorker.KEY_QUIET_START, quietStart)
+                                .putInt(ProactiveSuggestionWorker.KEY_QUIET_END, quietEnd)
+                                .putInt(ProactiveSuggestionWorker.KEY_DAILY_LIMIT, dailyLimit)
+                                .putInt(ProactiveSuggestionWorker.KEY_COOLDOWN_MINUTES, cooldown)
+                                .putBoolean(ProactiveSuggestionWorker.KEY_NOTIFICATION_CONTEXT, notificationContextEnabled)
+                                .apply()
+                            val manager = androidx.work.WorkManager.getInstance(applicationContext)
+                            if (enabled) {
+                                val request = androidx.work.PeriodicWorkRequestBuilder<ProactiveSuggestionWorker>(
+                                    15, java.util.concurrent.TimeUnit.MINUTES
+                                ).addTag("lucy_proactive")
+                                    .build()
+                                manager.enqueueUniquePeriodicWork(
+                                    "lucy_proactive_evaluation",
+                                    androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                                    request
+                                )
+                            } else {
+                                manager.cancelUniqueWork("lucy_proactive_evaluation")
+                            }
+                            result.success(true)
+                        }
+                    }
+                    "status" -> {
+                        result.success(mapOf(
+                            "enabled" to preferences.getBoolean(ProactiveSuggestionWorker.KEY_ENABLED, false),
+                            "quietStartHour" to preferences.getInt(ProactiveSuggestionWorker.KEY_QUIET_START, 22),
+                            "quietEndHour" to preferences.getInt(ProactiveSuggestionWorker.KEY_QUIET_END, 8),
+                            "dailyLimit" to preferences.getInt(ProactiveSuggestionWorker.KEY_DAILY_LIMIT, 3),
+                            "cooldownMinutes" to preferences.getInt(ProactiveSuggestionWorker.KEY_COOLDOWN_MINUTES, 120),
+                            "lastSuggestion" to preferences.getString(ProactiveSuggestionWorker.KEY_LAST_TITLE, null),
+                            "lastReason" to preferences.getString(ProactiveSuggestionWorker.KEY_LAST_REASON, null),
+                            "lastRisk" to preferences.getString(ProactiveSuggestionWorker.KEY_LAST_RISK, null),
+                            "lastConfidence" to preferences.getFloat(ProactiveSuggestionWorker.KEY_LAST_CONFIDENCE, -1f).takeIf { it >= 0f },
+                            "lastSuggestionAt" to preferences.getLong(ProactiveSuggestionWorker.KEY_LAST_AT, 0L)
+                        ))
+                    }
+                    "explain" -> {
+                        result.success(mapOf(
+                            "suggestion" to preferences.getString(ProactiveSuggestionWorker.KEY_LAST_SUGGESTION, null),
+                            "reason" to preferences.getString(ProactiveSuggestionWorker.KEY_LAST_REASON, null),
+                            "risk" to preferences.getString(ProactiveSuggestionWorker.KEY_LAST_RISK, null),
+                            "confidence" to preferences.getFloat(ProactiveSuggestionWorker.KEY_LAST_CONFIDENCE, -1f).takeIf { it >= 0f }
+                        ))
+                    }
+                    "runEvaluationNow" -> {
+                        if (!preferences.getBoolean(ProactiveSuggestionWorker.KEY_ENABLED, false)) {
+                            result.error("DISABLED", "Enable proactive suggestions first.", null)
+                        } else {
+                            val request = androidx.work.OneTimeWorkRequestBuilder<ProactiveSuggestionWorker>()
+                                .addTag("lucy_proactive_manual_test")
+                                .build()
+                            androidx.work.WorkManager.getInstance(applicationContext)
+                                .enqueue(request)
+                            result.success(true)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // Separate channel for safe, user-confirmed APK updates from GitHub Releases.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.poc.screen_aware_ai/updater")
             .setMethodCallHandler { call, result ->
