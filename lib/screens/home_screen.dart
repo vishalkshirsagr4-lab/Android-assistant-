@@ -1228,7 +1228,7 @@ class _HomeScreenState extends State<HomeScreen>
                           contentPadding: EdgeInsets.zero,
                           title: Text(item.content),
                           subtitle: Text(
-                            '${item.category} · updated ${item.updatedAt.toLocal()}',
+                            '${item.category} · updated ${item.updatedAt.toLocal()} · confidence ${(item.confidence * 100).round()}%',
                           ),
                           trailing: IconButton(
                             tooltip: 'Forget this memory',
