@@ -455,6 +455,11 @@ class AgentController extends ChangeNotifier {
     _addConversation(text, true);
     _currentTranscript = '';
 
+    if (await _handleMemoryCommand(text)) {
+      if (_isActive) _startListening();
+      return;
+    }
+
     if (_isAskingForFurtherHelp) {
       _isAskingForFurtherHelp = false;
       final trimmed = text.trim();
@@ -465,6 +470,7 @@ class AgentController extends ChangeNotifier {
       final isNegative =
           _negativeEn.hasMatch(textLowerAscii) ||
           _negativeJa.hasMatch(trimmed) ||
+          _negativeHiKn.hasMatch(trimmed) ||
           _negativeAr.hasMatch(trimmed);
       if (isNegative) {
         _setState(AgentState.speaking);
