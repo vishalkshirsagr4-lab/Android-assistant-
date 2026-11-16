@@ -266,10 +266,22 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
+      await _settings.setEnabled(LucySettingsStore.aiRequests, false);
+      await _settings.setEnabled(LucySettingsStore.aiScreenSharing, false);
+      await _settings.setEnabled(LucySettingsStore.providerFallback, false);
+      await _settings.setEnabled(LucySettingsStore.memory, false);
+      await _settings.setEnabled(LucySettingsStore.scheduledReminders, false);
       widget.controller.clearConversation();
       if (!mounted) return;
       setState(() {
-        _values = LucySettingsStore.defaults;
+        _values = <String, bool>{
+          ...LucySettingsStore.defaults,
+          LucySettingsStore.aiRequests: false,
+          LucySettingsStore.aiScreenSharing: false,
+          LucySettingsStore.providerFallback: false,
+          LucySettingsStore.memory: false,
+          LucySettingsStore.scheduledReminders: false,
+        };
         _proactiveStatus = const LucyProactiveStatus(
           enabled: false,
           quietStartHour: 22,
