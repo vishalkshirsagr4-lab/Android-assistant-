@@ -994,7 +994,7 @@ class _HomeScreenState extends State<HomeScreen>
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const Text(
-                  'Lucy reads device status when you use Lucy. If enabled, Android delivers notifications in the background and Lucy keeps at most 20 recent items on this device. Up to 5 short, redacted snippets may be included in requests to your selected AI provider while you use Lucy. Do not enable this if you do not want notification content processed.',
+                  'Lucy reads battery and network status when you use Lucy. If enabled, Android delivers notifications in the background and Lucy keeps at most 20 recent items locally; up to 5 short, redacted snippets may be included in requests to your selected AI provider. If you grant calendar or approximate-location access, upcoming events or rounded coordinates may also be included. Do not enable these options unless you agree to that processing.',
                   style: TextStyle(fontSize: 12),
                 ),
                 FutureBuilder<Map<String, dynamic>>(
