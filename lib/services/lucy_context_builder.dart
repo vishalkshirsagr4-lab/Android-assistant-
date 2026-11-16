@@ -6,8 +6,9 @@ import 'package:flutter/services.dart';
 /// has been granted. The service does not poll or upload anything in the
 /// background.
 class LucyContextBuilder {
-  static const MethodChannel _channel =
-      MethodChannel('com.poc.screen_aware_ai/context');
+  static const MethodChannel _channel = MethodChannel(
+    'com.poc.screen_aware_ai/context',
+  );
 
   Future<Map<String, dynamic>> readStatus() async {
     try {
@@ -160,9 +161,10 @@ class LucyContextBuilder {
         final body = _clean(item['text']?.toString() ?? '', 150);
         final timestamp = item['timestamp'];
         final age = timestamp is num
-            ? _relativeTime(now, DateTime.fromMillisecondsSinceEpoch(
-                timestamp.toInt(),
-              ))
+            ? _relativeTime(
+                now,
+                DateTime.fromMillisecondsSinceEpoch(timestamp.toInt()),
+              )
             : '';
         final parts = <String>[
           app,
@@ -185,7 +187,9 @@ class LucyContextBuilder {
         final start = item['startTimeMillis'];
         final location = _clean(item['location']?.toString() ?? '', 60);
         final startText = start is num
-            ? DateTime.fromMillisecondsSinceEpoch(start.toInt()).toLocal().toString()
+            ? DateTime.fromMillisecondsSinceEpoch(
+                start.toInt(),
+              ).toLocal().toString()
             : 'time unavailable';
         lines.add(
           '- $title at $startText${location.isEmpty ? '' : ' · $location'}',
