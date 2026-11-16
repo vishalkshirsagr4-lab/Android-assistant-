@@ -85,11 +85,16 @@ class LucyContextBuilder {
 
   Future<bool> setCalendarContextEnabled(bool enabled) async {
     try {
-      return await _channel.invokeMethod<bool>(
+      final saved = await _channel.invokeMethod<bool>(
             'setCalendarContextEnabled',
             <String, dynamic>{'enabled': enabled},
           ) ??
           false;
+      if (saved) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('lucy_context_calendar_enabled', enabled);
+      }
+      return saved;
     } on PlatformException {
       return false;
     } on MissingPluginException {
