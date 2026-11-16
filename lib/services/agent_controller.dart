@@ -142,121 +142,297 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(reply, lang: _currentLang);
   }
 
+  String _memoryReply(
+    String key, {
+    String value = '',
+    int count = 0,
+  }) {
+    switch (_currentLang) {
+      case 'ja':
+        return switch (key) {
+          'empty' => 'まだ保存された思い出はありません。「覚えておいて」と言えば保存できます。',
+          'show' => 'あなたが保存を頼んだ内容はこちらです。$value',
+          'cleared' => 'この端末に保存していたLucyのメモリーを消去しました。',
+          'nameForgot' => '呼び方の設定を忘れました。',
+          'noName' => '保存された呼び方はありません。',
+          'askForget' => '忘れてほしい内容を教えてください。',
+          'forgot' => '一致した$count件のメモリーを忘れました。',
+          'noMatch' => 'その内容に一致するメモリーは見つかりませんでした。',
+          'askRemember' => '覚えておく内容を教えてください。',
+          'saved' => '$valueとしてこの端末に保存しました。いつでも確認したり、削除したりできます。',
+          _ => 'メモリーを更新しました。',
+        };
+      case 'ar':
+        return switch (key) {
+          'empty' => 'لا توجد ذكريات محفوظة بعد. قل «تذكّر أن…» لحفظ شيء.',
+          'show' => 'هذه هي المعلومات التي طلبت مني حفظها: $value',
+          'cleared' => 'مسحت الذكريات التي حفظتها على هذا الجهاز.',
+          'nameForgot' => 'نسيت الاسم الذي طلبت مني استخدامه.',
+          'noName' => 'لا يوجد اسم مفضّل محفوظ.',
+          'askForget' => 'ما المعلومة التي تريد مني نسيانها؟',
+          'forgot' => 'نسيت $count من عناصر الذاكرة المطابقة.',
+          'noMatch' => 'لم أجد معلومة محفوظة تطابق ذلك.',
+          'askRemember' => 'ما الذي تريد مني تذكّره؟',
+          'saved' => 'حفظت ذلك على هذا الجهاز ضمن $value. يمكنك طلب عرضه أو حذفه في أي وقت.',
+          _ => 'تم تحديث الذاكرة.',
+        };
+      case 'hi':
+        return switch (key) {
+          'empty' => 'अभी कोई याद सेव नहीं है। कुछ सेव करवाने के लिए कहो, “याद रखना कि…”।',
+          'show' => 'तुमने जो बातें सेव करने को कहा था, वे ये हैं: $value',
+          'cleared' => 'मैंने इस डिवाइस पर सेव की गई यादें मिटा दी हैं।',
+          'nameForgot' => 'मैंने तुम्हारा पसंदीदा नाम भूल दिया है।',
+          'noName' => 'कोई पसंदीदा नाम सेव नहीं है।',
+          'askForget' => 'बताओ, कौन-सी सेव की हुई बात भूलनी है?',
+          'forgot' => 'मैंने मेल खाने वाली $count यादें हटा दी हैं।',
+          'noMatch' => 'उस बात से मेल खाती कोई सेव की हुई याद नहीं मिली।',
+          'askRemember' => 'बताओ, क्या याद रखना है?',
+          'saved' => 'मैंने इसे इस डिवाइस पर $value के रूप में सेव कर लिया है।',
+          _ => 'याद अपडेट कर दी है।',
+        };
+      case 'kn':
+        return switch (key) {
+          'empty' => 'ಇನ್ನೂ ಯಾವುದೇ ನೆನಪುಗಳನ್ನು ಉಳಿಸಿಲ್ಲ. “ಇದನ್ನು ನೆನಪಿಟ್ಟುಕೋ…” ಎಂದು ಹೇಳಬಹುದು.',
+          'show' => 'ನೀವು ಉಳಿಸಲು ಕೇಳಿದ ವಿಷಯಗಳು ಇವು: $value',
+          'cleared' => 'ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ್ದ ನೆನಪುಗಳನ್ನು ಅಳಿಸಿದ್ದೇನೆ.',
+          'nameForgot' => 'ನಿಮ್ಮ ಇಷ್ಟದ ಹೆಸರನ್ನು ಮರೆತಿದ್ದೇನೆ.',
+          'noName' => 'ಯಾವುದೇ ಇಷ್ಟದ ಹೆಸರು ಉಳಿಸಿಲ್ಲ.',
+          'askForget' => 'ಯಾವ ಉಳಿಸಿದ ವಿಷಯವನ್ನು ಮರೆಯಬೇಕು ಎಂದು ಹೇಳಿ.',
+          'forgot' => 'ಹೊಂದಿಕೆಯಾದ $count ನೆನಪುಗಳನ್ನು ಮರೆತಿದ್ದೇನೆ.',
+          'noMatch' => 'ಆ ವಿಷಯಕ್ಕೆ ಹೊಂದುವ ಉಳಿಸಿದ ನೆನಪು ಸಿಗಲಿಲ್ಲ.',
+          'askRemember' => 'ಏನು ನೆನಪಿಟ್ಟುಕೊಳ್ಳಬೇಕು ಎಂದು ಹೇಳಿ.',
+          'saved' => '$value ಎಂದು ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ್ದೇನೆ. ಬೇಕಾದಾಗ ನೋಡಬಹುದು ಅಥವಾ ಅಳಿಸಬಹುದು.',
+          _ => 'ನೆನಪನ್ನು ನವೀಕರಿಸಿದ್ದೇನೆ.',
+        };
+      default:
+        return switch (key) {
+          'empty' => 'I do not have any saved memories yet. Say “remember that…” when you want me to save something.',
+          'show' => 'Here is what I have saved because you asked me to remember it: $value',
+          'cleared' => 'I cleared the memories Lucy saved on this device.',
+          'nameForgot' => 'I forgot your saved preferred name.',
+          'noName' => 'I do not have a preferred name saved.',
+          'askForget' => 'Tell me the saved detail you want me to forget.',
+          'forgot' => 'I forgot $count matching saved memory items.',
+          'noMatch' => 'I could not find a saved memory matching that detail.',
+          'askRemember' => 'Tell me what you want me to remember.',
+          'saved' => 'Saved on this device as a $value. You can ask what I remember or tell me to forget it.',
+          _ => 'Memory updated.',
+        };
+    }
+  }
+
+  bool _containsAny(String value, List<String> terms) =>
+      terms.any(value.contains);
+
   Future<bool> _handleMemoryCommand(String text) async {
     final trimmed = text.trim();
     final lower = trimmed.toLowerCase();
 
-    if (lower == 'what do you remember' ||
-        lower == 'what do you remember about me' ||
-        lower == 'show my memories' ||
-        lower == 'list memories') {
+    const recallCommands = {
+      'what do you remember',
+      'what do you remember about me',
+      'show my memories',
+      'list memories',
+      '何を覚えてる',
+      '私について何を覚えてる',
+      '覚えていることを見せて',
+      'ماذا تتذكر',
+      'ماذا تتذكر عني',
+      'اعرض ذكرياتي',
+      'तुम्हें क्या याद है',
+      'मेरे बारे में क्या याद है',
+      'मेरी यादें बताओ',
+      'ನಿನಗೆ ಏನು ನೆನಪಿದೆ',
+      'ನನ್ನ ಬಗ್ಗೆ ಏನು ನೆನಪಿದೆ',
+      'ನನ್ನ ನೆನಪುಗಳನ್ನು ತೋರಿಸು',
+    };
+    if (recallCommands.contains(lower)) {
       final summary = memorySummary;
       await _replyToMemoryCommand(
         summary.isEmpty
-            ? 'I do not have any saved memories yet. Say “remember that…” when you want me to save something.'
-            : 'Here is what I have saved, only because you asked me to remember it: $summary',
+            ? _memoryReply('empty')
+            : _memoryReply('show', value: summary),
       );
       return true;
     }
 
-    if (lower == 'forget all memories' ||
-        lower == 'forget everything' ||
-        lower == 'clear my memories' ||
-        lower == 'delete all memories') {
+    const clearCommands = {
+      'forget all memories',
+      'forget everything',
+      'clear my memories',
+      'delete all memories',
+      'すべて忘れて',
+      '全部忘れて',
+      '記憶を全部消して',
+      'انسَ كل شيء',
+      'امسح كل الذكريات',
+      'भूल जाओ सब कुछ',
+      'सब यादें मिटा दो',
+      'ಎಲ್ಲವನ್ನೂ ಮರೆತುಬಿಡು',
+      'ಎಲ್ಲ ನೆನಪುಗಳನ್ನು ಅಳಿಸು',
+    };
+    if (clearCommands.contains(lower)) {
       await clearUserMemories();
-      await _replyToMemoryCommand(
-        'I cleared the memories Lucy saved on this device.',
-      );
+      await _replyToMemoryCommand(_memoryReply('cleared'));
       return true;
     }
 
-    if (lower == 'forget my name' ||
-        lower == 'forget my nickname' ||
-        lower == 'forget my preferred name') {
+    const forgetNameCommands = {
+      'forget my name',
+      'forget my nickname',
+      'forget my preferred name',
+      '私の名前を忘れて',
+      '私のニックネームを忘れて',
+      'انسَ اسمي',
+      'ماذا عن اسمي، انسَه',
+      'मेरा नाम भूल जाओ',
+      'मेरा निकनेम भूल जाओ',
+      'ನನ್ನ ಹೆಸರನ್ನು ಮರೆತುಬಿಡು',
+      'ನನ್ನ ಅಡ್ಡಹೆಸರನ್ನು ಮರೆತುಬಿಡು',
+    };
+    if (forgetNameCommands.contains(lower)) {
       final removed = await forgetUserMemory('prefers to be addressed as');
       await _replyToMemoryCommand(
-        removed > 0
-            ? 'I forgot your saved preferred name.'
-            : 'I do not have a preferred name saved.',
+        _memoryReply(removed > 0 ? 'nameForgot' : 'noName'),
       );
       return true;
     }
 
-    if (lower.startsWith('forget ') || lower.startsWith('forget that ')) {
-      final query = trimmed
-          .replaceFirst(
-            RegExp(r'^forget\s+(that\s+)?', caseSensitive: false),
-            '',
-          )
-          .trim();
-      if (query.isEmpty || query == 'this') {
-        await _replyToMemoryCommand(
-          'Tell me the saved detail you want me to forget.',
-        );
-      } else {
-        final removed = await forgetUserMemory(query);
-        await _replyToMemoryCommand(
-          removed > 0
-              ? 'I forgot $removed matching saved memory items.'
-              : 'I could not find a saved memory matching that detail.',
-        );
+    String? preferredName;
+    for (final prefix in ['call me ', 'my nickname is ']) {
+      if (lower.startsWith(prefix)) {
+        preferredName = trimmed.substring(prefix.length).trim();
+        break;
       }
-      return true;
     }
-
-    if (lower.startsWith('call me ')) {
-      final preferredName = trimmed.substring('call me '.length).trim();
+    if (preferredName == null) {
+      final patterns = <RegExp>[
+        RegExp(r'^私を(.+?)と呼んで$'),
+        RegExp(r'^نادني\s+(.+)$'),
+        RegExp(r'^मुझे\s+(.+?)\s+बुलाओ$'),
+        RegExp(r'^ನನ್ನನ್ನು\s+(.+?)\s+ಎಂದು ಕರೆಯಿರಿ$'),
+      ];
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(trimmed);
+        if (match != null) {
+          preferredName = match.group(1)?.trim();
+          break;
+        }
+      }
+    }
+    if (preferredName != null) {
+      preferredName = preferredName.replaceAll(RegExp(r'[.!?。！？]+$'), '').trim();
       if (preferredName.isNotEmpty && preferredName.length <= 60) {
+        await forgetUserMemory('prefers to be addressed as');
         await rememberUserMemory(
           'The user prefers to be addressed as $preferredName.',
           category: 'preference',
         );
         await _replyToMemoryCommand(
-          'Okay. I will use $preferredName when addressing you.',
+          _currentLang == 'hi'
+              ? 'ठीक है, मैं तुम्हें $preferredName कहूँगा।'
+              : _currentLang == 'kn'
+              ? 'ಸರಿ, ಇನ್ನು ಮುಂದೆ ನಿಮ್ಮನ್ನು $preferredName ಎಂದು ಕರೆಯುತ್ತೇನೆ.'
+              : _currentLang == 'ja'
+              ? 'わかりました。これから$preferredNameと呼びます。'
+              : _currentLang == 'ar'
+              ? 'حسنًا، سأناديك $preferredName.'
+              : 'Okay. I will call you $preferredName.',
         );
       } else {
-        await _replyToMemoryCommand(
-          'Tell me what you would like me to call you.',
-        );
+        await _replyToMemoryCommand(_memoryReply('askRemember'));
       }
       return true;
     }
 
-    const prefixes = ['remember that ', 'remember: ', 'lucy remember '];
-    for (final prefix in prefixes) {
+    const forgetPrefixes = [
+      'forget ',
+      'forget that ',
+      '忘れて ',
+      'انسَ ',
+      'भूल जाओ ',
+      'ಮರೆತುಬಿಡು ',
+    ];
+    for (final prefix in forgetPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final query = trimmed.substring(prefix.length).trim();
+        if (query.isEmpty || query == 'this') {
+          await _replyToMemoryCommand(_memoryReply('askForget'));
+        } else {
+          final removed = await forgetUserMemory(query);
+          await _replyToMemoryCommand(
+            _memoryReply(removed > 0 ? 'forgot' : 'noMatch', count: removed),
+          );
+        }
+        return true;
+      }
+    }
+
+    const rememberPrefixes = [
+      'remember that ',
+      'remember: ',
+      'lucy remember ',
+      '覚えておいて ',
+      'تذكر أن ',
+      'याद रखना कि ',
+      'ನೆನಪಿಟ್ಟುಕೋ ',
+    ];
+    for (final prefix in rememberPrefixes) {
       if (lower.startsWith(prefix)) {
         final fact = trimmed.substring(prefix.length).trim();
         if (fact.isEmpty) {
-          await _replyToMemoryCommand('Tell me what you want me to remember.');
+          await _replyToMemoryCommand(_memoryReply('askRemember'));
           return true;
         }
         final factLower = fact.toLowerCase();
-        final category =
-            factLower.contains('prefer') ||
-                factLower.contains('like') ||
-                factLower.contains('favorite') ||
-                factLower.contains('favourite')
+        final category = _containsAny(factLower, [
+          'prefer',
+          'like',
+          'favorite',
+          'favourite',
+          'पसंद',
+          'ಇಷ್ಟ',
+          '好き',
+          'أفضل',
+        ])
             ? 'preference'
-            : factLower.contains('every day') ||
-                  factLower.contains('every morning') ||
-                  factLower.contains('every evening') ||
-                  factLower.contains('routine')
+            : _containsAny(factLower, [
+                'every day',
+                'every morning',
+                'every evening',
+                'routine',
+                'रोज',
+                'ಪ್ರತಿ ದಿನ',
+                '毎日',
+                'كل يوم',
+              ])
             ? 'routine'
-            : factLower.contains('my friend') ||
-                  factLower.contains('my mother') ||
-                  factLower.contains('my father') ||
-                  factLower.contains('my brother') ||
-                  factLower.contains('my sister')
+            : _containsAny(factLower, [
+                'my friend',
+                'my mother',
+                'my father',
+                'my brother',
+                'my sister',
+                'मेरा दोस्त',
+                'मेरी माँ',
+                'ನನ್ನ ಸ್ನೇಹಿತ',
+                '母',
+                'صديقي',
+              ])
             ? 'relationship'
-            : factLower.contains('goal') ||
-                  factLower.contains('want to become') ||
-                  factLower.contains('planning to')
+            : _containsAny(factLower, [
+                'goal',
+                'want to become',
+                'planning to',
+                'लक्ष्य',
+                'ಗುರಿ',
+                '目標',
+                'هدفي',
+              ])
             ? 'goal'
             : 'fact';
         await rememberUserMemory(fact, category: category);
-        await _replyToMemoryCommand(
-          'Saved on this device as a $category. You can ask what I remember or tell me to forget it.',
-        );
+        await _replyToMemoryCommand(_memoryReply('saved', value: category));
         return true;
       }
     }
