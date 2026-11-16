@@ -1079,8 +1079,9 @@ class AgentController extends ChangeNotifier {
   /// Execute a single agent action.
   Future<bool> _requestVoiceApproval(
     AgentAction action,
-    String? targetLabel,
-  ) async {
+    String? targetLabel, {
+    required String requiredRisk,
+  }) async {
     if (!_isActive || _pendingVoiceApproval != null) return false;
     final details = <String>[
       action.type.replaceAll('_', ' '),
@@ -1090,8 +1091,7 @@ class AgentController extends ChangeNotifier {
         'message: ${action.params['message']}',
       if (action.params['recipient'] is String)
         'recipient: ${action.params['recipient']}',
-      if (action.params['risk'] is String)
-        'model risk: ${action.params['risk']}',
+      'risk: $requiredRisk',
       if (action.params['reason'] is String)
         'reason: ${action.params['reason']}',
     ].join('. ');
@@ -1174,14 +1174,19 @@ class AgentController extends ChangeNotifier {
       _cancelRequested = true;
       return beforeSnapshot;
     }
-    if (LucyActionApprovalPolicy.requiresApproval(
+    final requiredRisk = LucyActionApprovalPolicy.effectiveRisk(
       action.type,
       targetLabel: targetLabel,
       packageName: beforeSnapshot?.packageName,
       modelRisk: action.params['risk']?.toString(),
       confidence: modelConfidence,
-    )) {
-      final approved = await _requestVoiceApproval(action, targetLabel);
+    );
+    if (requiredRisk != 'low') {
+      final approved = await _requestVoiceApproval(
+        action,
+        targetLabel,
+        requiredRisk: requiredRisk,
+      );
       if (!approved) {
         _cancelRequested = true;
         _addConversation('Action cancelled. I will stop this task.', false);
