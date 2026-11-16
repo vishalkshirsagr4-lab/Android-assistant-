@@ -691,11 +691,10 @@ class AgentController extends ChangeNotifier {
     _cancelRequested = false;
     int step = 0;
     String currentMessage = userMessage;
-    // Read optional context once per user command, not on every agent step.
-    // The native provider omits sources whose access has not been granted.
-    final deviceContext = await _contextBuilder.buildPromptContext();
-
-    // Fetch screen size once for the whole loop
+    // Screen dimensions are stable for this command, but device context is
+    // refreshed before every model request so new notifications, battery,
+    // network, foreground-app and calendar changes are visible to Lucy.
+    // Android omits optional sources unless the user granted access.
     final screenSize = await _screenCapture.getScreenSize();
 
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
@@ -728,6 +727,8 @@ class AgentController extends ChangeNotifier {
       notifyListeners();
 
       final aiStopwatch = Stopwatch()..start();
+      final deviceContext = await _contextBuilder.buildPromptContext();
+      if (_cancelRequested) break;
       final localNow = DateTime.now();
       final requestWithClock =
           '[Device local date/time: ${localNow.toIso8601String()}]\n'
