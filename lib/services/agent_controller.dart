@@ -491,7 +491,7 @@ class AgentController extends ChangeNotifier {
 
     // Ordinary conversation never triggers screenshot or accessibility capture.
     final lower = text.toLowerCase().trim();
-    final needsPhone = RegExp(r'\b(open|launch|tap|click|press|select|scroll|swipe|type|enter|send|reply|message|call|dial|search in|install|uninstall|enable|disable|set alarm|set timer|alarm|timer|flashlight|torch|brightness|volume|battery|storage|contact|calendar|music|song|read screen|read this|what is on my screen|look at my screen|describe this screen|book|order|upload|download|share|navigate|delete)\b').hasMatch(lower);
+    final needsPhone = RegExp(r'\b(open|launch|tap|click|press|select|scroll|swipe|type|enter|send|reply|message|call|dial|search in|install|uninstall|enable|disable|set alarm|set timer|wake|remind|alarm|timer|flashlight|torch|brightness|volume|battery|storage|contact|calendar|event|schedule|meeting|music|song|photo|camera|read screen|read this|what is on my screen|look at my screen|describe this screen|book|order|upload|download|share|navigate|delete)\b').hasMatch(lower);
     if (!needsPhone) {
       final reply = await _aiService.agentChat(text, memoryContext: memorySummary);
       if (!_cancelRequested) {
@@ -640,13 +640,20 @@ class AgentController extends ChangeNotifier {
       if (_cancelRequested) break;
 
       // 5. Check if done
-      if (agentResponse.done) {
+      if (agentResponse.done && !_lastNativeActionFailed) {
         break;
       }
 
-      // Not done → continue the loop with a follow-up message
-      currentMessage =
-          'I have executed the actions. Here is the updated screen. Continue with the task.';
+      // Give a failed native intent one fresh observation and an opportunity
+      // for the existing accessibility workflow to take over.
+      if (_lastNativeActionFailed) {
+        currentMessage =
+            'The native Android action failed. Inspect the current screen and try the equivalent task using existing UI automation if safe. Do not repeat the failed native action.';
+        _lastNativeActionFailed = false;
+      } else {
+        currentMessage =
+            'I have executed the actions. Here is the updated screen. Continue with the task.';
+      }
       // If screenshot capture might fail next iteration, the AI will still
       // receive the message but without an image. The retry logic in
       // _captureScreenWithRetry handles this by making multiple attempts.
@@ -931,6 +938,7 @@ class AgentController extends ChangeNotifier {
             params: Map<String, dynamic>.from(nativeParams),
           );
           if (nativeResult['success'] != true) {
+            _lastNativeActionFailed = true;
             final message = nativeResult['message']?.toString() ?? 'The Android action could not be completed.';
             _addConversation('Native action unavailable: $message. I can try the on-screen method next.', false);
           } else if (nativeAction == 'battery_status') {
