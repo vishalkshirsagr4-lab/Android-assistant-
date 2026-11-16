@@ -65,7 +65,8 @@ class AgentController extends ChangeNotifier {
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
   final LucyActivityStore _activityStore = LucyActivityStore();
-  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
+  final LucyPerformanceMonitor _performanceMonitor =
+      LucyPerformanceMonitor.shared;
   final PhoneActionService _phoneActions = PhoneActionService();
 
   AgentState _state = AgentState.idle;
@@ -116,7 +117,10 @@ class AgentController extends ChangeNotifier {
   List<LucyMemory> get savedMemories =>
       _memoryStore?.items ?? const <LucyMemory>[];
 
-  Future<void> rememberUserMemory(String content, {String category = 'fact'}) async {
+  Future<void> rememberUserMemory(
+    String content, {
+    String category = 'fact',
+  }) async {
     await _memoryStore?.remember(content, category: category);
     notifyListeners();
   }
@@ -160,7 +164,9 @@ class AgentController extends ChangeNotifier {
         lower == 'clear my memories' ||
         lower == 'delete all memories') {
       await clearUserMemories();
-      await _replyToMemoryCommand('I cleared the memories Lucy saved on this device.');
+      await _replyToMemoryCommand(
+        'I cleared the memories Lucy saved on this device.',
+      );
       return true;
     }
 
@@ -178,10 +184,15 @@ class AgentController extends ChangeNotifier {
 
     if (lower.startsWith('forget ') || lower.startsWith('forget that ')) {
       final query = trimmed
-          .replaceFirst(RegExp(r'^forget\s+(that\s+)?', caseSensitive: false), '')
+          .replaceFirst(
+            RegExp(r'^forget\s+(that\s+)?', caseSensitive: false),
+            '',
+          )
           .trim();
       if (query.isEmpty || query == 'this') {
-        await _replyToMemoryCommand('Tell me the saved detail you want me to forget.');
+        await _replyToMemoryCommand(
+          'Tell me the saved detail you want me to forget.',
+        );
       } else {
         final removed = await forgetUserMemory(query);
         await _replyToMemoryCommand(
@@ -200,9 +211,13 @@ class AgentController extends ChangeNotifier {
           'The user prefers to be addressed as $preferredName.',
           category: 'preference',
         );
-        await _replyToMemoryCommand('Okay. I will use $preferredName when addressing you.');
+        await _replyToMemoryCommand(
+          'Okay. I will use $preferredName when addressing you.',
+        );
       } else {
-        await _replyToMemoryCommand('Tell me what you would like me to call you.');
+        await _replyToMemoryCommand(
+          'Tell me what you would like me to call you.',
+        );
       }
       return true;
     }
@@ -216,27 +231,28 @@ class AgentController extends ChangeNotifier {
           return true;
         }
         final factLower = fact.toLowerCase();
-        final category = factLower.contains('prefer') ||
+        final category =
+            factLower.contains('prefer') ||
                 factLower.contains('like') ||
                 factLower.contains('favorite') ||
                 factLower.contains('favourite')
             ? 'preference'
             : factLower.contains('every day') ||
-                    factLower.contains('every morning') ||
-                    factLower.contains('every evening') ||
-                    factLower.contains('routine')
-                ? 'routine'
-                : factLower.contains('my friend') ||
-                        factLower.contains('my mother') ||
-                        factLower.contains('my father') ||
-                        factLower.contains('my brother') ||
-                        factLower.contains('my sister')
-                    ? 'relationship'
-                    : factLower.contains('goal') ||
-                            factLower.contains('want to become') ||
-                            factLower.contains('planning to')
-                        ? 'goal'
-                        : 'fact';
+                  factLower.contains('every morning') ||
+                  factLower.contains('every evening') ||
+                  factLower.contains('routine')
+            ? 'routine'
+            : factLower.contains('my friend') ||
+                  factLower.contains('my mother') ||
+                  factLower.contains('my father') ||
+                  factLower.contains('my brother') ||
+                  factLower.contains('my sister')
+            ? 'relationship'
+            : factLower.contains('goal') ||
+                  factLower.contains('want to become') ||
+                  factLower.contains('planning to')
+            ? 'goal'
+            : 'fact';
         await rememberUserMemory(fact, category: category);
         await _replyToMemoryCommand(
           'Saved on this device as a $category. You can ask what I remember or tell me to forget it.',
@@ -287,7 +303,9 @@ class AgentController extends ChangeNotifier {
     r'(いいえ|いえ|けっこう|結構|もういい|もう大丈夫|大丈夫|終了|終わり|やめて|止めて|停止|いらない|不要|ない)',
   );
   // Arabic forms: "no", "stop", "enough", "done", "nothing".
-  static final RegExp _negativeHiKn = RegExp(r'(नहीं|रुको|बंद|बस|ಸಾಕು|ಬೇಡ|ನಿಲ್ಲಿಸು)');
+  static final RegExp _negativeHiKn = RegExp(
+    r'(नहीं|रुको|बंद|बस|ಸಾಕು|ಬೇಡ|ನಿಲ್ಲಿಸು)',
+  );
   static final RegExp _negativeAr = RegExp(
     r'(لا|كلا|توقف|قف|اوقف|أوقف|اكتفي|يكفي|كفى|انتهى|انتهيت|خلاص|لا شيء|لا شكرا|لا شكرًا)',
   );
@@ -309,14 +327,17 @@ class AgentController extends ChangeNotifier {
     await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
-    await _aiService.restoreConfiguration(legacyKey: prefs.getString('gemini_api_key'));
+    await _aiService.restoreConfiguration(
+      legacyKey: prefs.getString('gemini_api_key'),
+    );
     if (prefs.containsKey('gemini_api_key')) {
       await prefs.remove('gemini_api_key');
     }
     _memoryStore = LucyMemoryStore(prefs);
     await _memoryStore!.initialize();
     final savedProvider = prefs.getString(_providerPrefKey);
-    final provider = savedProvider ??
+    final provider =
+        savedProvider ??
         ((prefs.getBool(_legacyProviderPrefKey) ?? false) ? 'grok' : 'gemini');
     _aiService.useGrok(provider == 'grok');
     _aiService.useGroq(provider == 'groq');
@@ -339,25 +360,63 @@ class AgentController extends ChangeNotifier {
       _currentTranscript = text;
       final pendingApproval = _pendingVoiceApproval;
       if (pendingApproval != null && isFinal && text.trim().isNotEmpty) {
-        final answer = text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+        final answer = text.trim().toLowerCase().replaceAll(
+          RegExp(r'\s+'),
+          ' ',
+        );
         const affirmativeAnswers = {
-          'approve', 'approved', 'yes', 'allow', 'continue', 'go ahead',
-          'haan', 'han', 'ho', 'haanji', 'manzoor', 'हाँ', 'हां', 'मंजूर',
-          'ಹೌದು', 'ಮಂಜೂರು',
+          'approve',
+          'approved',
+          'yes',
+          'allow',
+          'continue',
+          'go ahead',
+          'haan',
+          'han',
+          'ho',
+          'haanji',
+          'manzoor',
+          'हाँ',
+          'हां',
+          'मंजूर',
+          'ಹೌದು',
+          'ಮಂಜೂರು',
         };
         const negativeAnswers = {
-          'deny', 'denied', 'no', 'cancel', 'stop', 'reject', 'beda',
-          'illa', 'nahi', 'mat karo', 'नहीं', 'नही', 'ಬೇಡ', 'ಇಲ್ಲ',
+          'deny',
+          'denied',
+          'no',
+          'cancel',
+          'stop',
+          'reject',
+          'beda',
+          'illa',
+          'nahi',
+          'mat karo',
+          'नहीं',
+          'नही',
+          'ಬೇಡ',
+          'ಇಲ್ಲ',
         };
         final denied = negativeAnswers.contains(answer);
         final approved = affirmativeAnswers.contains(answer);
         if (denied || approved) {
-          if (!pendingApproval.isCompleted) pendingApproval.complete(!denied && approved);
+          if (!pendingApproval.isCompleted)
+            pendingApproval.complete(!denied && approved);
           unawaited(_voiceService.stopListening());
         } else {
           _currentTranscript = 'Please say approve or cancel.';
-          unawaited(_voiceService.speak('Please say approve or cancel.', lang: _currentLang));
-          unawaited(_voiceService.startListening(localeId: VoiceService.sttLocaleFor(_currentLang)));
+          unawaited(
+            _voiceService.speak(
+              'Please say approve or cancel.',
+              lang: _currentLang,
+            ),
+          );
+          unawaited(
+            _voiceService.startListening(
+              localeId: VoiceService.sttLocaleFor(_currentLang),
+            ),
+          );
         }
       } else if (isFinal && text.isNotEmpty) {
         _handleUserInput(text);
@@ -378,7 +437,8 @@ class AgentController extends ChangeNotifier {
       if (normalized.contains('permission') ||
           normalized.contains('not_available') ||
           normalized.contains('recognizer_not_found')) {
-        _statusMessage = 'Microphone or speech service unavailable. Check permissions and retry.';
+        _statusMessage =
+            'Microphone or speech service unavailable. Check permissions and retry.';
         unawaited(stopAgent());
         return;
       }
@@ -398,10 +458,18 @@ class AgentController extends ChangeNotifier {
       return;
     }
     _aiService.useGrok(enabled);
-    final selectedProvider = enabled ? 'grok' : (_aiService.isUsingGroq ? 'groq' : _aiService.isUsingHms ? 'hms' : 'gemini');
+    final selectedProvider = enabled
+        ? 'grok'
+        : (_aiService.isUsingGroq
+              ? 'groq'
+              : _aiService.isUsingHms
+              ? 'hms'
+              : 'gemini');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_providerPrefKey, selectedProvider);
-    _statusMessage = enabled ? 'Grok selected for Lucy.' : '${selectedProvider == 'groq' ? 'Groq' : 'Gemini'} selected for Lucy.';
+    _statusMessage = enabled
+        ? 'Grok selected for Lucy.'
+        : '${selectedProvider == 'groq' ? 'Groq' : 'Gemini'} selected for Lucy.';
     notifyListeners();
   }
 
@@ -412,16 +480,25 @@ class AgentController extends ChangeNotifier {
       return;
     }
     _aiService.useGroq(enabled);
-    final selectedProvider = enabled ? 'groq' : (_aiService.isUsingGrok ? 'grok' : _aiService.isUsingHms ? 'hms' : 'gemini');
+    final selectedProvider = enabled
+        ? 'groq'
+        : (_aiService.isUsingGrok
+              ? 'grok'
+              : _aiService.isUsingHms
+              ? 'hms'
+              : 'gemini');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_providerPrefKey, selectedProvider);
-    _statusMessage = enabled ? 'Groq selected for Lucy.' : '${selectedProvider == 'grok' ? 'Grok' : 'Gemini'} selected for Lucy.';
+    _statusMessage = enabled
+        ? 'Groq selected for Lucy.'
+        : '${selectedProvider == 'grok' ? 'Grok' : 'Gemini'} selected for Lucy.';
     notifyListeners();
   }
 
   Future<void> setHmsProvider(bool enabled) async {
     if (enabled && !await _hmsService.isConfigured()) {
-      _statusMessage = 'Save a verified 100milionseek API key before selecting it.';
+      _statusMessage =
+          'Save a verified 100milionseek API key before selecting it.';
       notifyListeners();
       return;
     }
@@ -429,10 +506,10 @@ class AgentController extends ChangeNotifier {
     final selectedProvider = enabled
         ? 'hms'
         : (_aiService.isUsingGrok
-            ? 'grok'
-            : _aiService.isUsingGroq
-                ? 'groq'
-                : 'gemini');
+              ? 'grok'
+              : _aiService.isUsingGroq
+              ? 'groq'
+              : 'gemini');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_providerPrefKey, selectedProvider);
     _statusMessage = enabled
@@ -445,7 +522,8 @@ class AgentController extends ChangeNotifier {
     await _aiService.configure(apiKey);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('gemini_api_key');
-    notifyListeners();  }
+    notifyListeners();
+  }
 
   Future<void> removeGeminiKey() async {
     await _aiService.clearGeminiKey();
@@ -465,10 +543,10 @@ class AgentController extends ChangeNotifier {
       _statusMessage = _aiService.isUsingGrok
           ? '⚠️ Please save a valid xAI API key in Lucy tools first'
           : _aiService.isUsingGroq
-              ? '⚠️ Please save a valid Groq API key in Lucy tools first'
-              : _aiService.isUsingHms
-                  ? '⚠️ Please save a valid 100milionseek API key in Lucy tools first'
-                  : '⚠️ Please set your Gemini API key first';
+          ? '⚠️ Please save a valid Groq API key in Lucy tools first'
+          : _aiService.isUsingHms
+          ? '⚠️ Please save a valid 100milionseek API key in Lucy tools first'
+          : '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
     }
@@ -526,7 +604,8 @@ class AgentController extends ChangeNotifier {
     if (!_isActive || _listenRestartScheduled) return;
     _listenRestartScheduled = true;
     final seconds = (1 << (_listenRetryCount.clamp(0, 5))).clamp(2, 30);
-    _statusMessage = 'Speech session ended. Reconnecting in $seconds seconds...';
+    _statusMessage =
+        'Speech session ended. Reconnecting in $seconds seconds...';
     notifyListeners();
     Future.delayed(Duration(seconds: seconds), () {
       _listenRestartScheduled = false;
@@ -624,7 +703,8 @@ class AgentController extends ChangeNotifier {
 
       // 1. Capture screenshot (with retries for reliability after app switches)
       _setState(AgentState.capturing);
-      _statusMessage = '📸 Capturing screen... (step $step)';      notifyListeners();
+      _statusMessage = '📸 Capturing screen... (step $step)';
+      notifyListeners();
 
       final screenshotFuture = _captureScreenWithRetry();
       final uiSnapshotFuture = _fetchUiSnapshot();
@@ -803,7 +883,8 @@ class AgentController extends ChangeNotifier {
         return {
           'x': (bounds['cx'] as num).toDouble(),
           'y': (bounds['cy'] as num).toDouble(),
-        };      }
+        };
+      }
     }
     return null;
   }
@@ -1005,10 +1086,13 @@ class AgentController extends ChangeNotifier {
       action.type.replaceAll('_', ' '),
       if (targetLabel != null && targetLabel.isNotEmpty) 'target $targetLabel',
       if (action.params['text'] is String) 'message: ${action.params['text']}',
-      if (action.params['message'] is String) 'message: ${action.params['message']}',
-      if (action.params['recipient'] is String) 'recipient: ${action.params['recipient']}',
+      if (action.params['message'] is String)
+        'message: ${action.params['message']}',
+      if (action.params['recipient'] is String)
+        'recipient: ${action.params['recipient']}',
     ].join('. ');
-    final prompt = 'Lucy wants to $details. Say approve to continue, or cancel to stop.';
+    final prompt =
+        'Lucy wants to $details. Say approve to continue, or cancel to stop.';
     _setState(AgentState.waitingConfirmation);
     _statusMessage = 'Waiting for your spoken approval...';
     _addConversation(prompt, false);
@@ -1026,14 +1110,20 @@ class AgentController extends ChangeNotifier {
     );
     if (!started) {
       _pendingVoiceApproval = null;
-      _addConversation('I could not hear an approval. The action was not performed.', false);
+      _addConversation(
+        'I could not hear an approval. The action was not performed.',
+        false,
+      );
       return false;
     }
     var approved = false;
     try {
       approved = await completer.future.timeout(const Duration(seconds: 20));
     } on TimeoutException {
-      _addConversation('Approval timed out. The action was not performed.', false);
+      _addConversation(
+        'Approval timed out. The action was not performed.',
+        false,
+      );
     } finally {
       _pendingVoiceApproval = null;
       await _voiceService.stopListening();
@@ -1170,8 +1260,7 @@ class AgentController extends ChangeNotifier {
             );
             break;
           }
-          final reminderId =
-              'voice_${DateTime.now().millisecondsSinceEpoch}';
+          final reminderId = 'voice_${DateTime.now().millisecondsSinceEpoch}';
           await LucyRoutineScheduler.scheduleReminder(
             id: reminderId,
             title: title,
@@ -1224,7 +1313,9 @@ class AgentController extends ChangeNotifier {
     try {
       nativeResult = await _phoneActions.execute(action.type, action.params);
     } catch (error) {
-      debugPrint('Native phone action ${action.type} failed; trying UI fallback: $error');
+      debugPrint(
+        'Native phone action ${action.type} failed; trying UI fallback: $error',
+      );
       nativeResult = false;
     }
 
@@ -1232,7 +1323,8 @@ class AgentController extends ChangeNotifier {
         ? Map<String, dynamic>.from(nativeResult)
         : <String, dynamic>{};
     final needsBrightnessAccess = resultMap['requiresSettingsAccess'] == true;
-    final succeeded = nativeResult == true ||
+    final succeeded =
+        nativeResult == true ||
         resultMap['success'] == true ||
         resultMap.containsKey('batteryPercent') ||
         resultMap.containsKey('phoneNumber') ||
@@ -1285,7 +1377,8 @@ class AgentController extends ChangeNotifier {
       final free = (resultMap['storageFreeBytes'] as num?)?.toDouble() ?? 0;
       final usedGb = total > 0 ? (total - free) / (1024 * 1024 * 1024) : 0;
       final totalGb = total / (1024 * 1024 * 1024);
-      final message = 'Battery: ${battery ?? 'unknown'} percent, '
+      final message =
+          'Battery: ${battery ?? 'unknown'} percent, '
           '${charging ? 'charging' : 'not charging'}. '
           'Storage used: ${usedGb.toStringAsFixed(1)} of ${totalGb.toStringAsFixed(1)} GB.';
       _addConversation(message, false);
@@ -1298,12 +1391,16 @@ class AgentController extends ChangeNotifier {
           : 'I found $name. The saved number is $number.';
       _addConversation(message, false);
       await _voiceService.speak(message, lang: _currentLang);
-    } else if (action.type == 'set_brightness' && resultMap['success'] == true) {
+    } else if (action.type == 'set_brightness' &&
+        resultMap['success'] == true) {
       final level = resultMap['level'] ?? action.params['level'] ?? '';
       _addConversation('Brightness set to $level percent.', false);
     } else if (action.type == 'set_flashlight') {
       final enabled = action.params['enabled'] != false;
-      _addConversation(enabled ? 'Flashlight turned on.' : 'Flashlight turned off.', false);
+      _addConversation(
+        enabled ? 'Flashlight turned on.' : 'Flashlight turned off.',
+        false,
+      );
     } else if (action.type == 'place_call') {
       _addConversation(
         'I opened the dialer with the requested number. Review it and tap Call when you are ready.',
@@ -1320,9 +1417,15 @@ class AgentController extends ChangeNotifier {
         false,
       );
     } else if (action.type == 'take_photo') {
-      _addConversation('Camera opened. Take the photo when you are ready.', false);
+      _addConversation(
+        'Camera opened. Take the photo when you are ready.',
+        false,
+      );
     } else if (action.type == 'share_text') {
-      _addConversation('The Android share sheet is ready. Choose where to share the text.', false);
+      _addConversation(
+        'The Android share sheet is ready. Choose where to share the text.',
+        false,
+      );
     } else if (action.type == 'set_alarm') {
       _addConversation('Your alarm details are ready in the Clock app.', false);
     } else if (action.type == 'set_timer') {
@@ -1342,7 +1445,8 @@ class AgentController extends ChangeNotifier {
   }
 
   void _setState(AgentState newState) {
-    _state = newState;    notifyListeners();
+    _state = newState;
+    notifyListeners();
   }
 
   Future<bool> capturePreview() async {
@@ -1369,7 +1473,9 @@ class AgentController extends ChangeNotifier {
       ),
     );
     // Store event metadata only; conversation text can contain private information.
-    unawaited(_activityStore.record(isUser ? 'user_message' : 'assistant_message'));
+    unawaited(
+      _activityStore.record(isUser ? 'user_message' : 'assistant_message'),
+    );
     notifyListeners();
   }
 
