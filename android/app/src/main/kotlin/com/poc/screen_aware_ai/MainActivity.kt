@@ -249,6 +249,10 @@ class MainActivity : FlutterActivity() {
                 "isAccessibilityEnabled" -> {
                     result.success(ScreenActionService.instance != null)
                 }
+                "isDeviceLocked" -> {
+                    val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+                    result.success(keyguard.isKeyguardLocked)
+                }
                 "getDeviceMetrics" -> {
                     val nowElapsed = android.os.SystemClock.elapsedRealtime()
                     val nowCpu = android.os.Process.getElapsedCpuTime()
@@ -296,8 +300,7 @@ class MainActivity : FlutterActivity() {
                     val text = call.argument<String>("text") ?: ""
                     val service = ScreenActionService.instance
                     if (service != null) {
-                        service.performType(text)
-                        result.success(true)
+                        result.success(service.performType(text))
                     } else {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
@@ -305,8 +308,7 @@ class MainActivity : FlutterActivity() {
                 "pressBack" -> {
                     val service = ScreenActionService.instance
                     if (service != null) {
-                        service.pressBack()
-                        result.success(true)
+                        result.success(service.pressBack())
                     } else {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
@@ -314,8 +316,7 @@ class MainActivity : FlutterActivity() {
                 "pressHome" -> {
                     val service = ScreenActionService.instance
                     if (service != null) {
-                        service.pressHome()
-                        result.success(true)
+                        result.success(service.pressHome())
                     } else {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
@@ -323,6 +324,11 @@ class MainActivity : FlutterActivity() {
                 "openApp" -> {
                     val packageName = call.argument<String>("packageName") ?: ""
                     try {
+                        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+                        if (keyguard.isKeyguardLocked) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
                         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
                         if (launchIntent != null) {
                             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
