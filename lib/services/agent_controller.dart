@@ -1158,10 +1158,21 @@ class AgentController extends ChangeNotifier {
         ].where((value) => value.isNotEmpty).join(' ').trim();
       }
     }
+    final modelConfidence = (action.params['confidence'] as num?)?.toDouble();
+    if (modelConfidence != null && modelConfidence < 0.30) {
+      _addConversation(
+        'I am not confident I understood that action correctly. Please repeat or clarify the request.',
+        false,
+      );
+      _cancelRequested = true;
+      return beforeSnapshot;
+    }
     if (LucyActionApprovalPolicy.requiresApproval(
       action.type,
       targetLabel: targetLabel,
       packageName: beforeSnapshot?.packageName,
+      modelRisk: action.params['risk']?.toString(),
+      confidence: modelConfidence,
     )) {
       final approved = await _requestVoiceApproval(action, targetLabel);
       if (!approved) {
