@@ -1346,6 +1346,19 @@ class AgentController extends ChangeNotifier {
     if (action.type == 'open_settings') {
       targetLabel = action.params['page']?.toString();
     }
+    var sensitiveInput = false;
+    if (beforeSnapshot != null && action.type == 'type') {
+      // Password fields are marked by Android's accessibility tree. Never
+      // type into them without a separate spoken approval.
+      final focusedElement = beforeSnapshot.elements.cast<Map<String, dynamic>?>().firstWhere(
+            (element) =>
+                element != null &&
+                element['focused'] == true &&
+                element['editable'] == true,
+            orElse: () => null,
+          );
+      sensitiveInput = focusedElement?['password'] == true;
+    }
     if (action.type == 'tap' && beforeSnapshot != null) {
       final elementId = (action.params['element'] as num?)?.toInt();
       if (elementId != null &&
@@ -1376,6 +1389,7 @@ class AgentController extends ChangeNotifier {
       packageName: beforeSnapshot?.packageName,
       modelRisk: action.params['risk']?.toString(),
       confidence: modelConfidence,
+      sensitiveInput: sensitiveInput,
     );
     if (requiredRisk != 'low') {
       final approved = await _requestVoiceApproval(
