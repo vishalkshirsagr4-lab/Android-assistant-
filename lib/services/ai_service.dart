@@ -312,6 +312,11 @@ RESPONSE FORMAT (strict JSON, one action only):
             final response = await _chat!.sendMessage(content);
             text = response.text ?? '{}';
           }
+          if (text == null || text.trim().isEmpty) {
+            throw const FormatException('Provider returned an empty AI response.');
+          }
+          // Parsing is inside the provider attempt: malformed output must also
+          // trigger fallback rather than being presented as a successful reply.
           return _parseAgentResponse(text);
         } catch (error) {
           failures.add('$provider: ${error.toString()}');
@@ -329,25 +334,28 @@ RESPONSE FORMAT (strict JSON, one action only):
 
   /// Parse the AI's JSON response into an AgentResponse.
   AgentResponse _parseAgentResponse(String text) {
-    try {
-      // Try to extract JSON from the response
-      String jsonStr = text.trim();
+    // Lucy requires structured actions. If a provider returns plain text or
+    // malformed JSON, throw so agentChat can try the next configured provider.
+    var jsonStr = text.trim();
 
-      // If wrapped in markdown code block, extract it
-      if (jsonStr.startsWith('```')) {
-        final startIdx = jsonStr.indexOf('{');
-        final endIdx = jsonStr.lastIndexOf('}');
-        if (startIdx != -1 && endIdx != -1) {
-          jsonStr = jsonStr.substring(startIdx, endIdx + 1);
-        }
+    if (jsonStr.startsWith('```')) {
+      final startIdx = jsonStr.indexOf('{');
+      final endIdx = jsonStr.lastIndexOf('}');
+      if (startIdx == -1 || endIdx <= startIdx) {
+        throw const FormatException('Provider did not return valid action JSON.');
       }
-
-      final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return AgentResponse.fromJson(json, text);
-    } catch (e) {
-      // If JSON parsing fails, treat the whole response as a spoken message
-      return AgentResponse.fallback(text);
+      jsonStr = jsonStr.substring(startIdx, endIdx + 1);
     }
+
+    final decoded = jsonDecode(jsonStr);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['actions'] is! List ||
+        decoded['speak'] is! String ||
+        decoded['done'] is! bool ||
+        decoded['lang'] is! String) {
+      throw const FormatException('Provider response is missing Lucy action fields.');
+    }
+    return AgentResponse.fromJson(decoded, text);
   }
 
   /// Reset chat history for a fresh conversation.
