@@ -105,6 +105,16 @@ class LucyProactiveService {
     }
   }
 
+  Future<bool> runEvaluationNow() async {
+    try {
+      return await _channel.invokeMethod<bool>('runEvaluationNow') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<String?> explainLastSuggestion() async {
     try {
       final map = await _channel.invokeMapMethod<String, dynamic>('explain');
