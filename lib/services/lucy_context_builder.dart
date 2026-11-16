@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'lucy_settings_store.dart';
 
 /// Builds a small, on-demand device context block for Lucy's AI requests.
 ///
@@ -132,6 +133,8 @@ class LucyContextBuilder {
     final status = await readStatus();
     final prefs = await SharedPreferences.getInstance();
     final calendarEnabled = prefs.getBool('lucy_context_calendar_enabled') ?? false;
+    final foregroundEnabled =
+        prefs.getBool(LucySettingsStore.foregroundAppContext) ?? true;
     final lines = <String>[
       'Local time: ${_weekday(now.weekday)}, ${now.toIso8601String()} (${now.timeZoneName}).',
     ];
@@ -148,7 +151,7 @@ class LucyContextBuilder {
       lines.add('Network: ${_clean(network, 60)}.');
     }
 
-    final foregroundApp = status['foregroundApp'];
+    final foregroundApp = foregroundEnabled ? status['foregroundApp'] : null;
     if (foregroundApp is String && foregroundApp.isNotEmpty) {
       lines.add('Foreground app: ${_clean(foregroundApp, 60)}.');
     }
