@@ -28,6 +28,14 @@ class NativeVoiceService : Service() {
         private const val CHANNEL_ID = "lucy_native_voice"
         private const val NOTIFICATION_ID = 2301
         private const val TAG = "NativeVoiceService"
+
+        @Volatile
+        private var activeInstance: NativeVoiceService? = null
+
+        /** Updates the ongoing notification only while Lucy's voice service is active. */
+        fun updateStatus(status: String) {
+            activeInstance?.updateNotificationStatus(status)
+        }
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -37,9 +45,11 @@ class NativeVoiceService : Service() {
     private var userInitiatedStop = false
     private var restartScheduled = false
     private var retryMs = 1000L
+    private var notificationStatus = "Listening for your command"
 
     override fun onCreate() {
         super.onCreate()
+        activeInstance = this
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Lucy microphone", NotificationManager.IMPORTANCE_LOW)
@@ -158,6 +168,17 @@ class NativeVoiceService : Service() {
         stopSelf()
     }
 
+    private fun updateNotificationStatus(status: String) {
+        if (stopped) return
+        notificationStatus = status.take(120)
+        try {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, buildNotification())
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not update voice notification", error)
+        }
+    }
+
     private fun buildNotification(): Notification {
         val stopIntent = Intent(this, NativeVoiceService::class.java).setAction(ACTION_STOP)
         val stopAction = PendingIntent.getService(this, NOTIFICATION_ID, stopIntent,
@@ -170,7 +191,7 @@ class NativeVoiceService : Service() {
         }
         return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("Lucy is listening")
-            .setContentText("Microphone active · Tap Stop to end listening")
+            .setContentText(notificationStatus)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "Stop Lucy", stopAction).build())
             .build()
