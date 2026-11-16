@@ -583,3 +583,61 @@ If Lucy is useful to you, consider leaving a ⭐ — it genuinely helps others f
 </div>
 "# Android-assistant-" 
 "# Android-assistant-" 
+
+
+## Lucy native Android phone actions (Phase 1)
+
+Lucy uses Android intents and APIs for supported tasks before falling back to accessibility-based UI automation.
+
+### Available actions
+
+- Clock: set an alarm and start a timer using the system Clock UI.
+- Calls and SMS: open the system dialer or SMS composer with details filled in. Lucy does not place calls or send messages silently; the user performs the final action.
+- Links and navigation: open HTTP(S) links and Google Maps navigation.
+- Music: search YouTube.
+- Device controls: flashlight, media volume, and screen brightness.
+- Device information: battery/charging and internal storage status.
+- Contacts: search contacts by display name after runtime permission is granted.
+- Calendar: open the system event editor; the user reviews and saves the event.
+- Other: open allowlisted Settings pages, launch the camera, and share text through Android Sharesheet.
+
+### Android permissions
+
+| Permission | Why it is present |
+| --- | --- |
+| `CAMERA` | Required by Android's camera torch API for flashlight control. Requested only when flashlight control is used. |
+| `READ_CONTACTS` | Allows a contact-name lookup. Requested only when the user asks Lucy to find a contact. |
+| `WRITE_SETTINGS` | Declares the special access used for changing screen brightness. Android requires the user to grant this in system settings; Lucy opens that settings page when needed. |
+| `com.android.alarm.permission.SET_ALARM` | Declares alarm-setting capability for Clock intents. |
+| `INTERNET` | Existing network access for configured AI providers and online links. |
+| `RECORD_AUDIO` | Existing speech recognition input. |
+| `FOREGROUND_SERVICE* ` | Existing screen-capture and stop-notification services. |
+| `QUERY_ALL_PACKAGES` | Existing app discovery behavior. |
+| `REQUEST_INSTALL_PACKAGES` | Existing user-confirmed APK update flow. |
+
+Lucy intentionally does not request `CALL_PHONE` or `SEND_SMS`. The system dialer and messaging composer keep the user in control. Calendar events are created through the calendar editor, so no calendar database permission is required.
+
+### Native action JSON
+
+Native actions use one outer action and a nested action name/parameter object:
+
+```json
+{
+  "actions": [
+    {
+      "type": "native_action",
+      "action": "set_timer",
+      "params": { "seconds": 300, "label": "Tea" }
+    }
+  ],
+  "speak": "",
+  "done": true,
+  "lang": "en"
+}
+```
+
+For contact lookup and flashlight, Android may show a runtime permission prompt. Brightness may require the user to grant the special "Modify system settings" access. If a native intent is unavailable on a device, the action reports a failure so the agent can explain it and use its existing screen automation where appropriate.
+
+### Privacy and safety
+
+Contact lookup reads the matching name and number locally on the device. The Flutter action result is available to the running conversation; do not ask Lucy to read private contact information aloud in a public place. Calls and SMS are never sent automatically by this native-action layer. Alarm, timer, calendar, and share actions open Android's own UI for user review.
