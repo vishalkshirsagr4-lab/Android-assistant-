@@ -982,7 +982,8 @@ class AgentController extends ChangeNotifier {
         return currentSnapshot;
       }
 
-      final remaining = deadline.difference(DateTime.now());      if (remaining <= Duration.zero) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
         break;
       }
 
@@ -1161,7 +1162,8 @@ class AgentController extends ChangeNotifier {
           final delayMinutes =
               (action.params['delayMinutes'] as num?)?.toInt() ?? 0;
           final repeatMinutes =
-              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;          if (title.isEmpty || delayMinutes < 1) {
+              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;
+          if (title.isEmpty || delayMinutes < 1) {
             _addConversation(
               'I need a reminder title and a future time. Please say when you want it.',
               false,
