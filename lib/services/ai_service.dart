@@ -170,10 +170,16 @@ class AiService {
   }
 
   Future<bool> isProviderReady() async {
-    if (_useGrok) return _grokService.isConfigured();
-    if (_useGroq) return _groqService.isConfigured();
-    if (_useHms) return _hmsService.isConfigured();
-    return _apiKey != null && _apiKey!.isNotEmpty;
+    // A missing selected key must not disable Lucy when another provider has
+    // a valid saved key. agentChat will try the selected provider first and
+    // then walk the configured fallback chain.
+    if (_useGrok && await _grokService.isConfigured()) return true;
+    if (_useGroq && await _groqService.isConfigured()) return true;
+    if (_useHms && await _hmsService.isConfigured()) return true;
+    if (_apiKey != null && _apiKey!.isNotEmpty) return true;
+    if (await _grokService.isConfigured()) return true;
+    if (await _groqService.isConfigured()) return true;
+    return _hmsService.isConfigured();
   }
 
   static const _systemPrompt = '''
