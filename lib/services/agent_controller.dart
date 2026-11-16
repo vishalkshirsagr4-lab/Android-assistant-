@@ -517,6 +517,7 @@ class AgentController extends ChangeNotifier {
   /// The core agent loop: capture → analyze → act → repeat.
   Future<void> _runAgentLoop(String userMessage) async {
     _cancelRequested = false;
+    _lastNativeActionFailed = false;
     _previousTaskSnapshot = null;
     int step = 0;
     String currentMessage = userMessage;
@@ -938,9 +939,15 @@ class AgentController extends ChangeNotifier {
             params: Map<String, dynamic>.from(nativeParams),
           );
           if (nativeResult['success'] != true) {
-            _lastNativeActionFailed = true;
+            final permissionRequired = nativeResult['permission_required'] == true;
+            if (!permissionRequired) {
+              _lastNativeActionFailed = true;
+            }
             final message = nativeResult['message']?.toString() ?? 'The Android action could not be completed.';
-            _addConversation('Native action unavailable: $message. I can try the on-screen method next.', false);
+            _addConversation('Native action unavailable: $message.', false);
+            if (permissionRequired) {
+              await _voiceService.speak(message, lang: _currentLang);
+            }
           } else if (nativeAction == 'battery_status') {
             final level = nativeResult['level_percent'] as int? ?? -1;
             final charging = nativeResult['charging'] == true;
