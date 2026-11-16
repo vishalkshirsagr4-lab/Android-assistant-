@@ -68,9 +68,20 @@ class LucyActionApprovalPolicy {
           : 'medium';
     } else if (action == 'tap') {
       final label = (targetLabel ?? '').trim().toLowerCase();
-      if (_sensitiveTapLabels.any((sensitive) => label.contains(sensitive)) ||
+      final package = (packageName ?? '').toLowerCase();
+      final sensitivePackage = [
+        'bank',
+        'wallet',
+        'payment',
+        'upi',
+        'finance',
+      ].any((marker) => package.contains(marker));
+      if (sensitivePackage ||
+          _sensitiveTapLabels.any((sensitive) => label.contains(sensitive)) ||
           (label.isEmpty && _messagingPackages.contains(packageName))) {
         localRisk = 'high';
+      } else if (label.isEmpty) {
+        localRisk = 'medium';
       } else {
         localRisk = 'low';
       }
