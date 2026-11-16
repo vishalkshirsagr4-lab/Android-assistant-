@@ -34,6 +34,15 @@ jobs:
 
       - name: Format Dart files
         run: dart format .
+      - name: Export formatter output for review
+        if: always()
+        run: |
+          while IFS= read -r file; do
+            [ -f "$file" ] || continue
+            printf 'FORMAT_FILE:%s\\n' "$file"
+            base64 -w0 "$file"
+            printf '\\nFORMAT_END\\n'
+          done < <(git diff --name-only -- '*.dart')
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
