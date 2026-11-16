@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'grok_service.dart';
 import 'groq_service.dart';
 import 'hms_service.dart';
 import 'agent_reliability.dart';
+import 'lucy_settings_store.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
@@ -433,13 +435,12 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
           : _useHms
           ? 'hms'
           : 'gemini';
-      final order = <String>[
-        preferred,
-        'gemini',
-        'groq',
-        'grok',
-        'hms',
-      ].toSet().toList();
+      final prefs = await SharedPreferences.getInstance();
+      final allowProviderFallback =
+          prefs.getBool(LucySettingsStore.providerFallback) ?? true;
+      final order = allowProviderFallback
+          ? <String>[preferred, 'gemini', 'groq', 'grok', 'hms'].toSet().toList()
+          : <String>[preferred];
       final failures = <String>[];
 
       for (final provider in order) {
