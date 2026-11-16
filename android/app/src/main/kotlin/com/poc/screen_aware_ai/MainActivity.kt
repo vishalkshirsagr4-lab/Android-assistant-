@@ -474,6 +474,12 @@ class MainActivity : FlutterActivity() {
                     Context.MODE_PRIVATE
                 )
                 when (call.method) {
+                    "clearData" -> {
+                        preferences.edit().clear().apply()
+                        androidx.work.WorkManager.getInstance(applicationContext)
+                            .cancelUniqueWork("lucy_proactive_evaluation")
+                        result.success(true)
+                    }
                     "configure" -> {
                         val enabled = call.argument<Boolean>("enabled") == true
                         val quietStart = call.argument<Int>("quietStartHour") ?: 22
