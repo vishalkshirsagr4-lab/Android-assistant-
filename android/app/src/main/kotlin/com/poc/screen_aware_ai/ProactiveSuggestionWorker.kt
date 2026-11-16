@@ -89,11 +89,10 @@ class ProactiveSuggestionWorker(appContext: Context, params: WorkerParameters) :
             )
         }
 
-        val event = findUpcomingEvent(now)
-        if (event != null) {
+        if (hasUpcomingEvent(now)) {
             return Decision(
                 "Upcoming calendar event",
-                "An event is coming up: $event. Want to review your calendar?",
+                "You have a calendar event coming up. Want to review your calendar?",
                 "A calendar event starts within the next 30 minutes.",
                 0.88f
             )
@@ -110,31 +109,29 @@ class ProactiveSuggestionWorker(appContext: Context, params: WorkerParameters) :
         return null
     }
 
-    private fun findUpcomingEvent(now: Long): String? {
+    private fun hasUpcomingEvent(now: Long): Boolean {
         if (ContextCompat.checkSelfPermission(
                 applicationContext, Manifest.permission.READ_CALENDAR
             ) != PackageManager.PERMISSION_GRANTED
-        ) return null
+        ) return false
 
         val end = now + TimeUnit.MINUTES.toMillis(30)
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
             .appendPath(now.toString())
             .appendPath(end.toString())
             .build()
-        val projection = arrayOf(CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN)
         return try {
             applicationContext.contentResolver.query(
-                uri, projection, null, null, CalendarContract.Instances.BEGIN + " ASC"
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    cursor.getString(cursor.getColumnIndexOrThrow(CalendarContract.Instances.TITLE))
-                        ?.take(70)?.takeIf { it.isNotBlank() }
-                } else null
-            }
+                uri,
+                arrayOf(CalendarContract.Instances.BEGIN),
+                null,
+                null,
+                CalendarContract.Instances.BEGIN + " ASC"
+            )?.use { cursor -> cursor.moveToFirst() } ?: false
         } catch (_: SecurityException) {
-            null
+            false
         } catch (_: Exception) {
-            null
+            false
         }
     }
 
