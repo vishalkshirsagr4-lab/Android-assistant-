@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:screen_aware_ai/services/lucy_context_builder.dart';
 
 void main() {
@@ -11,6 +12,9 @@ void main() {
   Map<String, dynamic> snapshot = <String, dynamic>{};
 
   setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'lucy_context_calendar_enabled': true,
+    });
     snapshot = <String, dynamic>{
       'batteryPercent': 64,
       'charging': true,
