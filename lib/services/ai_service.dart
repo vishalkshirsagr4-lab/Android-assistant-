@@ -308,7 +308,7 @@ RESPONSE FORMAT (strict JSON, one action only):
             final response = await _chat!.sendMessage(content);
             text = response.text ?? '{}';
           }
-          if (text == null || text.trim().isEmpty) {
+          if (text.trim().isEmpty) {
             throw const FormatException('Provider returned an empty AI response.');
           }
           // Parsing is inside the provider attempt: malformed output must also
