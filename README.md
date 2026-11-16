@@ -583,3 +583,8 @@ If Lucy is useful to you, consider leaving a ⭐ — it genuinely helps others f
 </div>
 "# Android-assistant-" 
 "# Android-assistant-" 
+
+
+### Native alarm and timer permission
+
+Lucy declares `com.android.alarm.permission.SET_ALARM` for Android Clock `ACTION_SET_ALARM` and `ACTION_SET_TIMER` intents. This is a normal permission (no runtime prompt). Alarm and timer requests still open the system Clock UI for user review. See the [Android AlarmClock reference](https://developer.android.com/reference/android/provider/AlarmClock) and [common intents guide](https://developer.android.com/guide/components/intents-common#Clock).
