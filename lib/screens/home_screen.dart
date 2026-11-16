@@ -11,6 +11,7 @@ import '../services/hms_service.dart';
 import '../services/lucy_activity_store.dart';
 import '../services/performance_monitor.dart';
 import '../services/routine_scheduler.dart';
+import '../services/proactive_decision_service.dart';
 import '../services/lucy_context_builder.dart';
 import '../widgets/lucy_avatar.dart';
 
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen>
   final GrokService _grokService = GrokService();
   final LucyActivityStore _activityStore = LucyActivityStore();
   final LucyContextBuilder _contextBuilder = LucyContextBuilder();
+  final LucyProactiveService _proactiveService = LucyProactiveService();
   final LucyPerformanceMonitor _performanceMonitor =
       LucyPerformanceMonitor.shared;
   bool _updateCheckStarted = false;
@@ -984,6 +986,224 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  Future<void> _showProactiveSettingsDialog() async {
+    final initial = await _proactiveService.readStatus();
+    if (!mounted) return;
+    var enabled = initial.enabled;
+    var quietStart = initial.quietStartHour;
+    var quietEnd = initial.quietEndHour;
+    var dailyLimit = initial.dailyLimit;
+    var cooldown = initial.cooldownMinutes;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Proactive suggestions'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enable suggestions'),
+                  subtitle: const Text(
+                    'Lucy checks locally and sends a notification only. It never performs actions automatically.',
+                  ),
+                  value: enabled,
+                  onChanged: (value) => setDialogState(() => enabled = value),
+                ),
+                const SizedBox(height: 8),
+                const Text('Quiet hours'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: quietStart,
+                        decoration: const InputDecoration(labelText: 'From'),
+                        items: List.generate(
+                          24,
+                          (hour) => DropdownMenuItem(
+                            value: hour,
+                            child: Text('${hour.toString().padLeft(2, '0')}:00'),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => quietStart = value);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: quietEnd,
+                        decoration: const InputDecoration(labelText: 'Until'),
+                        items: List.generate(
+                          24,
+                          (hour) => DropdownMenuItem(
+                            value: hour,
+                            child: Text('${hour.toString().padLeft(2, '0')}:00'),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() => quietEnd = value);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: dailyLimit,
+                  decoration: const InputDecoration(
+                    labelText: 'Maximum suggestions per day',
+                  ),
+                  items: [1, 2, 3, 5, 10]
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text('$value'),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => dailyLimit = value);
+                    }
+                  },
+                ),
+                DropdownButtonFormField<int>(
+                  value: cooldown,
+                  decoration: const InputDecoration(
+                    labelText: 'Minimum time between suggestions',
+                  ),
+                  items: [15, 30, 60, 120, 240, 360]
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value < 60 ? '$value minutes' : '${value ~/ 60} hours'),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => cooldown = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Checks run through Android WorkManager (at least 15 minutes apart). Battery and calendar checks stay on-device. Notification-based suggestions require Lucy notification context to be enabled. No notification text is sent to an AI provider by this worker.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                if (initial.lastReason != null) ...[
+                  const Divider(),
+                  Text('Last suggestion: ${initial.lastSuggestion ?? 'Lucy suggestion'}'),
+                  Text('Why: ${initial.lastReason}'),
+                  Text(
+                    'Confidence: ${initial.lastConfidence == null ? 'not available' : '${(initial.lastConfidence! * 100).round()}%'} · Risk: ${initial.lastRisk ?? 'low'}',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final explanation = await _proactiveService.explainLastSuggestion();
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext);
+                if (mounted) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Why did Lucy suggest that?'),
+                      content: Text(explanation ?? 'Lucy has not made a suggestion yet.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              },
+              child: const Text('Why this suggestion?'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (enabled) {
+                  final permission = await LucyRoutineScheduler.ensureNotificationPermission();
+                  if (!permission) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Allow Lucy notifications, then save these settings again.'),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                }
+                final saved = await _proactiveService.configure(
+                  enabled: enabled,
+                  quietStartHour: quietStart,
+                  quietEndHour: quietEnd,
+                  dailyLimit: dailyLimit,
+                  cooldownMinutes: cooldown,
+                );
+                if (!dialogContext.mounted) return;
+                if (saved) {
+                  Navigator.pop(dialogContext);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          enabled
+                              ? 'Proactive suggestions enabled. Android checks periodically.'
+                              : 'Proactive suggestions disabled.',
+                        ),
+                      ),
+                    );
+                  }
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not save settings. Check notification permission and try again.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save'),
+            ),
+            if (enabled)
+              TextButton(
+                onPressed: () async {
+                  final ok = await _proactiveService.runEvaluationNow();
+                  if (dialogContext.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ok ? 'A local evaluation was queued.' : 'Enable suggestions and allow notifications first.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Check now'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showMemoryManagerDialog() async {
     await showDialog<void>(
       context: context,
@@ -1116,6 +1336,11 @@ class _HomeScreenState extends State<HomeScreen>
                 const Text(
                   'Lucy reads battery and network status when you use Lucy. If enabled, Android delivers notifications in the background and Lucy keeps at most 20 recent items locally; up to 5 short, redacted snippets may be included in requests to your selected AI provider. If you grant calendar or approximate-location access, upcoming events or rounded coordinates may also be included. Do not enable these options unless you agree to that processing. Saved memories remain in Lucy’s local app preferences; only a small relevant subset may be included in a request sent to your selected AI provider. Review or delete saved memories using Manage saved memory.',
                   style: TextStyle(fontSize: 12),
+                ),                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _showProactiveSettingsDialog,
+                  icon: const Icon(Icons.auto_awesome_outlined),
+                  label: const Text('Proactive suggestions'),
                 ),
                 FutureBuilder<Map<String, dynamic>>(
                   future: contextStatusFuture,
