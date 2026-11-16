@@ -77,7 +77,11 @@ class NotificationContextListener : NotificationListenerService() {
             "(?i)(\\b(?:otp|one[- ]time password|verification code|passcode)\\b\\s*[:is-]*\\s*)\\d{4,8}"
         )
         return value
-            .replace(otpPattern, "$1[hidden]")
+            .let { source ->
+                otpPattern.replace(source) { match ->
+                    match.groupValues[1] + "[hidden]"
+                }
+            }
             .replace(Regex("(?i)\\b[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}\\b"), "[email hidden]")
             .replace(Regex("(?<!\\d)(?:\\+?\\d[\\d .()-]{7,}\\d)(?!\\d)"), "[phone/number hidden]")
             .replace(Regex("\\b\\d{4,8}\\b"), "[number hidden]")
