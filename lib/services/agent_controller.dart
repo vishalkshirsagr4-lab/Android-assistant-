@@ -961,6 +961,9 @@ class AgentController extends ChangeNotifier {
     // Ordinary navigation is hands-free. Consequential actions pause the
     // task, ask for spoken approval, and resume the same agent loop on approval.
     String? targetLabel;
+    if (action.type == 'place_call' || action.type == 'send_sms') {
+      targetLabel = action.params['phoneNumber']?.toString();
+    }
     if (action.type == 'tap' && beforeSnapshot != null) {
       final elementId = (action.params['element'] as num?)?.toInt();
       if (elementId != null &&
@@ -1155,6 +1158,7 @@ class AgentController extends ChangeNotifier {
       const fallbackPackages = <String, String>{
         'set_alarm': 'com.google.android.deskclock',
         'set_timer': 'com.google.android.deskclock',
+        'open_url': 'com.android.chrome',
         'place_call': 'com.google.android.dialer',
         'send_sms': 'com.google.android.apps.messaging',
         'start_navigation': 'com.google.android.apps.maps',
