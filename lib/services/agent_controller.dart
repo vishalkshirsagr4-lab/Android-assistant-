@@ -1744,6 +1744,8 @@ class AgentController extends ChangeNotifier {
               action: action.type,
               success: success,
             );
+          } else {
+            _lastActionDispatchSucceeded = false;
           }
           break;
 
@@ -1752,6 +1754,7 @@ class AgentController extends ChangeNotifier {
           // closed rather than tapping an arbitrary location on the user's phone.
           final elementId = (action.params['element'] as num?)?.toInt();
           if (elementId == null || beforeSnapshot == null) {
+            _lastActionDispatchSucceeded = false;
             _addConversation(
               'I could not verify the screen element to tap, so I did not tap anything.',
               false,
@@ -1763,6 +1766,7 @@ class AgentController extends ChangeNotifier {
             beforeSnapshot.elements,
           );
           if (coords == null) {
+            _lastActionDispatchSucceeded = false;
             _addConversation(
               'That screen element is no longer available. I did not tap anything.',
               false,
@@ -1813,6 +1817,7 @@ class AgentController extends ChangeNotifier {
           final repeatMinutes =
               (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;
           if (title.isEmpty || delayMinutes < 1) {
+            _lastActionDispatchSucceeded = false;
             _addConversation(
               'I need a reminder title and a future time. Please say when you want it.',
               false,
@@ -1889,8 +1894,11 @@ class AgentController extends ChangeNotifier {
     try {
       nativeResult = await _phoneActions.execute(action.type, action.params);
     } catch (error) {
-      debugPrint(
-        'Native phone action ${action.type} failed; trying UI fallback: $error',
+      LucyReliabilityLog.event(
+        'native_action_failure',
+        action: action.type,
+        success: false,
+        errorType: error.runtimeType.toString(),
       );
       nativeResult = false;
     }
