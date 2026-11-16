@@ -2,8 +2,9 @@ import 'package:flutter/services.dart';
 
 /// Bridge to native Android intents and device APIs for fast, direct actions.
 class PhoneActionService {
-  static const MethodChannel _channel =
-      MethodChannel('com.poc.screen_aware_ai/phone_actions');
+  static const MethodChannel _channel = MethodChannel(
+    'com.poc.screen_aware_ai/phone_actions',
+  );
 
   static const Set<String> supportedActions = {
     'set_alarm',
@@ -24,10 +25,7 @@ class PhoneActionService {
     'share_text',
   };
 
-  Future<dynamic> execute(
-    String action,
-    Map<String, dynamic> params,
-  ) async {
+  Future<dynamic> execute(String action, Map<String, dynamic> params) async {
     if (!supportedActions.contains(action)) {
       throw ArgumentError.value(action, 'action', 'Unsupported phone action');
     }
@@ -48,10 +46,7 @@ class PhoneActionService {
     }
   }
 
-  Future<dynamic> _invoke(
-    String action,
-    Map<String, dynamic> params,
-  ) {
+  Future<dynamic> _invoke(String action, Map<String, dynamic> params) {
     return _channel.invokeMethod<dynamic>(
       action,
       Map<String, dynamic>.from(params),
