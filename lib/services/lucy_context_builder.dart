@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'lucy_settings_store.dart';
 
 /// Builds a small, on-demand device context block for Lucy's AI requests.
 ///
