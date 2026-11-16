@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 ///
 /// This service deliberately sends text only: the provider documentation does
 /// not clearly guarantee image input. Screen-image requests use Gemini/Groq/Grok.
+/// Requests use the provider's standard chat-completions message schema.
 class HmsService {
   static const _storage = FlutterSecureStorage();
   static const _keyName = 'lucy_hms_api_key';
