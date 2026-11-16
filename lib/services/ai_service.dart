@@ -190,6 +190,7 @@ RESPONSE FORMAT (strict JSON, one action only):
     Uint8List? imageBytes,
     Map<String, int>? screenSize,
     String? uiTree,
+    String memoryContext = '',
   }) async {
     if (!isConfigured) {
       return AgentResponse.fallback(
