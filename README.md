@@ -293,7 +293,7 @@ The first build downloads Gradle dependencies and can take several minutes. Late
 
 ### Step 7 — Add your key to Lucy
 
-In the app, tap the 🔑 **key icon** in the top bar, paste your key and hit **Save**. It is stored locally with `shared_preferences` and never leaves your device except in requests to Google's Gemini API.
+In the app, tap the 🔑 **key icon** in the top bar, paste your key and hit **Save**. Lucy stores it with Android-backed `flutter_secure_storage`; the key is sent to Google only for Gemini API authentication.
 
 ### Step 8 — Enable the accessibility service
 
@@ -544,6 +544,29 @@ Please read this before installing. Lucy is powerful precisely because she has d
 
 > [!CAUTION]
 > While a task is running, **anything visible on your screen may be sent to Google** — including messages, emails, banking screens and notifications. The accessibility service can also read text fields and dispatch taps. Don't run Lucy while sensitive information is on screen, and review [Google's Gemini API terms](https://ai.google.dev/gemini-api/terms) to understand how prompt data is handled on your tier.
+
+**Privacy & settings (Phase 7)**
+
+Open the shield icon on Lucy's top bar to control voice input/output, screen automation, AI screenshot/UI sharing, direct phone actions, saved memory, scheduled reminders, notification context, calendar context, approximate location and proactive suggestions. Quiet hours are configurable on the same screen. The permissions guide explains each access. **Delete all my data** clears saved memories, local app preferences/history, notification cache, scheduled reminders and provider API keys. Android permissions granted in system settings are not revoked by that button; revoke those separately in Android Settings.
+
+**Android permissions and special access**
+
+- `RECORD_AUDIO`: voice input, only while you start listening.
+- `INTERNET`: requests to the AI provider and update checks.
+- `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `FOREGROUND_SERVICE_SPECIAL_USE`: visible microphone, screen-capture and stop-control sessions.
+- `POST_NOTIFICATIONS`: stop control and scheduled/proactive reminder notifications on Android 13+.
+- `ACCESS_COARSE_LOCATION`: optional approximate location context; disabled until opted in.
+- `READ_CALENDAR`: optional upcoming-event context; disabled until opted in.
+- `PACKAGE_USAGE_STATS` (special Usage Access): optional foreground-app context.
+- `READ_CONTACTS`: requested only for contact lookup.
+- `CAMERA`: used for the requested camera/flashlight-related operation, subject to device support.
+- `WRITE_SETTINGS` (special access): allows the user to review and change system brightness through Android settings.
+- `REQUEST_INSTALL_PACKAGES`: opens Android's installer for an update the user chooses to install.
+- `QUERY_ALL_PACKAGES`: used to identify installed apps that Lucy can open by package name.
+- `com.android.alarm.permission.SET_ALARM`: allows Android's alarm-clock intent.
+- Accessibility service: reads the visible UI tree and performs requested taps, typing, swipes and navigation. Enable it manually in Android Accessibility settings.
+- Notification listener: optional access to notification metadata/content for local context. Lucy's in-app switch disables its use and clears the cached notification history; Android's system access can also be revoked manually.
+- MediaProjection: Android shows a system consent prompt for each screen-capture session.
 
 **Recommendations**
 
