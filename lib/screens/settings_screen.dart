@@ -28,6 +28,8 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   final HmsService _hms = HmsService();
 
   Map<String, bool> _values = <String, bool>{};
+  Map<String, dynamic> _contextStatus = <String, dynamic>{};
+  bool _calendarEnabled = false;
   LucyProactiveStatus _proactiveStatus = const LucyProactiveStatus(
     enabled: false,
     quietStartHour: 22,
@@ -47,9 +49,14 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   Future<void> _load() async {
     final values = await _settings.readAll();
     final proactive = await _proactive.readStatus();
+    final contextStatus = await _context.readStatus();
+    final prefs = await SharedPreferences.getInstance();
+    final calendarEnabled = prefs.getBool('lucy_context_calendar_enabled') ?? false;
     if (!mounted) return;
     setState(() {
       _values = values;
+      _contextStatus = contextStatus;
+      _calendarEnabled = calendarEnabled;
       _proactiveStatus = proactive;
       _loading = false;
     });
@@ -71,7 +78,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     _message(enabled
         ? 'Notification context enabled. Android notification access may also need to be granted.'
         : 'Notification context disabled and its local history cleared.');
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _contextStatus['notificationContextEnabled'] = enabled);
   }
 
   Future<void> _setLocation(bool enabled) async {
@@ -81,7 +88,23 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     _message(result
         ? (enabled ? 'Approximate location enabled.' : 'Location context disabled.')
         : 'Location permission was not granted.');
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _contextStatus['locationEnabled'] = enabled && result);
+  }
+
+  Future<void> _setCalendar(bool enabled) async {
+    if (enabled) {
+      final granted = await _context.requestCalendarAccess();
+      if (!granted) {
+        _message('Calendar permission was not granted.');
+        return;
+      }
+    }
+    final saved = await _context.setCalendarContextEnabled(enabled);
+    if (!saved) {
+      _message('Could not update calendar context.');
+      return;
+    }
+    if (mounted) setState(() => _calendarEnabled = enabled);
   }
 
   Future<void> _setProactive(bool enabled) async {
@@ -221,6 +244,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       await _hms.clearApiKey();
       await _context.setNotificationContextEnabled(false);
       await _context.clearNotificationHistory();
+      await _context.setCalendarContextEnabled(false);
       await _context.disableApproximateLocation();
       await _proactive.configure(enabled: false);
       final routines = await LucyRoutineScheduler.listRoutines();
@@ -319,14 +343,21 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Notification context'),
             subtitle: const Text('Keep a small local cache and optionally include short snippets in AI requests.'),
-            value: false,
+            value: _contextStatus['notificationContextEnabled'] == true,
             onChanged: _busy ? null : _setNotifications,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Calendar context'),
+            subtitle: const Text('Include upcoming event details in AI context only when enabled.'),
+            value: _calendarEnabled,
+            onChanged: _busy ? null : _setCalendar,
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Approximate location'),
             subtitle: const Text('Include rounded coordinates in AI context when permission is granted.'),
-            value: false,
+            value: _contextStatus['locationEnabled'] == true,
             onChanged: _busy ? null : _setLocation,
           ),
           const Divider(height: 28),
