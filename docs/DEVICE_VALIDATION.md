@@ -41,3 +41,20 @@ OEM battery management, lock-screen behavior, or the notification shade.
 Record device model, Android version, app commit SHA, exact steps, expected result, actual result,
 and a redacted logcat excerpt for every failure. Do not include API keys, personal messages,
 screenshots containing private data, or other secrets in bug reports.
+
+## Phase 4 — proactive suggestions and decision policy
+
+- [ ] In Lucy tools, open **Proactive suggestions** and verify it is disabled by default.
+- [ ] Grant Android notification permission, enable suggestions, and save.
+- [ ] Set quiet hours spanning midnight (for example 22:00–08:00); verify no suggestion notification is posted during that window.
+- [ ] Verify the daily limit and cooldown prevent repeated suggestion notifications.
+- [ ] With notification context disabled, verify no notification-based suggestion is generated.
+- [ ] With notification context explicitly enabled, post a test notification and use **Check now**; the suggestion should be generic and must not expose notification text.
+- [ ] If calendar permission is granted, create a test event within 30 minutes and use **Check now**; verify the notification identifies the event without launching an action.
+- [ ] Verify low-battery advice appears only below 20% while not charging (this may require a controlled test device).
+- [ ] Open **Why this suggestion?** and confirm it shows the stored reason, confidence and risk.
+- [ ] Disable proactive suggestions and verify the periodic WorkManager task is cancelled.
+- [ ] Verify medium/high-risk agent actions ask for spoken approval; cancelling or timing out must not execute them.
+- [ ] Verify normal navigation remains hands-free and an unlabeled tap in a sensitive app requests approval.
+
+**Platform timing note:** WorkManager periodic work is not an exact timer. Android enforces a 15-minute minimum interval and may delay execution further due to Doze, battery saver, OEM background limits or network constraints. Proactive checks run locally and do not call an AI provider. Notifications require Android notification permission. The worker never sends messages, places calls, changes settings or performs other phone actions.
