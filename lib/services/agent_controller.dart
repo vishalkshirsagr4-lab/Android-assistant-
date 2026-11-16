@@ -2102,6 +2102,12 @@ class AgentController extends ChangeNotifier {
     return cleaned;
   }
 
+  void _updateTaskProgress(String message) {
+    _statusMessage = message;
+    unawaited(_voiceService.updateNotificationStatus(message));
+    notifyListeners();
+  }
+
   void _setState(AgentState newState) {
     _state = newState;
     notifyListeners();
