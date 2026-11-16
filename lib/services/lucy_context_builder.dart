@@ -1,4 +1,6 @@
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'lucy_settings_store.dart';
 
 /// Builds a small, on-demand device context block for Lucy's AI requests.
 ///
@@ -81,6 +83,20 @@ class LucyContextBuilder {
     }
   }
 
+  Future<bool> setCalendarContextEnabled(bool enabled) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'setCalendarContextEnabled',
+            <String, dynamic>{'enabled': enabled},
+          ) ??
+          false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> disableApproximateLocation() async {
     try {
       return await _channel.invokeMethod<bool>(
@@ -110,6 +126,8 @@ class LucyContextBuilder {
   Future<String> buildPromptContext() async {
     final now = DateTime.now();
     final status = await readStatus();
+    final prefs = await SharedPreferences.getInstance();
+    final calendarEnabled = prefs.getBool('lucy_context_calendar_enabled') ?? false;
     final lines = <String>[
       'Local time: ${_weekday(now.weekday)}, ${now.toIso8601String()} (${now.timeZoneName}).',
     ];
@@ -177,7 +195,7 @@ class LucyContextBuilder {
       }
     }
 
-    final events = status['calendarEvents'];
+    final events = calendarEnabled ? status['calendarEvents'] : null;
     if (events is List && events.isNotEmpty) {
       lines.add('Upcoming calendar events (next 6 hours):');
       for (final raw in events.take(4)) {
