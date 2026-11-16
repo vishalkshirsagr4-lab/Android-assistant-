@@ -16,6 +16,8 @@ class NotificationContextListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null || sbn.packageName == packageName) return
+        val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+        if (!preferences.getBoolean(NOTIFICATION_ENABLED_KEY, false)) return
         val notification = sbn.notification ?: return
         if (notification.flags and Notification.FLAG_ONGOING_EVENT != 0) return
 
@@ -82,6 +84,7 @@ class NotificationContextListener : NotificationListenerService() {
     companion object {
         const val PREFERENCES_NAME = "lucy_context_store"
         const val NOTIFICATION_KEY = "recent_notifications"
+        const val NOTIFICATION_ENABLED_KEY = "notification_context_enabled"
         const val LOCATION_ENABLED_KEY = "approximate_location_enabled"
         const val MAX_ENTRIES = 20
         private val STORE_LOCK = Any()
