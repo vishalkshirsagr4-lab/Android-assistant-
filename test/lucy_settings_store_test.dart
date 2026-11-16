@@ -20,6 +20,8 @@ void main() {
     expect(values[LucySettingsStore.directPhoneActions], isTrue);
     expect(values[LucySettingsStore.memory], isTrue);
     expect(values[LucySettingsStore.scheduledReminders], isTrue);
+    expect(values[LucySettingsStore.aiRequests], isTrue);
+    expect(values[LucySettingsStore.providerFallback], isTrue);
   });
 
   test('capability changes persist between store instances', () async {
