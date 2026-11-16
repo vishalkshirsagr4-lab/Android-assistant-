@@ -1758,9 +1758,7 @@ class AgentController extends ChangeNotifier {
     }
 
     // Actions that require the accessibility service
-    const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
-
-    if (accessibilityActions.contains(action.type)) {
+    if (const {'tap', 'type', 'swipe', 'back', 'home'}.contains(action.type)) {
       final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
