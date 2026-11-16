@@ -264,7 +264,8 @@ class AgentController extends ChangeNotifier {
   }
 
   static const Map<String, String> _followUps = {
-    'en': 'Do you need any further help?',    'ja': '他に何かお手伝いできることはありますか？',
+    'en': 'Do you need any further help?',
+    'ja': '他に何かお手伝いできることはありますか？',
     'ar': 'هل تحتاج إلى أي مساعدة أخرى؟',
     'hi': 'क्या आपको और किसी मदद की ज़रूरत है?',
     'kn': 'ನಿಮಗೆ ಇನ್ನೇನಾದರೂ ಸಹಾಯ ಬೇಕೇ?',
