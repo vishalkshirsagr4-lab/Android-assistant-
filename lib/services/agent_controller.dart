@@ -8,6 +8,7 @@ import 'screen_capture_service.dart';
 import 'lucy_activity_store.dart';
 import 'grok_service.dart';
 import 'groq_service.dart';
+import 'hms_service.dart';
 import 'performance_monitor.dart';
 import 'action_approval_policy.dart';
 import 'routine_scheduler.dart';
@@ -56,6 +57,7 @@ class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
   final GrokService _grokService = GrokService();
   final GroqService _groqService = GroqService();
+  final HmsService _hmsService = HmsService();
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
   final LucyActivityStore _activityStore = LucyActivityStore();
@@ -226,6 +228,7 @@ class AgentController extends ChangeNotifier {
         ((prefs.getBool(_legacyProviderPrefKey) ?? false) ? 'grok' : 'gemini');
     _aiService.useGrok(provider == 'grok');
     _aiService.useGroq(provider == 'groq');
+    _aiService.useHms(provider == 'hms');
     if (savedLang != null && _supportedLangs.contains(savedLang)) {
       _currentLang = savedLang;
     }
@@ -294,6 +297,7 @@ class AgentController extends ChangeNotifier {
 
   bool get isGrokProvider => _aiService.isUsingGrok;
   bool get isGroqProvider => _aiService.isUsingGroq;
+  bool get isHmsProvider => _aiService.isUsingHms;
 
   Future<void> setGrokProvider(bool enabled) async {
     if (enabled && !await _grokService.isConfigured()) {
@@ -302,7 +306,7 @@ class AgentController extends ChangeNotifier {
       return;
     }
     _aiService.useGrok(enabled);
-    final selectedProvider = enabled ? 'grok' : (_aiService.isUsingGroq ? 'groq' : 'gemini');
+    final selectedProvider = enabled ? 'grok' : (_aiService.isUsingGroq ? 'groq' : _aiService.isUsingHms ? 'hms' : 'gemini');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_providerPrefKey, selectedProvider);
     _statusMessage = enabled ? 'Grok selected for Lucy.' : '${selectedProvider == 'groq' ? 'Groq' : 'Gemini'} selected for Lucy.';
@@ -316,10 +320,32 @@ class AgentController extends ChangeNotifier {
       return;
     }
     _aiService.useGroq(enabled);
-    final selectedProvider = enabled ? 'groq' : (_aiService.isUsingGrok ? 'grok' : 'gemini');
+    final selectedProvider = enabled ? 'groq' : (_aiService.isUsingGrok ? 'grok' : _aiService.isUsingHms ? 'hms' : 'gemini');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_providerPrefKey, selectedProvider);
     _statusMessage = enabled ? 'Groq selected for Lucy.' : '${selectedProvider == 'grok' ? 'Grok' : 'Gemini'} selected for Lucy.';
+    notifyListeners();
+  }
+
+  Future<void> setHmsProvider(bool enabled) async {
+    if (enabled && !await _hmsService.isConfigured()) {
+      _statusMessage = 'Save a verified 100milionseek API key before selecting it.';
+      notifyListeners();
+      return;
+    }
+    _aiService.useHms(enabled);
+    final selectedProvider = enabled
+        ? 'hms'
+        : (_aiService.isUsingGrok
+            ? 'grok'
+            : _aiService.isUsingGroq
+                ? 'groq'
+                : 'gemini');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_providerPrefKey, selectedProvider);
+    _statusMessage = enabled
+        ? '100milionseek selected. Automatic provider fallback remains enabled.'
+        : '$selectedProvider selected for Lucy.';
     notifyListeners();
   }
 
@@ -349,7 +375,9 @@ class AgentController extends ChangeNotifier {
           ? '⚠️ Please save a valid xAI API key in Lucy tools first'
           : _aiService.isUsingGroq
               ? '⚠️ Please save a valid Groq API key in Lucy tools first'
-              : '⚠️ Please set your Gemini API key first';
+              : _aiService.isUsingHms
+                  ? '⚠️ Please save a valid 100milionseek API key in Lucy tools first'
+                  : '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
     }
