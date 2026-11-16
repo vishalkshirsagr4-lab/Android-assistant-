@@ -610,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     _holdToTalkStartFuture = null;
     if (widget.controller.isActive) {
-      await widget.controller.stopAgent();
+      await widget.controller.finishPushToTalk();
     }
   }
 
