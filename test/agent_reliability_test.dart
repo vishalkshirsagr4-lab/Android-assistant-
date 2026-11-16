@@ -43,6 +43,35 @@ void main() {
       );
     });
 
+    test('detects several different actions that leave the same screen stuck', () {
+      final guard = LucyAgentLoopGuard();
+
+      expect(
+        guard.shouldReplan(
+          actionType: 'tap',
+          packageName: 'com.example.app',
+          uiSignature: 'unchanged',
+        ),
+        isFalse,
+      );
+      expect(
+        guard.shouldReplan(
+          actionType: 'swipe',
+          packageName: 'com.example.app',
+          uiSignature: 'unchanged',
+        ),
+        isFalse,
+      );
+      expect(
+        guard.shouldReplan(
+          actionType: 'back',
+          packageName: 'com.example.app',
+          uiSignature: 'unchanged',
+        ),
+        isTrue,
+      );
+    });
+
     test('limits re-plans and can reset for the next user task', () {
       final guard = LucyAgentLoopGuard(maxReplans: 2);
 
