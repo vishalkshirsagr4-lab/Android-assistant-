@@ -16,6 +16,7 @@ import 'routine_scheduler.dart';
 import 'phone_action_service.dart';
 import 'lucy_memory_store.dart';
 import 'agent_reliability.dart';
+import 'lucy_settings_store.dart';
 
 enum AgentState {
   idle,
@@ -69,6 +70,7 @@ class AgentController extends ChangeNotifier {
   final LucyPerformanceMonitor _performanceMonitor =
       LucyPerformanceMonitor.shared;
   final PhoneActionService _phoneActions = PhoneActionService();
+  final LucySettingsStore _settingsStore = LucySettingsStore();
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -779,6 +781,11 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> startAgent({bool voiceOnly = false}) async {
+    if (!await _settingsStore.isEnabled(LucySettingsStore.voiceInput)) {
+      _statusMessage = 'Voice input is disabled in Privacy & settings.';
+      notifyListeners();
+      return;
+    }
     final providerReady = await _aiService.isProviderReady();
     _pushToTalkMode = voiceOnly;
     _pushToTalkFinalResult = voiceOnly ? Completer<void>() : null;
@@ -921,7 +928,8 @@ class AgentController extends ChangeNotifier {
     _addConversation(text, true);
     _currentTranscript = '';
 
-    if (await _handleMemoryCommand(text)) {
+    if (await _settingsStore.isEnabled(LucySettingsStore.memory) &&
+        await _handleMemoryCommand(text)) {
       await _resumeOrFinishListening();
       return;
     }
@@ -1139,12 +1147,20 @@ class AgentController extends ChangeNotifier {
           '[Device local date/time: ${localNow.toIso8601String()}]\n'
           '${deviceContext.isEmpty ? '' : '$deviceContext\n'}'
           '${planContext}${currentMessage}';
+      final allowScreenSharing = await _settingsStore.isEnabled(
+        LucySettingsStore.aiScreenSharing,
+      );
+      final allowMemory = await _settingsStore.isEnabled(
+        LucySettingsStore.memory,
+      );
       final agentResponse = await _aiService.agentChat(
         requestWithClock,
-        imageBytes: screenshotBytes,
-        screenSize: screenSize,
-        uiTree: uiTree,
-        memoryContext: _memoryStore?.relevantContext(userMessage) ?? '',
+        imageBytes: allowScreenSharing ? screenshotBytes : null,
+        screenSize: allowScreenSharing ? screenSize : null,
+        uiTree: allowScreenSharing ? uiTree : null,
+        memoryContext: allowMemory
+            ? (_memoryStore?.relevantContext(userMessage) ?? '')
+            : '',
       );
       aiStopwatch.stop();
       _performanceMonitor.recordResponse(aiStopwatch.elapsed);
@@ -1648,6 +1664,31 @@ class AgentController extends ChangeNotifier {
     _UiSnapshot? beforeSnapshot,
   ) async {
     _lastActionDispatchSucceeded = true;
+    const accessibilityActions = {'open_app', 'tap', 'type', 'swipe', 'back', 'home'};
+    const directPhoneActions = {
+      'set_alarm', 'set_timer', 'place_call', 'send_sms', 'open_url',
+      'start_navigation', 'music_search', 'set_flashlight', 'set_volume',
+      'set_brightness', 'get_device_status', 'read_contact',
+      'create_calendar_event', 'open_settings', 'take_photo', 'share_text',
+    };
+    if (accessibilityActions.contains(action.type) &&
+        !await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Screen automation is disabled in Privacy & settings. No screen action was performed.', false);
+      return beforeSnapshot;
+    }
+    if (directPhoneActions.contains(action.type) &&
+        !await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Direct phone actions are disabled in Privacy & settings.', false);
+      return beforeSnapshot;
+    }
+    if (action.type == 'schedule_reminder' &&
+        !await _settingsStore.isEnabled(LucySettingsStore.scheduledReminders)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Scheduled reminders are disabled in Privacy & settings.', false);
+      return beforeSnapshot;
+    }
     // Ordinary navigation is hands-free. Consequential actions pause the
     // task, ask for spoken approval, and resume the same agent loop on approval.
     String? targetLabel;
