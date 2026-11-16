@@ -166,21 +166,41 @@ class PhoneContextHandler(private val activity: Activity) {
         return try {
             val manager = activity.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val end = System.currentTimeMillis()
-            val events = manager.queryEvents(end - TimeUnit.MINUTES.toMillis(5), end)
+            // A foreground activity can remain open for hours without a new
+            // event, so inspect a bounded day of transitions rather than only
+            // the last few minutes.
+            val events = manager.queryEvents(end - TimeUnit.HOURS.toMillis(24), end)
+                ?: return null
             val event = UsageEvents.Event()
             var foregroundPackage: String? = null
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
-                val isForeground = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    event.eventType == UsageEvents.Event.ACTIVITY_RESUMED
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    when (event.eventType) {
+                        UsageEvents.Event.ACTIVITY_RESUMED -> {
+                            foregroundPackage = event.packageName
+                        }
+                        UsageEvents.Event.ACTIVITY_PAUSED -> {
+                            if (foregroundPackage == event.packageName) {
+                                foregroundPackage = null
+                            }
+                        }
+                    }
                 } else {
                     @Suppress("DEPRECATION")
-                    event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND
-                }
-                if (isForeground && event.packageName != activity.packageName) {
-                    foregroundPackage = event.packageName
+                    when (event.eventType) {
+                        UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                            foregroundPackage = event.packageName
+                        }
+                        UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                            if (foregroundPackage == event.packageName) {
+                                foregroundPackage = null
+                            }
+                        }
+                    }
                 }
             }
+            if (foregroundPackage == activity.packageName) foregroundPackage = null
             foregroundPackage?.let { packageName ->
                 activity.packageManager.getApplicationLabel(
                     activity.packageManager.getApplicationInfo(packageName, 0)
