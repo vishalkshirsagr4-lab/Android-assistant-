@@ -201,6 +201,7 @@ class NativeVoiceService : Service() {
 
     override fun onDestroy() {
         stopped = true
+        if (activeInstance === this) activeInstance = null
         handler.removeCallbacksAndMessages(null)
         try { recognizer?.cancel() } catch (_: Exception) {}
         recognizer?.destroy()
