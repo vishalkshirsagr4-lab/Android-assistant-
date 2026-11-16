@@ -770,20 +770,24 @@ class AgentController extends ChangeNotifier {
     }
   }
 
-  Future<void> startAgent() async {
+  Future<void> startAgent({bool voiceOnly = false}) async {
     final providerReady = await _aiService.isProviderReady();
     _isActive = true;
     _addConversation(
-      'Agent started. Listening for your commands. To stop Lucy while it is in another app, open notifications and tap "Stop Lucy".',
+      voiceOnly
+          ? 'Push-to-talk started. Release the microphone button to stop listening.'
+          : 'Agent started. Listening for your commands. To stop Lucy while it is in another app, open notifications and tap "Stop Lucy".',
       false,
     );
-    _statusMessage = providerReady
+    _statusMessage = voiceOnly
+        ? 'Push-to-talk · release the button to stop'
+        : providerReady
         ? 'Listening… Tap to stop, or hold the microphone for push-to-talk.'
         : 'Offline voice commands ready. Add an AI key for screen tasks.';
     _isAskingForFurtherHelp = false;
     notifyListeners();
 
-    if (providerReady) {
+    if (providerReady && !voiceOnly) {
       final hasScreenPermission = await _screenCapture.requestPermission();
       if (!hasScreenPermission) {
         _addConversation(
