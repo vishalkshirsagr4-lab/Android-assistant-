@@ -198,6 +198,19 @@ class VoiceService {
     }
   }
 
+  /// Updates Lucy's existing Android microphone notification without restarting
+  /// speech recognition. The status never includes the user's spoken command.
+  Future<void> updateNotificationStatus(String status) async {
+    if (_disposed) return;
+    try {
+      await _native.invokeMethod<bool>('updateStatus', {
+        'status': status.trim().isEmpty ? 'Lucy is working' : status.trim(),
+      });
+    } catch (_) {
+      // Notification updates are best-effort; they must never interrupt a task.
+    }
+  }
+
   Future<void> stopListening() async {
     // Clear the flag before Android's onDestroy broadcast arrives so a
     // deliberate stop is never interpreted as an unexpected disconnect.
