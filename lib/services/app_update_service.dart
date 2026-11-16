@@ -29,15 +29,17 @@ class AppUpdateService {
   static const _permissionPendingKey = 'lucy_update_permission_pending';
 
   Future<LucyUpdateInfo?> checkForUpdate() async {
-    final response = await http.get(
-      Uri.parse(_releaseApi),
-      headers: const {
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      },
-    ).timeout(const Duration(seconds: 25));
+    final response = await http
+        .get(
+          Uri.parse(_releaseApi),
+          headers: const {
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+        )
+        .timeout(const Duration(seconds: 25));
 
     if (response.statusCode != 200) {
       throw HttpException(
@@ -47,7 +49,9 @@ class AppUpdateService {
 
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('GitHub returned an invalid release response.');
+      throw const FormatException(
+        'GitHub returned an invalid release response.',
+      );
     }
     if (decoded['draft'] == true || decoded['prerelease'] == true) return null;
 
@@ -110,9 +114,12 @@ class AppUpdateService {
       'objects.githubusercontent.com',
       'release-assets.githubusercontent.com',
     };
-    if (downloadUri == null || downloadUri.scheme != 'https' ||
+    if (downloadUri == null ||
+        downloadUri.scheme != 'https' ||
         !allowedHosts.contains(downloadUri.host)) {
-      throw const FormatException('The update download URL is not a trusted GitHub HTTPS asset.');
+      throw const FormatException(
+        'The update download URL is not a trusted GitHub HTTPS asset.',
+      );
     }
     final directory = await getTemporaryDirectory();
     final apkFile = File('${directory.path}/lucy-update-${update.version}.apk');
@@ -125,11 +132,13 @@ class AppUpdateService {
     try {
       final request = http.Request('GET', Uri.parse(update.downloadUrl))
         ..headers['Accept'] = 'application/octet-stream';
-      final response = await client.send(request).timeout(
-        const Duration(minutes: 4),
-      );
+      final response = await client
+          .send(request)
+          .timeout(const Duration(minutes: 4));
       if (response.statusCode != 200) {
-        throw HttpException('APK download failed (HTTP ${response.statusCode}).');
+        throw HttpException(
+          'APK download failed (HTTP ${response.statusCode}).',
+        );
       }
 
       final fileSink = apkFile.openWrite();
@@ -137,14 +146,21 @@ class AppUpdateService {
 
       final size = await apkFile.length();
       if (size < 1024) {
-        throw const FormatException('The downloaded APK is empty or incomplete.');
+        throw const FormatException(
+          'The downloaded APK is empty or incomplete.',
+        );
       }
       final randomAccess = await apkFile.open(mode: FileMode.read);
       final signature = await randomAccess.read(4);
       await randomAccess.close();
-      if (signature.length != 4 || signature[0] != 0x50 ||
-          signature[1] != 0x4b || signature[2] != 0x03 || signature[3] != 0x04) {
-        throw const FormatException('The downloaded file is not a valid APK archive.');
+      if (signature.length != 4 ||
+          signature[0] != 0x50 ||
+          signature[1] != 0x4b ||
+          signature[2] != 0x03 ||
+          signature[3] != 0x04) {
+        throw const FormatException(
+          'The downloaded file is not a valid APK archive.',
+        );
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -169,7 +185,9 @@ class AppUpdateService {
     final apk = File(path);
     if (!await apk.exists() || await apk.length() < 1024) {
       await _clearPendingInstall(prefs, apk);
-      throw const FileSystemException('The saved update APK is no longer available.');
+      throw const FileSystemException(
+        'The saved update APK is no longer available.',
+      );
     }
 
     final canInstall =
@@ -211,16 +229,10 @@ class AppUpdateService {
   Future<void> clearPendingInstall() async {
     final prefs = await SharedPreferences.getInstance();
     final path = prefs.getString(_pendingApkKey);
-    await _clearPendingInstall(
-      prefs,
-      path == null ? null : File(path),
-    );
+    await _clearPendingInstall(prefs, path == null ? null : File(path));
   }
 
-  Future<void> _clearPendingInstall(
-    SharedPreferences prefs,
-    File? apk,
-  ) async {
+  Future<void> _clearPendingInstall(SharedPreferences prefs, File? apk) async {
     await prefs.remove(_pendingApkKey);
     await prefs.remove(_pendingVersionKey);
     await prefs.remove(_permissionPendingKey);
