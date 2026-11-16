@@ -68,6 +68,15 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
 
   Future<void> _setCapability(String key, bool enabled) async {
     await _settings.setEnabled(key, enabled);
+    if (key == LucySettingsStore.scheduledReminders && !enabled) {
+      final routines = await LucyRoutineScheduler.listRoutines();
+      for (final routine in routines) {
+        final id = routine['id']?.toString();
+        if (id != null && id.isNotEmpty) {
+          await LucyRoutineScheduler.cancelReminder(id);
+        }
+      }
+    }
     if (!enabled && widget.controller.isActive && const {
       LucySettingsStore.voiceInput,
       LucySettingsStore.aiRequests,
@@ -87,9 +96,13 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       _message('Could not update notification context.');
       return;
     }
-    if (!enabled) await _context.clearNotificationHistory();
+    if (!enabled) {
+      await _context.clearNotificationHistory();
+    } else {
+      await _context.openNotificationAccessSettings();
+    }
     _message(enabled
-        ? 'Notification context enabled. Android notification access may also need to be granted.'
+        ? 'Review Android Notification access and enable Lucy if you want this context.'
         : 'Notification context disabled and its local history cleared.');
     if (mounted) setState(() => _contextStatus['notificationContextEnabled'] = enabled);
   }
