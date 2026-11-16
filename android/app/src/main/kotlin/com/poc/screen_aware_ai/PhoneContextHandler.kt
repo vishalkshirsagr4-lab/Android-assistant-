@@ -203,15 +203,24 @@ class PhoneContextHandler(private val activity: Activity) {
 
     private fun getRecentNotifications(): List<Map<String, Any>> {
         if (!isNotificationAccessEnabled()) return emptyList()
+        val preferences = activity.getSharedPreferences(
+            NotificationContextListener.PREFERENCES_NAME,
+            Context.MODE_PRIVATE
+        )
+        if (!preferences.getBoolean(NotificationContextListener.NOTIFICATION_ENABLED_KEY, false)) {
+            return emptyList()
+        }
         val raw = activity.getSharedPreferences(
             NotificationContextListener.PREFERENCES_NAME,
             Context.MODE_PRIVATE
         ).getString(NotificationContextListener.NOTIFICATION_KEY, "[]") ?: "[]"
         return try {
             val array = JSONArray(raw)
-            val start = (array.length() - 5).coerceAtLeast(0)
+            val cutoff = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(24)
+            val start = (array.length() - 20).coerceAtLeast(0)
             (start until array.length()).mapNotNull { index ->
                 val item = array.optJSONObject(index) ?: return@mapNotNull null
+                if (item.optLong("timestamp") < cutoff) return@mapNotNull null
                 mapOf(
                     "app" to item.optString("app"),
                     "sender" to item.optString("sender"),
