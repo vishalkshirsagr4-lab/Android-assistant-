@@ -39,9 +39,10 @@ jobs:
         run: |
           while IFS= read -r file; do
             [ -f "$file" ] || continue
-            printf 'FORMAT_FILE:%s\\n' "$file"
+            echo "FORMAT_FILE:$file"
             base64 -w0 "$file"
-            printf '\\nFORMAT_END\\n'
+            echo
+            echo FORMAT_END
           done < <(git diff --name-only -- '*.dart')
 
       - name: Verify formatting
