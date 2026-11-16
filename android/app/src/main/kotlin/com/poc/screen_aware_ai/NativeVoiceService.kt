@@ -36,12 +36,21 @@ class NativeVoiceService : Service() {
         fun updateStatus(status: String) {
             activeInstance?.updateNotificationStatus(status)
         }
+
+        fun pauseForProcessing() {
+            activeInstance?.pauseRecognitionForProcessing()
+        }
+
+        fun resumeAfterProcessing() {
+            activeInstance?.resumeRecognitionAfterProcessing()
+        }
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var localeId = "en_US"
     private var stopped = false
+    private var pausedForProcessing = false
     private var userInitiatedStop = false
     private var restartScheduled = false
     private var retryMs = 1000L
@@ -82,7 +91,7 @@ class NativeVoiceService : Service() {
     }
 
     private fun startRecognition() {
-        if (stopped || restartScheduled) return
+        if (stopped || pausedForProcessing || restartScheduled) return
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             emitError("Android speech recognition service is unavailable.")
             stopSelf()
@@ -104,7 +113,7 @@ class NativeVoiceService : Service() {
                         scheduleRestart(350L)
                     }
                     override fun onError(error: Int) {
-                        if (stopped) return
+                        if (stopped || pausedForProcessing) return
                         if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             emitError("Microphone permission is missing.")
                             stopSelf()
@@ -147,7 +156,7 @@ class NativeVoiceService : Service() {
     }
 
     private fun scheduleRestart(delay: Long) {
-        if (stopped || restartScheduled) return
+        if (stopped || pausedForProcessing || restartScheduled) return
         restartScheduled = true
         handler.postDelayed({
             restartScheduled = false
@@ -166,6 +175,22 @@ class NativeVoiceService : Service() {
         sendBroadcast(Intent(ACTION_FORCE_STOP).setPackage(packageName))
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun pauseRecognitionForProcessing() {
+        if (stopped || pausedForProcessing) return
+        pausedForProcessing = true
+        restartScheduled = false
+        handler.removeCallbacksAndMessages(null)
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        recognizer?.destroy()
+        recognizer = null
+    }
+
+    private fun resumeRecognitionAfterProcessing() {
+        if (stopped || !pausedForProcessing) return
+        pausedForProcessing = false
+        startRecognition()
     }
 
     private fun updateNotificationStatus(status: String) {
@@ -190,7 +215,7 @@ class NativeVoiceService : Service() {
             Notification.Builder(this)
         }
         return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Lucy is listening")
+            .setContentTitle(if (notificationStatus.startsWith("Listening")) "Lucy is listening" else "Lucy is working")
             .setContentText(notificationStatus)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "Stop Lucy", stopAction).build())
