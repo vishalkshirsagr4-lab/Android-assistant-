@@ -213,7 +213,12 @@ RESPONSE FORMAT (strict JSON, one action only):
         buffer.writeln('[/UI_TREE]');
       }
 
-      if (memoryContext.trim().isNotEmpty) {\n        buffer.writeln('[USER_APPROVED_MEMORY — use only when relevant; never infer extra personal facts]');\n        buffer.writeln(memoryContext);\n        buffer.writeln('[/USER_APPROVED_MEMORY]');\n      }\n      buffer.write(message);
+      if (memoryContext.trim().isNotEmpty) {
+        buffer.writeln('[USER_APPROVED_MEMORY — use only when relevant; never infer extra personal facts]');
+        buffer.writeln(memoryContext);
+        buffer.writeln('[/USER_APPROVED_MEMORY]');
+      }
+      buffer.write(message);
       final fullMessage = buffer.toString();
 
       if (_useGrok) {
