@@ -22,6 +22,7 @@ void main() {
     expect(values[LucySettingsStore.scheduledReminders], isTrue);
     expect(values[LucySettingsStore.aiRequests], isTrue);
     expect(values[LucySettingsStore.providerFallback], isTrue);
+    expect(values[LucySettingsStore.foregroundAppContext], isTrue);
   });
 
   test('capability changes persist between store instances', () async {
