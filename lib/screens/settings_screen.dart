@@ -30,6 +30,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   Map<String, bool> _values = <String, bool>{};
   Map<String, dynamic> _contextStatus = <String, dynamic>{};
   bool _calendarEnabled = false;
+  bool _foregroundContextEnabled = true;
   LucyProactiveStatus _proactiveStatus = const LucyProactiveStatus(
     enabled: false,
     quietStartHour: 22,
@@ -52,11 +53,14 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     final contextStatus = await _context.readStatus();
     final prefs = await SharedPreferences.getInstance();
     final calendarEnabled = prefs.getBool('lucy_context_calendar_enabled') ?? false;
+    final foregroundEnabled =
+        prefs.getBool(LucySettingsStore.foregroundAppContext) ?? true;
     if (!mounted) return;
     setState(() {
       _values = values;
       _contextStatus = contextStatus;
       _calendarEnabled = calendarEnabled;
+      _foregroundContextEnabled = foregroundEnabled;
       _proactiveStatus = proactive;
       _loading = false;
     });
@@ -116,7 +120,24 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     if (mounted) setState(() => _calendarEnabled = enabled);
   }
 
+  Future<void> _setForegroundContext(bool enabled) async {
+    await _settings.setEnabled(LucySettingsStore.foregroundAppContext, enabled);
+    if (enabled) {
+      await _context.openUsageAccessSettings();
+      _message('Grant Usage access to Lucy in Android settings, then return here.');
+    }
+    if (mounted) setState(() => _foregroundContextEnabled = enabled);
+  }
+
   Future<void> _setProactive(bool enabled) async {
+    if (enabled) {
+      final notificationPermission =
+          await LucyRoutineScheduler.ensureNotificationPermission();
+      if (!notificationPermission) {
+        _message('Allow Lucy notifications, then enable proactive suggestions again.');
+        return;
+      }
+    }
     final result = await _proactive.configure(
       enabled: enabled,
       quietStartHour: _proactiveStatus.quietStartHour,
@@ -271,6 +292,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       await _settings.setEnabled(LucySettingsStore.providerFallback, false);
       await _settings.setEnabled(LucySettingsStore.memory, false);
       await _settings.setEnabled(LucySettingsStore.scheduledReminders, false);
+      await _settings.setEnabled(LucySettingsStore.foregroundAppContext, false);
       widget.controller.clearConversation();
       if (!mounted) return;
       setState(() {
@@ -281,6 +303,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
           LucySettingsStore.providerFallback: false,
           LucySettingsStore.memory: false,
           LucySettingsStore.scheduledReminders: false,
+          LucySettingsStore.foregroundAppContext: false,
         };
         _proactiveStatus = const LucyProactiveStatus(
           enabled: false,
@@ -377,6 +400,13 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             subtitle: const Text('Keep a small local cache and optionally include short snippets in AI requests.'),
             value: _contextStatus['notificationContextEnabled'] == true,
             onChanged: _busy ? null : _setNotifications,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Foreground app context'),
+            subtitle: const Text('Include the current app name when Usage access is granted.'),
+            value: _foregroundContextEnabled,
+            onChanged: _busy ? null : _setForegroundContext,
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
