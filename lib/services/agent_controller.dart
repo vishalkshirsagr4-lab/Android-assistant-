@@ -346,8 +346,8 @@ class AgentController extends ChangeNotifier {
     }
 
     const forgetPrefixes = [
-      'forget ',
       'forget that ',
+      'forget ',
       '忘れて ',
       'انسَ ',
       'भूल जाओ ',
