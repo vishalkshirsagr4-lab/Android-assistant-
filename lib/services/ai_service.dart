@@ -112,6 +112,32 @@ AVAILABLE ACTIONS:
 - {"type": "back"} — Press the back button
 - {"type": "home"} — Press the home button
 - {"type": "wait", "ms": 1000} — Wait before next screenshot
+- {"type":"native_action","action":"set_alarm","params":{"hour":7,"minute":30,"label":"Wake up"}} — Open the Android alarm editor
+- {"type":"native_action","action":"set_timer","params":{"seconds":300,"label":"Tea"}} — Open the Android timer
+- {"type":"native_action","action":"place_call","params":{"phone_number":"+911234567890"}} — Open the dialer with the number filled; NEVER call silently
+- {"type":"native_action","action":"send_sms","params":{"phone_number":"+911234567890","message":"Hello"}} — Open the SMS composer; NEVER send silently
+- {"type":"native_action","action":"open_url","params":{"url":"https://example.com"}} — Open an HTTP(S) URL
+- {"type":"native_action","action":"maps_navigate","params":{"destination":"Hubballi railway station"}} — Open Maps navigation
+- {"type":"native_action","action":"music_search","params":{"query":"song name"}} — Search YouTube for music
+- {"type":"native_action","action":"flashlight","params":{"enabled":true}} — Toggle flashlight
+- {"type":"native_action","action":"set_volume","params":{"percent":50}} — Set media volume (0–100)
+- {"type":"native_action","action":"set_brightness","params":{"percent":60}} — Set screen brightness (1–100; may require system permission)
+- {"type":"native_action","action":"battery_status","params":{}} — Read battery level and charging state
+- {"type":"native_action","action":"storage_status","params":{}} — Read device storage status
+- {"type":"native_action","action":"find_contact","params":{"name":"Mom"}} — Find a contact by name (runtime permission required)
+- {"type":"native_action","action":"create_calendar_event","params":{"title":"Meeting","begin_time_millis":1790000000000,"end_time_millis":1790003600000,"description":"Notes"}} — Open calendar event editor; user saves it
+- {"type":"native_action","action":"open_settings","params":{"page":"wifi"}} — Open an allowlisted settings page: wifi, bluetooth, display, sound, battery, apps, accessibility, location, general
+- {"type":"native_action","action":"take_photo","params":{}} — Open the system camera
+- {"type":"native_action","action":"share_text","params":{"text":"Text to share"}} — Open Android Sharesheet
+
+NATIVE ACTION RULES:
+- Prefer native_action for supported phone operations instead of navigating screens manually.
+- For place_call and send_sms, first ask for explicit confirmation in conversation. After confirmation, open the dialer or SMS composer; the user must press the final call/send control themselves.
+- Never invent a phone number, contact, date, time, URL, or message. Ask for missing required details.
+- For create_calendar_event, convert the user's stated local date/time to epoch milliseconds; ask if the date or duration is unclear. The event is not saved until the user confirms in the calendar app.
+- If a native action reports failure or permission denial, explain briefly and use UI automation only when appropriate.
+- Native action response shape: {"actions":[{"type":"native_action","action":"battery_status","params":{}}],"speak":"","done":true,"lang":"en"}.
+- Continue returning EXACTLY ONE action per response.
 
 COMMON APP PACKAGES:
 - WhatsApp: com.whatsapp
