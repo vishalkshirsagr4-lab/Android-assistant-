@@ -33,7 +33,8 @@ class _HomeScreenState extends State<HomeScreen>
   final GrokService _grokService = GrokService();
   final LucyActivityStore _activityStore = LucyActivityStore();
   final LucyContextBuilder _contextBuilder = LucyContextBuilder();
-  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
+  final LucyPerformanceMonitor _performanceMonitor =
+      LucyPerformanceMonitor.shared;
   bool _updateCheckStarted = false;
   DateTime? _lastUpdateCheckAt;
 
@@ -62,7 +63,6 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-
   Future<void> _checkForAppUpdate() async {
     if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
     final now = DateTime.now();
@@ -86,8 +86,8 @@ class _HomeScreenState extends State<HomeScreen>
               update.notes.isEmpty
                   ? 'A newer version of Lucy is ready to install.'
                   : update.notes.length > 1400
-                      ? '${update.notes.substring(0, 1400)}…'
-                      : update.notes,
+                  ? '${update.notes.substring(0, 1400)}…'
+                  : update.notes,
             ),
           ),
           actions: [
@@ -103,8 +103,8 @@ class _HomeScreenState extends State<HomeScreen>
                   const SnackBar(content: Text('Downloading Lucy update…')),
                 );
                 try {
-                  final installerOpened =
-                      await _appUpdateService.downloadAndInstall(update);
+                  final installerOpened = await _appUpdateService
+                      .downloadAndInstall(update);
                   if (!mounted) return;
                   if (!installerOpened) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -177,7 +177,10 @@ class _HomeScreenState extends State<HomeScreen>
     _apiKeyController.clear();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gemini key saved securely on this device.')),      );
+        const SnackBar(
+          content: Text('Gemini key saved securely on this device.'),
+        ),
+      );
     }
   }
 
@@ -356,7 +359,8 @@ class _HomeScreenState extends State<HomeScreen>
                     bottom: 12,
                     height: MediaQuery.sizeOf(context).height * 0.22,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),                      child: DecoratedBox(
+                      borderRadius: BorderRadius.circular(20),
+                      child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: colorScheme.surface.withOpacity(0.82),
                           border: Border.all(
@@ -382,10 +386,7 @@ class _HomeScreenState extends State<HomeScreen>
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           shadows: [
-                            Shadow(
-                              color: colorScheme.surface,
-                              blurRadius: 12,
-                            ),
+                            Shadow(color: colorScheme.surface, blurRadius: 12),
                           ],
                         ),
                       ),
@@ -444,7 +445,6 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
-
 
   Widget _buildConversationList(ColorScheme colorScheme) {
     return ListView.builder(
@@ -535,7 +535,8 @@ class _HomeScreenState extends State<HomeScreen>
                     height: 60,
                     color: Colors.grey[800],
                     child: const Center(
-                      child: Icon(Icons.broken_image, size: 24),                    ),
+                      child: Icon(Icons.broken_image, size: 24),
+                    ),
                   ),
                 ),
               ),
@@ -788,7 +789,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-
   Future<void> _showRoutineSchedulerDialog() async {
     final titleController = TextEditingController(text: 'Lucy reminder');
     final bodyController = TextEditingController();
@@ -811,14 +811,17 @@ class _HomeScreenState extends State<HomeScreen>
               TextField(
                 controller: bodyController,
                 maxLength: 240,
-                decoration: const InputDecoration(labelText: 'Message (optional)'),
+                decoration: const InputDecoration(
+                  labelText: 'Message (optional)',
+                ),
               ),
               TextField(
                 controller: minutesController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: 'Run after minutes',
-                  helperText: '1 minute to 1 year. WorkManager restores scheduled work after reboot.',
+                  helperText:
+                      '1 minute to 1 year. WorkManager restores scheduled work after reboot.',
                 ),
               ),
               TextField(
@@ -846,20 +849,35 @@ class _HomeScreenState extends State<HomeScreen>
             onPressed: () async {
               final minutes = int.tryParse(minutesController.text.trim());
               final repeat = int.tryParse(repeatController.text.trim());
-              if (minutes == null || minutes < 1 || minutes > 525600 ||
-                  repeat == null || repeat < 0 || (repeat > 0 && repeat < 15) ||
-                  repeat > 525600 || titleController.text.trim().isEmpty) {
+              if (minutes == null ||
+                  minutes < 1 ||
+                  minutes > 525600 ||
+                  repeat == null ||
+                  repeat < 0 ||
+                  (repeat > 0 && repeat < 15) ||
+                  repeat > 525600 ||
+                  titleController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Enter a title, delay, and repeat interval of 0 or at least 15 minutes.')),
+                  const SnackBar(
+                    content: Text(
+                      'Enter a title, delay, and repeat interval of 0 or at least 15 minutes.',
+                    ),
+                  ),
                 );
                 return;
               }
               try {
-                final permission = await LucyRoutineScheduler.ensureNotificationPermission();
+                final permission =
+                    await LucyRoutineScheduler.ensureNotificationPermission();
                 if (!permission) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Allow Lucy notifications, then tap Schedule again.')),
-                  );
+                  if (mounted)
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Allow Lucy notifications, then tap Schedule again.',
+                        ),
+                      ),
+                    );
                   return;
                 }
                 await LucyRoutineScheduler.scheduleReminder(
@@ -872,13 +890,19 @@ class _HomeScreenState extends State<HomeScreen>
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Routine scheduled. Android will show its reminder at the scheduled time.')),
+                    const SnackBar(
+                      content: Text(
+                        'Routine scheduled. Android will show its reminder at the scheduled time.',
+                      ),
+                    ),
                   );
                 }
               } catch (error) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Could not schedule routine: $error')),
+                    SnackBar(
+                      content: Text('Could not schedule routine: $error'),
+                    ),
                   );
                 }
               }
@@ -916,19 +940,28 @@ class _HomeScreenState extends State<HomeScreen>
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(id),
-                        subtitle: Text('Status: ${routine['state'] ?? 'Unknown'}'),
+                        subtitle: Text(
+                          'Status: ${routine['state'] ?? 'Unknown'}',
+                        ),
                         trailing: IconButton(
                           tooltip: 'Cancel reminder',
                           icon: const Icon(Icons.cancel_outlined),
-                          onPressed: id.isEmpty ? null : () async {
-                            await LucyRoutineScheduler.cancelReminder(id);
-                            if (dialogContext.mounted) Navigator.pop(dialogContext);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Scheduled reminder cancelled.')),
-                              );
-                            }
-                          },
+                          onPressed: id.isEmpty
+                              ? null
+                              : () async {
+                                  await LucyRoutineScheduler.cancelReminder(id);
+                                  if (dialogContext.mounted)
+                                    Navigator.pop(dialogContext);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Scheduled reminder cancelled.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
                         ),
                       );
                     },
@@ -981,7 +1014,9 @@ class _HomeScreenState extends State<HomeScreen>
                             tooltip: 'Forget this memory',
                             icon: const Icon(Icons.delete_outline),
                             onPressed: () async {
-                              await widget.controller.forgetUserMemory(item.content);
+                              await widget.controller.forgetUserMemory(
+                                item.content,
+                              );
                               setDialogState(() {});
                             },
                           ),
@@ -1003,11 +1038,13 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.pop(confirmContext, false),
+                                onPressed: () =>
+                                    Navigator.pop(confirmContext, false),
                                 child: const Text('Cancel'),
                               ),
                               FilledButton(
-                                onPressed: () => Navigator.pop(confirmContext, true),
+                                onPressed: () =>
+                                    Navigator.pop(confirmContext, true),
                                 child: const Text('Clear all'),
                               ),
                             ],
@@ -1061,9 +1098,15 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('Performance · RAM: ${snapshot.ramLabel}'),
-                Text('CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}'),
-                Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
-                const Text('Smart fallback is enabled: if a model is busy or reaches a limit, Lucy tries another configured provider.'),
+                Text(
+                  'CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}',
+                ),
+                Text(
+                  'Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}',
+                ),
+                const Text(
+                  'Smart fallback is enabled: if a model is busy or reaches a limit, Lucy tries another configured provider.',
+                ),
                 const SizedBox(height: 16),
                 const Divider(),
                 const Text(
@@ -1109,7 +1152,9 @@ class _HomeScreenState extends State<HomeScreen>
                     _showMemoryManagerDialog();
                   },
                   icon: const Icon(Icons.psychology_alt_outlined),
-                  label: Text('Manage saved memory · ${widget.controller.savedMemories.length}'),
+                  label: Text(
+                    'Manage saved memory · ${widget.controller.savedMemories.length}',
+                  ),
                 ),
                 Wrap(
                   spacing: 8,
@@ -1117,8 +1162,11 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     OutlinedButton(
                       onPressed: () async {
-                        await _contextBuilder.setNotificationContextEnabled(true);
-                        final opened = await _contextBuilder.openNotificationAccessSettings();
+                        await _contextBuilder.setNotificationContextEnabled(
+                          true,
+                        );
+                        final opened = await _contextBuilder
+                            .openNotificationAccessSettings();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1135,11 +1183,17 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                     OutlinedButton(
                       onPressed: () async {
-                        await _contextBuilder.setNotificationContextEnabled(false);
+                        await _contextBuilder.setNotificationContextEnabled(
+                          false,
+                        );
                         await _contextBuilder.clearNotificationHistory();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Lucy notification context disabled and local history cleared.')),
+                            const SnackBar(
+                              content: Text(
+                                'Lucy notification context disabled and local history cleared.',
+                              ),
+                            ),
                           );
                         }
                       },
@@ -1147,7 +1201,8 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                     OutlinedButton(
                       onPressed: () async {
-                        final opened = await _contextBuilder.openUsageAccessSettings();
+                        final opened = await _contextBuilder
+                            .openUsageAccessSettings();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1162,8 +1217,10 @@ class _HomeScreenState extends State<HomeScreen>
                       },
                       child: const Text('Usage access'),
                     ),
-                    OutlinedButton(                      onPressed: () async {
-                        final granted = await _contextBuilder.requestCalendarAccess();
+                    OutlinedButton(
+                      onPressed: () async {
+                        final granted = await _contextBuilder
+                            .requestCalendarAccess();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1180,7 +1237,8 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                     OutlinedButton(
                       onPressed: () async {
-                        final enabled = await _contextBuilder.enableApproximateLocation();
+                        final enabled = await _contextBuilder
+                            .enableApproximateLocation();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1200,7 +1258,11 @@ class _HomeScreenState extends State<HomeScreen>
                         await _contextBuilder.disableApproximateLocation();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Approximate location context disabled.')),
+                            const SnackBar(
+                              content: Text(
+                                'Approximate location context disabled.',
+                              ),
+                            ),
                           );
                         }
                       },
@@ -1209,8 +1271,15 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('Groq Cloud provider', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(groqConfigured ? 'Groq API key saved securely on this device.' : 'No Groq API key configured.'),
+                const Text(
+                  'Groq Cloud provider',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  groqConfigured
+                      ? 'Groq API key saved securely on this device.'
+                      : 'No Groq API key configured.',
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use Groq for Lucy'),
@@ -1239,7 +1308,9 @@ class _HomeScreenState extends State<HomeScreen>
                         final key = groqController.text.trim();
                         if (key.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Paste your Groq API key first.')),
+                            const SnackBar(
+                              content: Text('Paste your Groq API key first.'),
+                            ),
                           );
                           return;
                         }
@@ -1250,13 +1321,17 @@ class _HomeScreenState extends State<HomeScreen>
                           await widget.controller.setGroqProvider(true);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Groq key verified and saved.')),
+                              const SnackBar(
+                                content: Text('Groq key verified and saved.'),
+                              ),
                             );
                           }
                         } catch (error) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Groq setup failed: $error')),
+                              SnackBar(
+                                content: Text('Groq setup failed: $error'),
+                              ),
                             );
                           }
                         }
@@ -1278,10 +1353,15 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('100milionseek · DeepSeek V4.1 Flash', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(hmsConfigured
-                    ? 'API key saved securely on this device.'
-                    : 'No 100milionseek API key configured.'),
+                const Text(
+                  '100milionseek · DeepSeek V4.1 Flash',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  hmsConfigured
+                      ? 'API key saved securely on this device.'
+                      : 'No 100milionseek API key configured.',
+                ),
                 const Text(
                   'Advertised allowance: 100M tokens per UTC day. Text requests only; screen-image requests use a vision-capable provider.',
                   style: TextStyle(fontSize: 12),
@@ -1289,7 +1369,9 @@ class _HomeScreenState extends State<HomeScreen>
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use 100milionseek for Lucy'),
-                  subtitle: const Text('Also used automatically when Gemini is overloaded on text-only requests.'),
+                  subtitle: const Text(
+                    'Also used automatically when Gemini is overloaded on text-only requests.',
+                  ),
                   value: widget.controller.isHmsProvider,
                   onChanged: hmsConfigured
                       ? (enabled) => widget.controller.setHmsProvider(enabled)
@@ -1314,7 +1396,11 @@ class _HomeScreenState extends State<HomeScreen>
                         final key = hmsController.text.trim();
                         if (key.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Paste your 100milionseek API key first.')),
+                            const SnackBar(
+                              content: Text(
+                                'Paste your 100milionseek API key first.',
+                              ),
+                            ),
                           );
                           return;
                         }
@@ -1325,13 +1411,21 @@ class _HomeScreenState extends State<HomeScreen>
                           await widget.controller.setHmsProvider(true);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('100milionseek key verified and saved securely.')),
+                              const SnackBar(
+                                content: Text(
+                                  '100milionseek key verified and saved securely.',
+                                ),
+                              ),
                             );
                           }
                         } catch (error) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('100milionseek setup failed: $error')),
+                              SnackBar(
+                                content: Text(
+                                  '100milionseek setup failed: $error',
+                                ),
+                              ),
                             );
                           }
                         }
@@ -1354,12 +1448,21 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('Grok / xAI provider', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(configured ? 'API key saved securely on this device.' : 'No Grok key configured.'),
+                const Text(
+                  'Grok / xAI provider',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  configured
+                      ? 'API key saved securely on this device.'
+                      : 'No Grok key configured.',
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use Grok 4.7 for Lucy'),
-                  subtitle: const Text('Supports text and screen images. Gemini remains available.'),
+                  subtitle: const Text(
+                    'Supports text and screen images. Gemini remains available.',
+                  ),
                   value: widget.controller.isGrokProvider,
                   onChanged: configured
                       ? (enabled) => widget.controller.setGrokProvider(enabled)
@@ -1375,7 +1478,10 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text('Automation templates', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'Automation templates',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 FilledButton.icon(
                   onPressed: () {
@@ -1394,15 +1500,21 @@ class _HomeScreenState extends State<HomeScreen>
                   icon: const Icon(Icons.manage_history),
                   label: const Text('Manage scheduled reminders'),
                 ),
-                ...templates.map((item) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.schedule),
-                  title: Text(item['name']?.toString() ?? 'Routine'),
-                  subtitle: const Text('Template only · approval required before actions'),
-                )),
+                ...templates.map(
+                  (item) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.schedule),
+                    title: Text(item['name']?.toString() ?? 'Routine'),
+                    subtitle: const Text(
+                      'Template only · approval required before actions',
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
-                const Text('Activity history is stored locally on this device. API keys, screenshots and passwords are not included.'),
+                const Text(
+                  'Activity history is stored locally on this device. API keys, screenshots and passwords are not included.',
+                ),
               ],
             ),
           ),
@@ -1447,7 +1559,8 @@ class _HomeScreenState extends State<HomeScreen>
                     TextButton(
                       onPressed: () async {
                         await _activityStore.clearEvents();
-                        if (historyContext.mounted) Navigator.pop(historyContext);
+                        if (historyContext.mounted)
+                          Navigator.pop(historyContext);
                       },
                       child: const Text('Clear history'),
                     ),
@@ -1466,7 +1579,9 @@ class _HomeScreenState extends State<HomeScreen>
               final key = grokController.text.trim();
               if (key.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Paste your xAI API key first.')),
+                  const SnackBar(
+                    content: Text('Paste your xAI API key first.'),
+                  ),
                 );
                 return;
               }
@@ -1477,7 +1592,11 @@ class _HomeScreenState extends State<HomeScreen>
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Grok key verified and Grok selected for Lucy.')),
+                  const SnackBar(
+                    content: Text(
+                      'Grok key verified and Grok selected for Lucy.',
+                    ),
+                  ),
                 );
               } catch (error) {
                 if (!mounted) return;
