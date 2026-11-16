@@ -612,3 +612,34 @@ If Lucy is useful to you, consider leaving a ⭐ — it genuinely helps others f
 ### Native alarm and timer permission
 
 Lucy declares `com.android.alarm.permission.SET_ALARM` for Android Clock `ACTION_SET_ALARM` and `ACTION_SET_TIMER` intents. This is a normal permission (no runtime prompt). Alarm and timer requests still open the system Clock UI for user review. See the [Android AlarmClock reference](https://developer.android.com/reference/android/provider/AlarmClock) and [common intents guide](https://developer.android.com/guide/components/intents-common#Clock).
+
+
+---
+
+## 🎙️ Voice experience (Phase 5)
+
+Lucy supports two user-started microphone modes:
+
+- **Continuous conversation:** tap the microphone once. Lucy listens, answers, and resumes listening after each response. The session ends after 60 seconds without detected speech, or when you tap Stop.
+- **Push-to-talk:** press and hold the microphone button while speaking. Releasing it stops the microphone session. Push-to-talk does not request screen capture permission.
+- **Interrupt a spoken response:** tap the microphone while Lucy is speaking. Lucy stops the current response and reopens listening for your next command.
+- **Voice controls:** use the voice-settings icon to choose Calm, Balanced or Bright, then adjust speaking speed, pitch and volume. These values are saved locally.
+- **Offline commands:** the current time, battery status and flashlight on/off are handled on-device without an AI request. Flashlight control asks for Android camera permission when needed.
+- **Avatar feedback:** Lucy's face and status label react to listening, thinking, speaking, working and confirmation states.
+
+### Microphone privacy
+
+The microphone is started only after you tap or hold Lucy's microphone control. Android shows the ongoing microphone foreground-service notification with a Stop action. Lucy does not implement an always-on wake-word listener in this phase. Speech recognition uses Android's installed recognition service; whether audio is processed on-device or by the device vendor's recognition provider depends on Android and the selected speech service.
+
+### Voice phase validation
+
+1. Tap the microphone and say “What time is it?”; verify the answer works with mobile data and Wi-Fi disabled.
+2. Say “Battery status”; verify the percentage and charging state.
+3. Say “Turn flashlight on”, then “Turn flashlight off”; deny camera permission once and verify Lucy explains that it could not change the torch.
+4. Tap the microphone while Lucy is speaking; verify speech stops and Lucy listens again.
+5. Hold the microphone, say a short command, then release; verify listening stops.
+6. Leave continuous conversation silent for 60 seconds; verify Lucy closes the session.
+7. Change voice style, speed, pitch and volume; restart Lucy and verify the settings persist.
+8. Switch through English, Hindi, Kannada, Japanese and Arabic; verify the selected recognition and TTS locales where installed.
+
+No new Android permissions or pubspec dependencies are introduced by Phase 5. The existing `RECORD_AUDIO` permission and microphone foreground service are reused. Phase 5 does not add model actions, so the Phase 4 action/decision JSON schema is unchanged.
