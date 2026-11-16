@@ -8,7 +8,8 @@ import 'hms_service.dart';
 
 /// Represents a single action the AI wants to perform.
 class AgentAction {
-  final String type; // open_app, tap, type, swipe, back, home, wait, schedule_reminder
+  final String
+  type; // open_app, tap, type, swipe, back, home, wait, schedule_reminder
   final Map<String, dynamic> params;
 
   AgentAction({required this.type, this.params = const {}});
@@ -76,23 +77,38 @@ class AiService {
   final GroqService _groqService = GroqService();
   final HmsService _hmsService = HmsService();
 
-  bool get isConfigured => _useGrok || _useGroq || _useHms ||
+  bool get isConfigured =>
+      _useGrok ||
+      _useGroq ||
+      _useHms ||
       (_apiKey != null && _apiKey!.isNotEmpty);
   bool get isUsingGrok => _useGrok;
   bool get isUsingGroq => _useGroq;
   bool get isUsingHms => _useHms;
   void useGrok(bool enabled) {
     _useGrok = enabled;
-    if (enabled) { _useGroq = false; _useHms = false; }
+    if (enabled) {
+      _useGroq = false;
+      _useHms = false;
+    }
   }
+
   void useGroq(bool enabled) {
     _useGroq = enabled;
-    if (enabled) { _useGrok = false; _useHms = false; }
+    if (enabled) {
+      _useGrok = false;
+      _useHms = false;
+    }
   }
+
   void useHms(bool enabled) {
     _useHms = enabled;
-    if (enabled) { _useGrok = false; _useGroq = false; }
+    if (enabled) {
+      _useGrok = false;
+      _useGroq = false;
+    }
   }
+
   Future<bool> isProviderReady() async {
     if (_useGrok) return _grokService.isConfigured();
     if (_useGroq) return _groqService.isConfigured();
@@ -221,7 +237,8 @@ RESPONSE FORMAT (strict JSON, one action only):
 
   Future<void> configure(String apiKey) async {
     final normalizedKey = apiKey.trim();
-    if (normalizedKey.isEmpty) throw ArgumentError('Gemini API key cannot be empty.');
+    if (normalizedKey.isEmpty)
+      throw ArgumentError('Gemini API key cannot be empty.');
     await _secureStorage.write(key: _geminiKeyName, value: normalizedKey);
     _apiKey = normalizedKey;
     _model = GenerativeModel(
@@ -237,7 +254,9 @@ RESPONSE FORMAT (strict JSON, one action only):
     String? key;
     try {
       key = await _secureStorage.read(key: _geminiKeyName);
-      if ((key == null || key.isEmpty) && legacyKey != null && legacyKey.trim().isNotEmpty) {
+      if ((key == null || key.isEmpty) &&
+          legacyKey != null &&
+          legacyKey.trim().isNotEmpty) {
         key = legacyKey.trim();
         await _secureStorage.write(key: _geminiKeyName, value: key);
       }
@@ -252,7 +271,9 @@ RESPONSE FORMAT (strict JSON, one action only):
       _model = GenerativeModel(
         model: 'gemini-3.1-flash-lite-preview',
         apiKey: normalizedKey,
-        generationConfig: GenerationConfig(responseMimeType: 'application/json'),
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+        ),
         systemInstruction: Content.system(_systemPrompt),
       );
       _chat = _model!.startChat();
@@ -293,7 +314,9 @@ RESPONSE FORMAT (strict JSON, one action only):
       }
 
       if (memoryContext.trim().isNotEmpty) {
-        buffer.writeln('[USER_APPROVED_MEMORY — use only when relevant; do not infer additional personal facts]');
+        buffer.writeln(
+          '[USER_APPROVED_MEMORY — use only when relevant; do not infer additional personal facts]',
+        );
         buffer.writeln(memoryContext);
         buffer.writeln('[/USER_APPROVED_MEMORY]');
       }
@@ -303,7 +326,13 @@ RESPONSE FORMAT (strict JSON, one action only):
       // Prefer the selected provider, then automatically fail over when it is
       // overloaded, rate-limited, unavailable, or returns a network error.
       // HMS is text-only until its image-input support is explicitly documented.
-      final preferred = _useGrok ? 'grok' : _useGroq ? 'groq' : _useHms ? 'hms' : 'gemini';
+      final preferred = _useGrok
+          ? 'grok'
+          : _useGroq
+          ? 'groq'
+          : _useHms
+          ? 'hms'
+          : 'gemini';
       final order = <String>[
         preferred,
         'gemini',
@@ -317,7 +346,8 @@ RESPONSE FORMAT (strict JSON, one action only):
         try {
           String? text;
           if (provider == 'hms') {
-            if (imageBytes != null || !await _hmsService.isConfigured()) continue;
+            if (imageBytes != null || !await _hmsService.isConfigured())
+              continue;
             text = await _hmsService.complete(
               fullMessage,
               systemPrompt: _systemPrompt,
@@ -351,7 +381,9 @@ RESPONSE FORMAT (strict JSON, one action only):
             text = response.text ?? '{}';
           }
           if (text.trim().isEmpty) {
-            throw const FormatException('Provider returned an empty AI response.');
+            throw const FormatException(
+              'Provider returned an empty AI response.',
+            );
           }
           // Parsing is inside the provider attempt: malformed output must also
           // trigger fallback rather than being presented as a successful reply.
@@ -380,7 +412,9 @@ RESPONSE FORMAT (strict JSON, one action only):
       final startIdx = jsonStr.indexOf('{');
       final endIdx = jsonStr.lastIndexOf('}');
       if (startIdx == -1 || endIdx <= startIdx) {
-        throw const FormatException('Provider did not return valid action JSON.');
+        throw const FormatException(
+          'Provider did not return valid action JSON.',
+        );
       }
       jsonStr = jsonStr.substring(startIdx, endIdx + 1);
     }
@@ -391,7 +425,9 @@ RESPONSE FORMAT (strict JSON, one action only):
         decoded['speak'] is! String ||
         decoded['done'] is! bool ||
         decoded['lang'] is! String) {
-      throw const FormatException('Provider response is missing Lucy action fields.');
+      throw const FormatException(
+        'Provider response is missing Lucy action fields.',
+      );
     }
     return AgentResponse.fromJson(decoded, text);
   }
