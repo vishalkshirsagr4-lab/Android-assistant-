@@ -309,10 +309,14 @@ class PhoneContextHandler(private val activity: Activity) {
     }
 
     private fun isLocationContextEnabled(): Boolean {
-        return activity.getSharedPreferences(
+        val optedIn = activity.getSharedPreferences(
             NotificationContextListener.PREFERENCES_NAME,
             Context.MODE_PRIVATE
         ).getBoolean(NotificationContextListener.LOCATION_ENABLED_KEY, false)
+        return optedIn && ContextCompat.checkSelfPermission(
+            activity,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun getApproximateLocation(): Map<String, Double>? {
