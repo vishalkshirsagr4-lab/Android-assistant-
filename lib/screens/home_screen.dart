@@ -13,6 +13,7 @@ import '../services/performance_monitor.dart';
 import '../services/routine_scheduler.dart';
 import '../services/proactive_decision_service.dart';
 import '../services/lucy_context_builder.dart';
+import 'settings_screen.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -322,6 +323,15 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: colorScheme.surface,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.shield_outlined),
+            tooltip: 'Privacy & settings',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => LucySettingsScreen(controller: widget.controller),
+              ),
+            ),
+          ),
           _buildLanguageToggle(),
           IconButton(
             icon: const Icon(Icons.record_voice_over_outlined),
