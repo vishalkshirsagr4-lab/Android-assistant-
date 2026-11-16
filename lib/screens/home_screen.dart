@@ -7,6 +7,9 @@ import '../services/agent_controller.dart';
 import '../services/app_update_service.dart';
 import '../services/grok_service.dart';
 import '../services/groq_service.dart';
+import '../services/lucy_activity_store.dart';
+import '../services/performance_monitor.dart';
+import '../services/routine_scheduler.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -26,8 +29,10 @@ class _HomeScreenState extends State<HomeScreen>
   final TextEditingController _apiKeyController = TextEditingController();
   final AppUpdateService _appUpdateService = AppUpdateService();
   final GrokService _grokService = GrokService();
-  bool _isCheckingUpdate = false;
-  DateTime? _lastAutomaticUpdateCheck;
+  final LucyActivityStore _activityStore = LucyActivityStore();
+  final LucyPerformanceMonitor _performanceMonitor = LucyPerformanceMonitor.shared;
+  bool _updateCheckStarted = false;
+  DateTime? _lastUpdateCheckAt;
 
   bool _isAccessibilityEnabled = false;
   bool _isCheckingAccessibility = true;
@@ -50,26 +55,23 @@ class _HomeScreenState extends State<HomeScreen>
 
     _checkAccessibility();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkForAppUpdate(showResult: true);
+      _checkForAppUpdate();
     });
   }
 
-  Future<void> _checkForAppUpdate({bool showResult = false}) async {
-    if (!Platform.isAndroid || _isCheckingUpdate || !mounted) return;
-    _isCheckingUpdate = true;
-    if (mounted) setState(() {});
 
+  Future<void> _checkForAppUpdate() async {
+    if (!Platform.isAndroid || _updateCheckStarted || !mounted) return;
+    final now = DateTime.now();
+    if (_lastUpdateCheckAt != null &&
+        now.difference(_lastUpdateCheckAt!) < const Duration(minutes: 5)) {
+      return;
+    }
+    _updateCheckStarted = true;
+    _lastUpdateCheckAt = now;
     try {
       final update = await _appUpdateService.checkForUpdate();
-      if (!mounted) return;
-      if (update == null) {
-        if (showResult) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("You're using the latest version of Lucy.")),
-          );
-        }
-        return;
-      }
+      if (!mounted || update == null) return;
       await showDialog<void>(
         context: context,
         barrierDismissible: true,
@@ -125,14 +127,10 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not check for updates: $error')),
-        );
-      }
+      // Keep Lucy usable offline, but allow another check after a later resume.
+      debugPrint('Lucy update check failed: $error');
     } finally {
-      _isCheckingUpdate = false;
-      if (mounted) setState(() {});
+      _updateCheckStarted = false;
     }
   }
 
@@ -141,12 +139,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (state == AppLifecycleState.resumed) {
       _checkAccessibility();
       unawaited(_appUpdateService.resumePendingInstall());
-      final now = DateTime.now();
-      final lastCheck = _lastAutomaticUpdateCheck;
-      if (lastCheck == null || now.difference(lastCheck) >= const Duration(minutes: 15)) {
-        _lastAutomaticUpdateCheck = now;
-        unawaited(_checkForAppUpdate());
-      }
+      // Retry release checks after returning online or from Android settings.
+      unawaited(_checkForAppUpdate());
     }
   }
 
@@ -176,9 +170,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _saveApiKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('gemini_api_key', key);
-    widget.controller.configureAi(key);
+    await widget.controller.configureAi(key);
+    _apiKeyController.clear();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gemini key saved securely on this device.')),
+      );
+    }
   }
 
   void _onControllerUpdate() {
@@ -315,28 +313,15 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: colorScheme.surface,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: _isCheckingUpdate
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.system_update_alt),
-            tooltip: 'Check for updates',
-            onPressed: _isCheckingUpdate
-                ? null
-                : () => _checkForAppUpdate(showResult: true),
-          ),
           _buildLanguageToggle(),
           IconButton(
             icon: const Icon(Icons.tune),
-            tooltip: 'Lucy tools · AI provider',
+            tooltip: 'Lucy tools and activity',
             onPressed: _showToolsDialog,
           ),
           IconButton(
             icon: const Icon(Icons.key),
-            tooltip: 'Gemini API Key',
+            tooltip: 'API Key',
             onPressed: () => _showApiKeyDialog(context),
           ),
           if (widget.controller.conversation.isNotEmpty)
@@ -759,229 +744,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Future<void> _showToolsDialog() async {
-    final grokController = TextEditingController();
-    final groqController = TextEditingController();
-    var grokConfigured = await _grokService.isConfigured();
-    final groqService = GroqService();
-    var groqConfigured = await groqService.isConfigured();
-    if (!mounted) {
-      grokController.dispose();
-      groqController.dispose();
-      return;
-    }
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Lucy tools · AI provider'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Gemini', style: TextStyle(fontWeight: FontWeight.bold)),
-                const Text('Use your saved Google Gemini API key.'),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Use Gemini'),
-                  value: 'gemini',
-                  groupValue: widget.controller.isGrokProvider
-                      ? 'grok'
-                      : widget.controller.isGroqProvider
-                          ? 'groq'
-                          : 'gemini',
-                  onChanged: (value) async {
-                    await widget.controller.setGrokProvider(false);
-                    await widget.controller.setGroqProvider(false);
-                    if (dialogContext.mounted) setDialogState(() {});
-                  },
-                ),
-                const Divider(),
-                const Text('Groq Cloud', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(groqConfigured
-                    ? 'A Groq API key is saved securely on this device.'
-                    : 'No Groq API key is configured.'),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Use Groq · Qwen 3.8 27B'),
-                  subtitle: const Text('Supports text and screenshot understanding.'),
-                  value: 'groq',
-                  groupValue: widget.controller.isGrokProvider
-                      ? 'grok'
-                      : widget.controller.isGroqProvider
-                          ? 'groq'
-                          : 'gemini',
-                  onChanged: groqConfigured
-                      ? (value) async {
-                          await widget.controller.setGroqProvider(true);
-                          if (dialogContext.mounted) setDialogState(() {});
-                        }
-                      : null,
-                ),
-                TextField(
-                  controller: groqController,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Groq API key',
-                    hintText: 'Paste key from console.groq.com',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    TextButton(
-                      onPressed: () async {
-                        final key = groqController.text.trim();
-                        if (key.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Paste your Groq API key first.')),
-                          );
-                          return;
-                        }
-                        try {
-                          await groqService.validateApiKey(key);
-                          await groqService.saveApiKey(key);
-                          groqConfigured = true;
-                          await widget.controller.setGroqProvider(true);
-                          if (dialogContext.mounted) setDialogState(() {});
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Groq key verified and saved.')),
-                            );
-                          }
-                        } catch (error) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Groq setup failed: $error')),
-                            );
-                          }
-                        }
-                      },
-                      child: const Text('Verify & enable Groq'),
-                    ),
-                    TextButton(
-                      onPressed: groqConfigured
-                          ? () async {
-                              if (widget.controller.isGroqProvider) {
-                                await widget.controller.setGroqProvider(false);
-                              }
-                              await groqService.clearApiKey();
-                              groqConfigured = false;
-                              if (dialogContext.mounted) setDialogState(() {});
-                            }
-                          : null,
-                      child: const Text('Remove Groq key'),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                const Text('Grok / xAI', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(grokConfigured
-                    ? 'An xAI API key is saved securely on this device.'
-                    : 'No xAI API key is configured.'),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Use Grok 4.7'),
-                  subtitle: const Text('Requires an xAI API key, not a Groq key.'),
-                  value: 'grok',
-                  groupValue: widget.controller.isGrokProvider
-                      ? 'grok'
-                      : widget.controller.isGroqProvider
-                          ? 'groq'
-                          : 'gemini',
-                  onChanged: grokConfigured
-                      ? (value) async {
-                          await widget.controller.setGrokProvider(true);
-                          if (dialogContext.mounted) setDialogState(() {});
-                        }
-                      : null,
-                ),
-                TextField(
-                  controller: grokController,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'xAI API key',
-                    hintText: 'Paste key from console.x.ai',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    TextButton(
-                      onPressed: () async {
-                        final key = grokController.text.trim();
-                        if (key.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Paste your xAI API key first.')),
-                          );
-                          return;
-                        }
-                        try {
-                          await _grokService.validateApiKey(key);
-                          await _grokService.saveApiKey(key);
-                          grokConfigured = true;
-                          await widget.controller.setGrokProvider(true);
-                          if (dialogContext.mounted) setDialogState(() {});
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Grok 4.7 verified and enabled.')),
-                            );
-                          }
-                        } catch (error) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Grok setup failed: $error')),
-                            );
-                          }
-                        }
-                      },
-                      child: const Text('Verify & enable Grok'),
-                    ),
-                    TextButton(
-                      onPressed: grokConfigured
-                          ? () async {
-                              if (widget.controller.isGrokProvider) {
-                                await widget.controller.setGrokProvider(false);
-                              }
-                              await _grokService.clearApiKey();
-                              grokConfigured = false;
-                              if (dialogContext.mounted) setDialogState(() {});
-                            }
-                          : null,
-                      child: const Text('Remove xAI key'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'API keys are stored in Android secure storage. Keep them private. API usage may have limits or costs depending on your provider account.',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      ),
-    );
-    grokController.dispose();
-    groqController.dispose();
-  }
-
   void _showApiKeyDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -1024,6 +786,407 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+
+  Future<void> _showRoutineSchedulerDialog() async {
+    final titleController = TextEditingController(text: 'Lucy reminder');
+    final bodyController = TextEditingController();
+    final minutesController = TextEditingController(text: '30');
+    final repeatController = TextEditingController(text: '0');
+    final id = 'routine_${DateTime.now().millisecondsSinceEpoch}';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Schedule a Lucy routine'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                maxLength: 80,
+                decoration: const InputDecoration(labelText: 'Reminder title'),
+              ),
+              TextField(
+                controller: bodyController,
+                maxLength: 240,
+                decoration: const InputDecoration(labelText: 'Message (optional)'),
+              ),
+              TextField(
+                controller: minutesController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Run after minutes',
+                  helperText: '1 minute to 1 year. WorkManager restores scheduled work after reboot.',
+                ),
+              ),
+              TextField(
+                controller: repeatController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Repeat every minutes (0 = once)',
+                  helperText: 'Use 15 or more for recurring reminders.',
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Routines are notification-only. Lucy will not perform device actions in the background.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final minutes = int.tryParse(minutesController.text.trim());
+              final repeat = int.tryParse(repeatController.text.trim());
+              if (minutes == null || minutes < 1 || minutes > 525600 ||
+                  repeat == null || repeat < 0 || (repeat > 0 && repeat < 15) ||
+                  repeat > 525600 || titleController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Enter a title, delay, and repeat interval of 0 or at least 15 minutes.')),
+                );
+                return;
+              }
+              try {
+                final permission = await LucyRoutineScheduler.ensureNotificationPermission();
+                if (!permission) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Allow Lucy notifications, then tap Schedule again.')),
+                  );
+                  return;
+                }
+                await LucyRoutineScheduler.scheduleReminder(
+                  id: id,
+                  title: titleController.text.trim(),
+                  body: bodyController.text.trim(),
+                  delayMinutes: minutes,
+                  repeatIntervalMinutes: repeat,
+                );
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Routine scheduled. Android will show its reminder at the scheduled time.')),
+                  );
+                }
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not schedule routine: $error')),
+                  );
+                }
+              }
+            },
+            child: const Text('Schedule'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    bodyController.dispose();
+    minutesController.dispose();
+    repeatController.dispose();
+  }
+
+  Future<void> _showScheduledRoutinesDialog() async {
+    try {
+      final routines = await LucyRoutineScheduler.listRoutines();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Scheduled reminders'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: routines.isEmpty
+                ? const Text('No scheduled reminders found.')
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: routines.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final routine = routines[index];
+                      final id = routine['id']?.toString() ?? '';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(id),
+                        subtitle: Text('Status: ${routine['state'] ?? 'Unknown'}'),
+                        trailing: IconButton(
+                          tooltip: 'Cancel reminder',
+                          icon: const Icon(Icons.cancel_outlined),
+                          onPressed: id.isEmpty ? null : () async {
+                            await LucyRoutineScheduler.cancelReminder(id);
+                            if (dialogContext.mounted) Navigator.pop(dialogContext);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Scheduled reminder cancelled.')),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load scheduled reminders: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showToolsDialog() async {
+    final grokController = TextEditingController();
+    final groqController = TextEditingController();
+    final groqService = GroqService();
+    var groqConfigured = await groqService.isConfigured();
+    final snapshot = await _performanceMonitor.snapshot();
+    final templates = await _activityStore.readAutomationTemplates();
+    final configured = await _grokService.isConfigured();
+    if (!mounted) {
+      grokController.dispose();
+      groqController.dispose();
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lucy tools'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Performance · RAM: ${snapshot.ramLabel}'),
+                Text('CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}'),
+                Text('Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}'),
+                const SizedBox(height: 12),
+                const Text('Groq Cloud provider', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(groqConfigured ? 'Groq API key saved securely on this device.' : 'No Groq API key configured.'),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Groq for Lucy'),
+                  subtitle: const Text('Text and screenshot understanding.'),
+                  value: widget.controller.isGroqProvider,
+                  onChanged: groqConfigured
+                      ? (enabled) => widget.controller.setGroqProvider(enabled)
+                      : null,
+                ),
+                TextField(
+                  controller: groqController,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Groq API key',
+                    hintText: 'Paste key from console.groq.com',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        final key = groqController.text.trim();
+                        if (key.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Paste your Groq API key first.')),
+                          );
+                          return;
+                        }
+                        try {
+                          await groqService.validateApiKey(key);
+                          await groqService.saveApiKey(key);
+                          groqConfigured = true;
+                          await widget.controller.setGroqProvider(true);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Groq key verified and saved.')),
+                            );
+                          }
+                        } catch (error) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Groq setup failed: $error')),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Verify & enable Groq'),
+                    ),
+                    TextButton(
+                      onPressed: groqConfigured
+                          ? () async {
+                              if (widget.controller.isGroqProvider) {
+                                await widget.controller.setGroqProvider(false);
+                              }
+                              await groqService.clearApiKey();
+                              groqConfigured = false;
+                            }
+                          : null,
+                      child: const Text('Remove Groq key'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('Grok / xAI provider', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(configured ? 'API key saved securely on this device.' : 'No Grok key configured.'),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Use Grok 4.7 for Lucy'),
+                  subtitle: const Text('Supports text and screen images. Gemini remains available.'),
+                  value: widget.controller.isGrokProvider,
+                  onChanged: configured
+                      ? (enabled) => widget.controller.setGrokProvider(enabled)
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: grokController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Paste xAI API key',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('Automation templates', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showRoutineSchedulerDialog();
+                  },
+                  icon: const Icon(Icons.add_alarm),
+                  label: const Text('Create scheduled reminder'),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showScheduledRoutinesDialog();
+                  },
+                  icon: const Icon(Icons.manage_history),
+                  label: const Text('Manage scheduled reminders'),
+                ),
+                ...templates.map((item) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule),
+                  title: Text(item['name']?.toString() ?? 'Routine'),
+                  subtitle: const Text('Template only · approval required before actions'),
+                )),
+                const SizedBox(height: 8),
+                const Text('Activity history is stored locally on this device. API keys, screenshots and passwords are not included.'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (widget.controller.isGrokProvider) {
+                await widget.controller.setGrokProvider(false);
+              }
+              await _grokService.clearApiKey();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Remove Grok key'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final events = await _activityStore.readEvents();
+              if (!ctx.mounted) return;
+              await showDialog<void>(
+                context: ctx,
+                builder: (historyContext) => AlertDialog(
+                  title: const Text('Recent activity'),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    height: 320,
+                    child: events.isEmpty
+                        ? const Text('No saved activity yet.')
+                        : ListView.builder(
+                            itemCount: events.length,
+                            itemBuilder: (_, index) {
+                              final event = events[events.length - 1 - index];
+                              return ListTile(
+                                dense: true,
+                                title: Text(event['summary']?.toString() ?? ''),
+                                subtitle: Text(event['time']?.toString() ?? ''),
+                              );
+                            },
+                          ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        await _activityStore.clearEvents();
+                        if (historyContext.mounted) Navigator.pop(historyContext);
+                      },
+                      child: const Text('Clear history'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(historyContext),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            child: const Text('View activity'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final key = grokController.text.trim();
+              if (key.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Paste your xAI API key first.')),
+                );
+                return;
+              }
+              try {
+                await _grokService.validateApiKey(key);
+                await _grokService.saveApiKey(key);
+                await widget.controller.setGrokProvider(true);
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Grok key verified and Grok selected for Lucy.')),
+                );
+              } catch (error) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Grok setup failed: $error')),
+                );
+              }
+            },
+            child: const Text('Verify, save & enable Grok'),
+          ),
+        ],
+      ),
+    );
+    grokController.dispose();
+    groqController.dispose();
   }
 
   Future<void> _manualCapture() async {
