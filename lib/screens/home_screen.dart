@@ -893,7 +893,8 @@ class _HomeScreenState extends State<HomeScreen>
     repeatController.dispose();
   }
 
-  Future<void> _showScheduledRoutinesDialog() async {\n    try {
+  Future<void> _showScheduledRoutinesDialog() async {
+    try {
       final routines = await LucyRoutineScheduler.listRoutines();
       if (!mounted) return;
       await showDialog<void>(
