@@ -1911,6 +1911,12 @@ class AgentController extends ChangeNotifier {
       if (element == null) { _taskSkillEligible = false; return; }
       final resourceId = element['resourceId']?.toString() ?? '';
       final label = [element['text']?.toString() ?? '', element['desc']?.toString() ?? ''].where((v) => v.trim().isNotEmpty).join(' ').trim();
+      final package = before.packageName ?? '';
+      if (const {'bank', 'wallet', 'payment', 'upi', 'finance', 'authenticator', 'password'}.any(package.toLowerCase().contains) ||
+          LucyActionApprovalPolicy.effectiveRisk('tap', targetLabel: label, packageName: package) != 'low') {
+        _taskSkillEligible = false;
+        return;
+      }
       final resourceCount = resourceId.isEmpty ? 0 : before.elements.where((item) => item['resourceId'] == resourceId).length;
       final labelCount = label.isEmpty ? 0 : before.elements.where((item) => ((item['text'] ?? '').toString() + ' ' + (item['desc'] ?? '').toString()).trim() == label).length;
       if ((resourceId.isEmpty || resourceCount != 1) && (label.isEmpty || labelCount != 1)) { _taskSkillEligible = false; return; }
@@ -1932,6 +1938,9 @@ class AgentController extends ChangeNotifier {
   Future<bool> _tryReplayLearnedSkill(String command, _UiSnapshot startingSnapshot) async {
     if (!await _settingsStore.isEnabled(LucySettingsStore.learnSkills)) return false;
     final packageName = startingSnapshot.packageName ?? '';
+    if (const {'bank', 'wallet', 'payment', 'upi', 'finance', 'authenticator', 'password'}.any(packageName.toLowerCase().contains)) {
+      return false;
+    }
     final signature = LucyLearningStore.stableSignature(packageName: packageName, elements: startingSnapshot.elements);
     final skill = _learningStore.findSkill(command: command, packageName: packageName, startSignature: signature, appVersionCode: 'unknown');
     if (skill == null) return false;
