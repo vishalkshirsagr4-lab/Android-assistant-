@@ -206,6 +206,7 @@ class AgentController extends ChangeNotifier {
     String event, {
     String context = '',
   }) async {
+    final speechStopwatch = Stopwatch()..start();
     final response = await _aiService.agentChat(
       '[EVENT: $event]\n'
       'User language: $_currentLang\n'
@@ -220,6 +221,8 @@ class AgentController extends ChangeNotifier {
     _addConversation(response.speak, false);
     _setState(AgentState.speaking);
     await _voiceService.speak(response.speak, lang: _currentLang);
+    speechStopwatch.stop();
+    _performanceMonitor.recordTiming('tts', speechStopwatch.elapsed);
   }
 
 
@@ -1014,9 +1017,14 @@ class AgentController extends ChangeNotifier {
 
     _updateTaskProgress('Planning your request');
     await _screenCapture.keepScreenAwake(true);
+    await _performanceMonitor.beginTask();
     try {
       await _runAgentLoop(text);
     } finally {
+      final taskSucceeded = !_statusMessage.toLowerCase().contains('stopped') &&
+          !_statusMessage.startsWith('AI unavailable') &&
+          !_statusMessage.startsWith('Phone locked');
+      await _performanceMonitor.endTask(success: taskSucceeded);
       await _screenCapture.keepScreenAwake(false);
     }
     if (!_statusMessage.startsWith('AI unavailable') &&
@@ -1479,6 +1487,7 @@ class AgentController extends ChangeNotifier {
         break;
       }
       step++;
+      _performanceMonitor.recordStep();
 
       // Fetch the cheap accessibility tree first. Rich text-first screens do
       // not need a MediaProjection frame; visual and sparse screens still do.
@@ -1488,6 +1497,11 @@ class AgentController extends ChangeNotifier {
       final treeStopwatch = Stopwatch()..start();
       var uiSnapshot = await _fetchUiSnapshot();
       treeStopwatch.stop();
+      _performanceMonitor.recordTiming(
+        'tree',
+        treeStopwatch.elapsed,
+        success: uiSnapshot != null,
+      );
       LucyReliabilityLog.event(
         'agent_tree_fetch_timing',
         step: step,
@@ -1557,6 +1571,11 @@ class AgentController extends ChangeNotifier {
         final screenshotStopwatch = Stopwatch()..start();
         screenshotBytes = await _captureScreenWithRetry();
         screenshotStopwatch.stop();
+        _performanceMonitor.recordTiming(
+          'screenshot',
+          screenshotStopwatch.elapsed,
+          success: screenshotBytes != null,
+        );
         if (screenshotBytes != null) _lastScreenshotBytes = screenshotBytes;
         LucyReliabilityLog.event(
           'agent_screenshot_timing',
@@ -1728,7 +1747,14 @@ class AgentController extends ChangeNotifier {
           }
           final beforeAction = latestSnapshot;
           _lastActionDispatchSucceeded = true;
+          final executionStopwatch = Stopwatch()..start();
           latestSnapshot = await _executeAction(action, beforeAction);
+          executionStopwatch.stop();
+          _performanceMonitor.recordTiming(
+            'execution',
+            executionStopwatch.elapsed,
+            success: _lastActionDispatchSucceeded,
+          );
           if (const {
             'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
           }.contains(action.type)) {
