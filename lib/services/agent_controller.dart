@@ -1221,6 +1221,7 @@ class AgentController extends ChangeNotifier {
         _statusMessage.startsWith('Phone locked') ||
         _statusMessage.startsWith('Task failed') ||
         _statusMessage.startsWith('Task stopped') ||
+        _statusMessage.startsWith('Task partially completed') ||
         _statusMessage.startsWith('Autopilot is off');
     final nextStatus = taskStopped
         ? _statusMessage
@@ -1686,6 +1687,13 @@ class AgentController extends ChangeNotifier {
     String currentMessage = alternatives.isEmpty
         ? userMessage
         : '$userMessage\n\n[ASR_ALTERNATIVES]\n${jsonEncode(alternatives)}\n[/ASR_ALTERNATIVES]';
+    // Detect imperative phone-control requests so a model cannot mark a
+    // plan-only response as a completed automation task.
+    final requiresPhoneExecution = RegExp(
+      r'\b(open|launch|navigate|go to|tap|click|press|type|enter|check|read|turn on|turn off|set|create|send|call|scroll|swipe|search|find)\b',
+      caseSensitive: false,
+    ).hasMatch(userMessage);
+    var noActionCompletionAttempts = 0;
     // Screen dimensions are stable for this command, but device context is
     // refreshed before every model request so new notifications, battery,
     // network, foreground-app and calendar changes are visible to Lucy.
@@ -2222,6 +2230,26 @@ class AgentController extends ChangeNotifier {
           actionVerified &&
           !hasDeepReadToolAction &&
           !hasContactLookupAction) {
+        if (requiresPhoneExecution && agentResponse.actions.isEmpty) {
+          noActionCompletionAttempts++;
+          if (noActionCompletionAttempts < 2) {
+            currentMessage =
+                'You marked this phone-control request as done but returned no executable action. Do not describe a plan as completion. Inspect the current UI and return the next supported action, or identify the exact permission/capability blocker.';
+            continue;
+          }
+          _statusMessage =
+              'Task partially completed · Lucy could not produce an executable action for this request.';
+          _addConversation(
+            'I understood that you wanted me to control the phone, but I did not produce an executable action. Nothing further was changed. Please check that Autopilot, Screen automation and required permissions are enabled.',
+            false,
+          );
+          LucyReliabilityLog.event(
+            'agent_done_without_action',
+            step: step,
+            success: false,
+          );
+          break;
+        }
         await _saveCompletedSkill(userMessage);
         LucyReliabilityLog.event('agent_task_completed', step: step, success: true);
         break;
