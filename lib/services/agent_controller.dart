@@ -1321,6 +1321,9 @@ class AgentController extends ChangeNotifier {
       }
     }
 
+    return false;
+  }
+
   /// The core agent loop: capture → analyze → act → repeat.
   Future<void> _runAgentLoop(String userMessage) async {
     _cancelRequested = false;
