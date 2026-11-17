@@ -196,6 +196,25 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Keep the display awake during an explicitly started task.
+  /// This does not wake or unlock a locked phone.
+  Future<bool> keepScreenAwake(bool enabled) async {
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'keepScreenAwake',
+        <String, dynamic>{'enabled': enabled},
+      );
+      return result ?? false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'keep_screen_awake_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return false;
+    }
+  }
+
   /// Press back button
   Future<bool> pressBack() async {
     try {
