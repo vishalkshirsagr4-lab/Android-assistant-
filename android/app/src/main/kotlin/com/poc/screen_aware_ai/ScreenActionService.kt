@@ -284,6 +284,7 @@ class ScreenActionService : AccessibilityService() {
                         Log.w(TAG, "Accessibility scroll action failed; trying gesture fallback", error)
                     } finally {
                         target.recycle()
+                        current = current.copy(scrollNode = null)
                     }
                 }
 
