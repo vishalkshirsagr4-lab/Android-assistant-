@@ -2668,14 +2668,17 @@ class AgentController extends ChangeNotifier {
           } else {
             _lastToolResult = jsonEncode(result);
             _lastActionDispatchSucceeded =
-                result['locked'] != true && result['dispatchFailed'] != true;
+                result['locked'] != true &&
+                result['dispatchFailed'] != true &&
+                result['cancelled'] != true;
           }
           break;
 
         case 'open_each':
           final result = await _executeOpenEach(action, beforeSnapshot);
           _lastToolResult = jsonEncode(result);
-          _lastActionDispatchSucceeded = result['error'] == null;
+          _lastActionDispatchSucceeded =
+              result['error'] == null && result['cancelled'] != true;
           break;
 
         case 'batch':
@@ -2984,6 +2987,7 @@ class AgentController extends ChangeNotifier {
     var unchangedPages = 0;
     var pageScrolls = 0;
     var reachedEnd = false;
+    var nativeOperationCancelled = false;
 
     List<Map<String, dynamic>> listRows(_UiSnapshot? snapshot) {
       if (snapshot == null) return <Map<String, dynamic>>[];
@@ -3121,6 +3125,10 @@ class AgentController extends ChangeNotifier {
           maxScrolls: detailMaxScrolls,
           collect: true,
         );
+        if (_cancelRequested || detailScroll?['cancelled'] == true) {
+          nativeOperationCancelled = true;
+          break;
+        }
         final detailSnapshot = await _fetchUiSnapshot();
         final content = <String>{};
         final rawItems = detailScroll?['items'];
@@ -3228,6 +3236,7 @@ class AgentController extends ChangeNotifier {
       'processed': results.length,
       'requestedMaxItems': maxItems,
       'maxListScrolls': maxListScrolls,
+      'cancelled': nativeOperationCancelled || _cancelRequested,
       'reachedEnd': reachedEnd,
       'limited': !reachedEnd &&
           (results.length >= maxItems || pageScrolls >= maxListScrolls),
