@@ -34,7 +34,7 @@ void main() {
     test('allows harmless taps including generic confirmation and permission labels', () {
       for (final label in [
         'Play', 'Search', 'Home', 'Next', 'Pause',
-        'Confirm', 'Submit', 'Allow', 'Grant', 'Install',
+        'Confirm', 'Submit', 'Allow', 'Grant',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval(
@@ -65,6 +65,46 @@ void main() {
       for (final action in ['place_call', 'send_sms', 'share_text']) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isTrue,
             reason: action);
+      }
+    });
+
+    test('requires approval for app installation and account security changes', () {
+      for (final label in [
+        'Install',
+        'Install now',
+        'Change password',
+        'Recovery email',
+        'Enable 2FA',
+        'Factory reset',
+        'Erase all data',
+        'Subscribe',
+        'Change email',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
+          isTrue,
+          reason: label,
+        );
+      }
+    });
+
+    test('recognizes common Indian payment app package names as sensitive', () {
+      for (final package in [
+        'com.google.android.apps.nbu.paisa.user',
+        'com.phonepe.app',
+        'net.one97.paytm',
+        'com.sbi.lotusintouch',
+        'com.dreamplug.androidapp',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval(
+            'tap',
+            targetLabel: 'Continue',
+            packageName: package,
+          ),
+          isTrue,
+          reason: package,
+        );
       }
     });
 
@@ -140,6 +180,64 @@ void main() {
           confidence: 1,
         ),
         'high',
+      );
+    });
+
+    test('Autopilot disabled permits only explicit memory operations', () {
+      for (final action in ['remember', 'forget', 'recall_memories']) {
+        expect(
+          LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
+          isTrue,
+          reason: action,
+        );
+      }
+      for (final action in [
+        'open_app',
+        'tap',
+        'type',
+        'swipe',
+        'back',
+        'home',
+        'scroll_to_end',
+        'scroll_to_top',
+        'read_all',
+        'open_each',
+        'batch',
+        'run_skill',
+        'place_call',
+        'send_sms',
+        'share_text',
+        'set_flashlight',
+        'set_volume',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
+          isFalse,
+          reason: action,
+        );
+      }
+    });
+
+    test('detects Android permission prompts in supported languages', () {
+      for (final prompt in [
+        'Allow Lucy to access the microphone? Only this time',
+        'Allow WhatsApp to send you notifications? Allow / Don’t allow',
+        'अनुमति दें · ऐप इस्तेमाल करते समय',
+        'ಅನುಮತಿಸಿ · ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ',
+        'アプリの使用中に許可しますか？ 今回のみ',
+        'السماح أثناء استخدام التطبيق',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.isPermissionPromptText(prompt),
+          isTrue,
+          reason: prompt,
+        );
+      }
+      expect(
+        LucyActionApprovalPolicy.isPermissionPromptText(
+          'Allow notifications from this website?',
+        ),
+        isFalse,
       );
     });
 

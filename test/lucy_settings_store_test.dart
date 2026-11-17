@@ -60,6 +60,20 @@ void main() {
     );
   });
 
+  test('mandatory safety controls stay enabled even if stored values are false', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      LucySettingsStore.safetyStop: false,
+      LucySettingsStore.askBeforeSending: false,
+    });
+    final settings = LucySettingsStore();
+
+    expect(await settings.isEnabled(LucySettingsStore.safetyStop), isTrue);
+    expect(await settings.isEnabled(LucySettingsStore.askBeforeSending), isTrue);
+    final values = await settings.readAll();
+    expect(values[LucySettingsStore.safetyStop], isTrue);
+    expect(values[LucySettingsStore.askBeforeSending], isTrue);
+  });
+
   test('unknown capability keys are rejected', () async {
     expect(
       () => LucySettingsStore().setEnabled('not_a_real_capability', true),

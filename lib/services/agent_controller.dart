@@ -981,11 +981,22 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(reply, lang: _currentLang);
   }
 
+  void _showAutopilotDisabledStatus() {
+    _statusMessage = 'Autopilot is off · no phone action was performed';
+    _addConversation(_statusMessage, false);
+    _setState(AgentState.idle);
+    notifyListeners();
+  }
+
   Future<bool> _runLocalPhoneAction(
     String action,
     Map<String, dynamic> params,
     String successReply,
   ) async {
+    if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+      _showAutopilotDisabledStatus();
+      return true;
+    }
     if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
       return false;
     }
@@ -1074,6 +1085,10 @@ class AgentController extends ChangeNotifier {
     }
 
     if (asksFlashlight) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
       if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
         await _speakLocalReply('Direct phone actions are disabled in Privacy & settings.');
         return true;
@@ -1118,6 +1133,10 @@ class AgentController extends ChangeNotifier {
       r'(mute|volume mute|silence volume|आवाज़ बंद करो|म्यूट|ಧ್ವನಿ ಮ್ಯೂಟ್|音を消して|اكتم الصوت)',
     ).hasMatch(command);
     if (asksVolumeUp || asksVolumeDown || asksMute) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
       if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
         return false;
       }
@@ -1180,6 +1199,10 @@ class AgentController extends ChangeNotifier {
     final requestedApp = openPrefix?.group(1)?.trim();
     final packageName = requestedApp == null ? null : appPackages[requestedApp];
     if (packageName != null) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
       if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
         return false;
       }
@@ -1421,7 +1444,9 @@ class AgentController extends ChangeNotifier {
           ? null
           : _buildUiTreePayload(uiSnapshot, step);
 
-      if (step == 1 && uiSnapshot != null &&
+      if (step == 1 &&
+          uiSnapshot != null &&
+          await _settingsStore.isEnabled(LucySettingsStore.autopilot) &&
           await _tryReplayLearnedSkill(userMessage, uiSnapshot)) {
         LucyReliabilityLog.event('learned_skill_replayed', success: true);
         await _speakEvent(
@@ -2202,18 +2227,9 @@ class AgentController extends ChangeNotifier {
     if (snapshot == null) return false;
     final visibleText = snapshot.elements
         .map((element) => '${element['text'] ?? ''} ${element['desc'] ?? ''}')
-        .join(' ')
-        .toLowerCase();
-    final permissionContext = visibleText.contains('permission') ||
-        visibleText.contains('while using the app') ||
-        visibleText.contains('only this time') ||
-        visibleText.contains('allow lucy');
-    final permissionChoice = visibleText.contains('allow') ||
-        visibleText.contains("don't allow") ||
-        visibleText.contains('deny');
-    return permissionContext && permissionChoice;
+        .join(' ');
+    return LucyActionApprovalPolicy.isPermissionPromptText(visibleText);
   }
-
   bool _didPackageChange(_UiSnapshot? before, _UiSnapshot? after) {
     if (before?.packageName == null || after?.packageName == null) {
       return false;
@@ -2454,6 +2470,20 @@ class AgentController extends ChangeNotifier {
       'set_brightness', 'get_device_status', 'read_contact',
       'create_calendar_event', 'open_settings', 'take_photo', 'share_text',
     };
+    if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot) &&
+        !LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action.type)) {
+      _lastActionDispatchSucceeded = false;
+      _lastToolResult = jsonEncode(<String, dynamic>{
+        'success': false,
+        'error': 'autopilot_disabled',
+        'action': action.type,
+      });
+      _cancelRequested = true;
+      _statusMessage = 'Autopilot is off · no phone action was performed';
+      _addConversation(_statusMessage, false);
+      notifyListeners();
+      return beforeSnapshot;
+    }
     if (accessibilityActions.contains(action.type) &&
         !await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
       _lastActionDispatchSucceeded = false;

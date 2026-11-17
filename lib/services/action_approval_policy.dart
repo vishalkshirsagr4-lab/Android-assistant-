@@ -1,6 +1,64 @@
 /// Local action-risk policy. Consequential actions require a deliberate
 /// user confirmation. Routine navigation and ordinary phone tasks do not.
 class LucyActionApprovalPolicy {
+  /// Only explicitly requested local memory operations remain available when
+  /// Autopilot is disabled. All phone/UI actions are blocked at the executor,
+  /// not merely discouraged in the model prompt.
+  static const Set<String> _memoryOnlyActions = {
+    'remember',
+    'forget',
+    'recall_memories',
+  };
+
+  static bool allowedWhenAutopilotDisabled(String action) =>
+      _memoryOnlyActions.contains(action);
+
+  /// Recognizes Android runtime permission prompts across the app's supported
+  /// languages. The controller must pause before asking the model to act.
+  static bool isPermissionPromptText(String visibleText) {
+    final text = visibleText.toLowerCase();
+    const permissionContextTerms = <String>[
+      'permission',
+      'while using the app',
+      'only this time',
+      'allow lucy',
+      'send you notifications',
+      'take pictures',
+      'record audio',
+      'access your location',
+      'access your contacts',
+      'access the camera',
+      'अनुमति',
+      'ऐप इस्तेमाल करते समय',
+      'केवल इस बार',
+      'ಅನುಮತಿ',
+      'ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ',
+      'ಈ ಬಾರಿ ಮಾತ್ರ',
+      '権限',
+      'アプリの使用中',
+      '今回のみ',
+      'إذن',
+      'السماح للتطبيق',
+      'أثناء استخدام التطبيق',
+      'هذه المرة فقط',
+    ];
+    const permissionChoiceTerms = <String>[
+      'allow',
+      "don't allow",
+      'deny',
+      'अनुमति दें',
+      'अनुमति न दें',
+      'ಅನುಮತಿಸಿ',
+      'ಅನುಮತಿಸಬೇಡಿ',
+      '許可',
+      '許可しない',
+      'السماح',
+      'عدم السماح',
+    ];
+    return permissionContextTerms.any(text.contains) &&
+        permissionChoiceTerms.any(text.contains);
+  }
+
   static const Set<String> _sensitiveTapLabels = {
     'send',
     'send message',
@@ -21,7 +79,32 @@ class LucyActionApprovalPolicy {
     'checkout',
     'confirm payment',
     'submit order',
+    'install',
+    'install app',
+    'install now',
     'uninstall',
+    'password',
+    'passcode',
+    'recovery',
+    'recovery email',
+    'recovery phone',
+    'two-factor',
+    '2fa',
+    'security key',
+    'factory reset',
+    'erase all data',
+    'wipe data',
+    'reset phone',
+    'reset device',
+    'reset account',
+    'change password',
+    'change email',
+    'change phone',
+    'subscribe',
+    'start free trial',
+    'place order',
+    'confirm order',
+    'buy now',
     'call',
     'video call',
     'place call',
@@ -36,6 +119,24 @@ class LucyActionApprovalPolicy {
     'payment',
     'upi',
     'finance',
+    'paisa',
+    'phonepe',
+    'paytm',
+    'bhim',
+    'mobikwik',
+    'freecharge',
+    'netbanking',
+    'sbi',
+    'hdfc',
+    'icici',
+    'axis',
+    'kotak',
+    'dreamplug',
+    'gpay',
+    'googlepay',
+    'cred',
+    'packageinstaller',
+    'permissioncontroller',
   };
 
   static const Set<String> _knownActions = {
