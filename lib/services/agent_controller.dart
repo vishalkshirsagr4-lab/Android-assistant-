@@ -1599,11 +1599,6 @@ class AgentController extends ChangeNotifier {
           final beforeAction = latestSnapshot;
           _lastActionDispatchSucceeded = true;
           latestSnapshot = await _executeAction(action, beforeAction);
-          if (_lastActionDispatchSucceeded) {
-            _recordSkillAction(action, beforeAction);
-          } else {
-            _taskSkillEligible = false;
-          }
           if (const {
             'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
           }.contains(action.type)) {
@@ -1617,6 +1612,11 @@ class AgentController extends ChangeNotifier {
           actionVerified = _lastActionDispatchSucceeded &&
               (!requiresVisualChange ||
                   _isActionReady(action, beforeAction, latestSnapshot));
+          if (actionVerified) {
+            _recordSkillAction(action, beforeAction);
+          } else {
+            _taskSkillEligible = false;
+          }
 
           LucyReliabilityLog.event(
             'action_verified',
