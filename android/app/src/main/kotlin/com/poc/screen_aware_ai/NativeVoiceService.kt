@@ -271,10 +271,13 @@ class NativeVoiceService : Service() {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
-        val isWorking = pausedForProcessing || !notificationStatus.startsWith("Listening")
+        val isReady = notificationStatus.startsWith("Ready") ||
+            notificationStatus.startsWith("Task completed")
+        val isWorking = pausedForProcessing ||
+            (!notificationStatus.startsWith("Listening") && !isReady)
         val title = when {
             isWorking -> "Lucy is working"
-            deviceLocked -> "Lucy is ready"
+            deviceLocked || isReady -> "Lucy is ready"
             else -> "Lucy is listening"
         }
         val visibleStatus = if (deviceLocked) {
