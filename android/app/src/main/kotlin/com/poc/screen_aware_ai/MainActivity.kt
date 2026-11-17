@@ -391,6 +391,23 @@ class MainActivity : FlutterActivity() {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
                 }
+                "getUiEventSequence" -> {
+                    val service = ScreenActionService.instance
+                    result.success(service?.getUiEventSequence() ?: 0L)
+                }
+                "waitForUiEvent" -> {
+                    val afterSequence = call.argument<Number>("afterSequence")?.toLong() ?: 0L
+                    val timeoutMs = call.argument<Int>("timeoutMs") ?: 500
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        Thread {
+                            val sequence = service.waitForUiEvent(afterSequence, timeoutMs.toLong())
+                            runOnUiThread { result.success(sequence) }
+                        }.start()
+                    } else {
+                        result.success(afterSequence)
+                    }
+                }
                 "getUITree" -> {
                     val service = ScreenActionService.instance
                     if (service != null) {
