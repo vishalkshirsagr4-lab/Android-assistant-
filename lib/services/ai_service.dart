@@ -674,9 +674,9 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
       for (final provider in order) {
         final providerStopwatch = Stopwatch()..start();
         LucyReliabilityLog.event('provider_attempt', provider: provider);
+        var streamEmitted = false;
         try {
           String? text;
-          var streamEmitted = false;
           if (provider == 'hms') {
             if (imageBytes != null || !await _hmsService.isConfigured())
               continue;
