@@ -2362,6 +2362,16 @@ class AgentController extends ChangeNotifier {
     }
 
     const allowed = {'tap', 'type', 'swipe', 'back', 'wait'};
+    final initialFocused = beforeSnapshot?.elements
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (element) => element != null &&
+              element['focused'] == true &&
+              element['editable'] == true,
+          orElse: () => null,
+        );
+    var inputFocused = initialFocused != null;
+    var focusedInputPassword = initialFocused?['password'] == true;
     final nativeActions = <Map<String, dynamic>>[];
     for (final raw in rawActions) {
       if (raw is! Map) {
@@ -2399,28 +2409,20 @@ class AgentController extends ChangeNotifier {
           element['text']?.toString() ?? '',
           element['desc']?.toString() ?? '',
         ].where((value) => value.isNotEmpty).join(' ').trim();
+        final isEditableTarget = element['editable'] == true ||
+            (element['type']?.toString().contains('EditText') ?? false);
+        inputFocused = isEditableTarget;
+        focusedInputPassword =
+            isEditableTarget && element['password'] == true;
       } else if (type == 'type') {
-        if (beforeSnapshot == null) {
-          return <String, dynamic>{
-            'success': false,
-            'error': 'batch_input_state_unverified',
-            'completed': nativeActions.length,
-          };
-        }
-        final focused = beforeSnapshot.elements.cast<Map<String, dynamic>?>().firstWhere(
-          (element) => element != null &&
-              element['focused'] == true &&
-              element['editable'] == true,
-          orElse: () => null,
-        );
-        if (focused == null) {
+        if (!inputFocused) {
           return <String, dynamic>{
             'success': false,
             'error': 'batch_input_not_focused',
             'completed': nativeActions.length,
           };
         }
-        sensitiveInput = focused['password'] == true;
+        sensitiveInput = focusedInputPassword;
       }
 
       final risk = LucyActionApprovalPolicy.effectiveRisk(
