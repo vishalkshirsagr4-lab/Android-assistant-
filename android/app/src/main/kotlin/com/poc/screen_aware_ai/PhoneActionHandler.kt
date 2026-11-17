@@ -272,27 +272,81 @@ class PhoneActionHandler(private val activity: Activity) {
             result.error("INVALID_ARGUMENT", "A contact name is required.", null)
             return
         }
+
+        // Search the local address book rather than relying on SQL LIKE. Speech
+        // recognition often produces phonetic spellings such as "pappa" for
+        // a saved contact named "Papa". No contact data leaves this device here.
         val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-            ContactsContract.CommonDataKinds.Phone.NUMBER
+            ContactsContract.CommonDataKinds.Phone.NUMBER,
+            ContactsContract.CommonDataKinds.Phone.TYPE
         )
-        val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?"
-        val args = arrayOf("%$query%")
-        val contact = activity.contentResolver.query(
+        val candidates = mutableListOf<LucyContactCandidate>()
+        activity.contentResolver.query(
             ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
             projection,
-            selection,
-            args,
+            null,
+            null,
             "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
         )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                mapOf(
-                    "name" to cursor.getString(0).orEmpty(),
-                    "phoneNumber" to cursor.getString(1).orEmpty()
+            val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val typeIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE)
+            while (cursor.moveToNext() && candidates.size < 3000) {
+                val type = if (typeIndex >= 0) cursor.getInt(typeIndex) else -1
+                val typeLabel = when (type) {
+                    ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE -> "mobile"
+                    ContactsContract.CommonDataKinds.Phone.TYPE_HOME -> "home"
+                    ContactsContract.CommonDataKinds.Phone.TYPE_WORK -> "work"
+                    ContactsContract.CommonDataKinds.Phone.TYPE_MAIN -> "main"
+                    else -> "other"
+                }
+                candidates.add(
+                    LucyContactCandidate(
+                        contactId = if (idIndex >= 0) cursor.getString(idIndex).orEmpty() else "",
+                        name = if (nameIndex >= 0) cursor.getString(nameIndex).orEmpty() else "",
+                        phoneNumber = if (numberIndex >= 0) cursor.getString(numberIndex).orEmpty() else "",
+                        typeLabel = typeLabel
+                    )
                 )
-            } else null
+            }
         }
-        result.success(contact ?: false)
+
+        val matches = LucyContactMatcher.bestMatches(query, candidates)
+        when {
+            matches.isEmpty() -> result.success(
+                mapOf("found" to false, "ambiguous" to false, "query" to query)
+            )
+            matches.size > 1 -> {
+                // Never silently call the first of several plausible matches.
+                // Show contact names and number type, with only a tiny suffix
+                // when duplicate names need to be distinguished.
+                val choices = matches.map { match ->
+                    val suffix = match.phoneNumber.filter(Char::isDigit).takeLast(2)
+                    mapOf(
+                        "name" to match.name,
+                        "type" to match.typeLabel,
+                        "numberHint" to if (suffix.isNotEmpty()) "ending $suffix" else ""
+                    )
+                }
+                result.success(
+                    mapOf("found" to false, "ambiguous" to true, "matches" to choices)
+                )
+            }
+            else -> {
+                val match = matches.single()
+                result.success(
+                    mapOf(
+                        "found" to true,
+                        "name" to match.name,
+                        "phoneNumber" to match.phoneNumber,
+                        "type" to match.typeLabel
+                    )
+                )
+            }
+        }
     }
 
     private fun createCalendarEvent(call: MethodCall, result: MethodChannel.Result) {
