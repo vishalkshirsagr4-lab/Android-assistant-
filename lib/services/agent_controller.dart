@@ -2048,7 +2048,7 @@ class AgentController extends ChangeNotifier {
         final label = [text, if (desc.isNotEmpty && desc != text) desc]
             .where((value) => value.isNotEmpty)
             .join(' · ')
-            .replaceAll(RegExp(r'\\s+'), ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
             .trim();
         if (label.length < 2) continue;
         final bounds = element['bounds'];
@@ -2119,7 +2119,7 @@ class AgentController extends ChangeNotifier {
       for (final row in rows) {
         final key = (row['label'] as String)
             .toLowerCase()
-            .replaceAll(RegExp(r'\\s+'), ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
             .trim();
         if (visited.add(key)) {
           nextRow = row;
