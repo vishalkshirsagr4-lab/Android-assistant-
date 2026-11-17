@@ -114,6 +114,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       LucySettingsStore.directPhoneActions,
       LucySettingsStore.memory,
       LucySettingsStore.voiceOutput,
+      LucySettingsStore.autopilot,
     }.contains(key)) {
       await widget.controller.stopAgent();
     }
@@ -688,19 +689,21 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
           _capabilitySwitch(
             keyName: LucySettingsStore.autopilot,
             title: 'Autopilot · low-risk actions',
-            subtitle: 'Automatically handle reversible navigation, reading and search tasks. Sensitive actions still require your review.',
+            subtitle: 'When off, Lucy immediately stops the active task and blocks phone actions and learned-skill replay. Read-only time and battery queries remain available.',
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Safety stop'),
-            subtitle: const Text('Always on: keeps Stop available and prevents sensitive actions from bypassing user control.'),
+            secondary: const Icon(Icons.stop_circle_outlined),
+            title: const Text('Emergency Stop control'),
+            subtitle: const Text('Always on. Lucy keeps a Stop control in its active notification and app so you can interrupt a task immediately.'),
             value: _values[LucySettingsStore.safetyStop] ?? true,
             onChanged: null,
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Ask before sending or calling'),
-            subtitle: const Text('Always on: Lucy can prepare a draft, but you review and press Send or Call.'),
+            secondary: const Icon(Icons.lock_outline),
+            title: const Text('Review before sending or calling'),
+            subtitle: const Text('Always required. Lucy may prepare a message or call, but you review the recipient and content before it is sent or placed.'),
             value: _values[LucySettingsStore.askBeforeSending] ?? true,
             onChanged: null,
           ),
