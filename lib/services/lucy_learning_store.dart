@@ -191,13 +191,14 @@ class LucyLearningStore {
     await _persist();
   }
 
-  Map<String, dynamic>? findSkill({
+  Future<Map<String, dynamic>?> findSkill({
     required String command,
     required String packageName,
     required String startSignature,
     String appVersionCode = 'unknown',
-  }) {
+  }) async {
     final normalized = normalizeCommand(command);
+    var invalidated = false;
     for (final entry in _skills.entries.toList().reversed) {
       final skill = entry.value;
       if (skill['package'] != packageName) continue;
@@ -211,11 +212,17 @@ class LucyLearningStore {
           appVersionCode != 'unknown' &&
           version != appVersionCode) {
         _skills.remove(entry.key);
+        invalidated = true;
         continue;
       }
       if (skill['startSignature'] != startSignature) continue;
+      skill['lastUsedAt'] = DateTime.now().toIso8601String();
+      _skills.remove(entry.key);
+      _skills[entry.key] = skill;
+      await _persist();
       return <String, dynamic>{...skill, 'parameters': parameters};
     }
+    if (invalidated) await _persist();
     return null;
   }
 
