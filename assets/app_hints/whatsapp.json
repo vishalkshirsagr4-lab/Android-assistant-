@@ -1,0 +1,15 @@
+{
+  "app": "WhatsApp",
+  "strategy": [
+    "Identify the chat list, search control and visible chat rows from accessibility labels.",
+    "Use open_each to inspect requested chats; read the conversation content, not only list previews.",
+    "Distinguish unread badge/count from message text where exposed.",
+    "Never send a message or change privacy/security settings as a learned replay."
+  ],
+  "targets": [
+    "Search",
+    "Chats",
+    "Unread messages",
+    "Back"
+  ]
+}
