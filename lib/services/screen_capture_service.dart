@@ -107,7 +107,7 @@ class ScreenCaptureManager {
   /// Cancel a running native deep-scroll pass. Safe to call when idle.
   Future<bool> cancelScreenOperation() async {
     try {
-      return await _channel.invokeMethod<bool>('cancelScreenOperation') ?? false;
+      return await _channel.invokeMethod<bool>('cancelScreenOperation').timeout(const Duration(seconds: 2)) ?? false;
     } catch (error) {
       LucyReliabilityLog.event(
         'native_scroll_cancel_failed',
@@ -356,10 +356,12 @@ class ScreenCaptureManager {
   /// This does not wake or unlock a locked phone.
   Future<bool> keepScreenAwake(bool enabled) async {
     try {
-      final result = await _channel.invokeMethod<bool>(
-        'keepScreenAwake',
-        <String, dynamic>{'enabled': enabled},
-      );
+      final result = await _channel
+          .invokeMethod<bool>(
+            'keepScreenAwake',
+            <String, dynamic>{'enabled': enabled},
+          )
+          .timeout(const Duration(seconds: 2));
       return result ?? false;
     } catch (error) {
       LucyReliabilityLog.event(
