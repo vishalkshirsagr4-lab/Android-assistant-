@@ -2038,6 +2038,7 @@ class AgentController extends ChangeNotifier {
     final height = (screenSize?['height'] ?? 1920).toDouble();
     final visited = <String>{};
     final results = <Map<String, dynamic>>[];
+    var totalCollectedChars = 0;
     var current = startingSnapshot ?? await _fetchUiSnapshot();
     var unchangedPages = 0;
     var pageScrolls = 0;
@@ -2169,15 +2170,23 @@ class AgentController extends ChangeNotifier {
         if (rawItems is List) {
           for (final value in rawItems) {
             final text = value.toString().trim();
-            if (text.isNotEmpty) content.add(text);
-            if (content.length >= 400) break;
+            if (text.isNotEmpty && content.length < 20 &&
+                totalCollectedChars < 50000) {
+              final clipped = text.length > 200 ? text.substring(0, 200) : text;
+              if (content.add(clipped)) totalCollectedChars += clipped.length;
+            }
+            if (content.length >= 20 || totalCollectedChars >= 50000) break;
           }
         }
         for (final element in detailSnapshot?.elements ??
             const <Map<String, dynamic>>[]) {
           for (final key in const ['text', 'desc']) {
             final text = element[key]?.toString().trim() ?? '';
-            if (text.isNotEmpty && content.length < 400) content.add(text);
+            if (text.isNotEmpty && content.length < 20 &&
+                totalCollectedChars < 50000) {
+              final clipped = text.length > 200 ? text.substring(0, 200) : text;
+              if (content.add(clipped)) totalCollectedChars += clipped.length;
+            }
           }
         }
 
