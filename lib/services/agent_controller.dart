@@ -106,6 +106,9 @@ class AgentController extends ChangeNotifier {
   String? get currentTranscript => _currentTranscript;
 
   bool _isActive = false;
+  bool _textOnlyMode = false;
+  bool get isTextOnlyMode => _textOnlyMode;
+  bool get isChatApprovalPending => _pendingVoiceApproval != null && _textOnlyMode;
   bool get isActive => _isActive;
 
   int _listenRetryCount = 0;
@@ -249,8 +252,10 @@ class AgentController extends ChangeNotifier {
       return;
     }
     _addConversation(response.speak, false);
-    _setState(AgentState.speaking);
-    await _voiceService.speak(response.speak, lang: _currentLang);
+    if (!_textOnlyMode) {
+      _setState(AgentState.speaking);
+      await _voiceService.speak(response.speak, lang: _currentLang);
+    }
     speechStopwatch.stop();
     _performanceMonitor.recordTiming('tts', speechStopwatch.elapsed);
   }
@@ -634,7 +639,7 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> initialize() async {
+  Future<void> initialize({bool voiceEnabled = true}) async {
     await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
@@ -658,7 +663,7 @@ class AgentController extends ChangeNotifier {
       _currentLang = savedLang;
     }
 
-    await _voiceService.initialize();
+    if (voiceEnabled) await _voiceService.initialize();
 
     // Wire native stop notification action → requestCancel
     _screenCapture.onForceStop = () {
@@ -668,7 +673,7 @@ class AgentController extends ChangeNotifier {
       }
     };
 
-    _voiceService.onResult = (text, isFinal, alternatives) {
+    if (voiceEnabled) _voiceService.onResult = (text, isFinal, alternatives) {
       _currentTranscript = text;
       if (isFinal) {
         final completed = _pushToTalkFinalResult;
@@ -738,13 +743,13 @@ class AgentController extends ChangeNotifier {
       notifyListeners();
     };
 
-    _voiceService.onListeningDone = () {
+    if (voiceEnabled) _voiceService.onListeningDone = () {
       if (!_isActive || _state != AgentState.listening) return;
       _listenRetryCount++;
       _scheduleListeningRestart();
     };
 
-    _voiceService.onError = (error) {
+    if (voiceEnabled) _voiceService.onError = (error) {
       debugPrint('Lucy speech recognition status: $error');
       if (!_isActive || _state != AgentState.listening) return;
       final normalized = error.toLowerCase();
@@ -855,6 +860,29 @@ class AgentController extends ChangeNotifier {
     } else {
       await startAgent();
     }
+  }
+
+  Future<void> startChatMode() async {
+    _textOnlyMode = true;
+    _isActive = true;
+    _pushToTalkMode = false;
+    _cancelRequested = false;
+    _statusMessage = 'Chat ready · Type a message';
+    _setState(AgentState.idle);
+  }
+
+  Future<void> sendChatMessage(String rawText) async {
+    final text = rawText.trim();
+    if (!_textOnlyMode || !_isActive || text.isEmpty ||
+        _state == AgentState.analyzing || _state == AgentState.executingAction ||
+        _state == AgentState.waitingConfirmation) return;
+    await _handleUserInput(text);
+  }
+
+  void respondToChatApproval(bool approved) {
+    final pending = _pendingVoiceApproval;
+    if (!_textOnlyMode || pending == null || pending.isCompleted) return;
+    pending.complete(approved);
   }
 
   Future<void> startAgent({bool voiceOnly = false}) async {
@@ -1003,6 +1031,11 @@ class AgentController extends ChangeNotifier {
 
   Future<void> _resumeOrFinishListening({String? statusMessage}) async {
     if (!_isActive) return;
+    if (_textOnlyMode) {
+      _statusMessage = statusMessage ?? 'Chat ready · Type a message';
+      _setState(AgentState.idle);
+      return;
+    }
     if (_pushToTalkMode) {
       await stopAgent();
     } else {
@@ -1043,7 +1076,7 @@ class AgentController extends ChangeNotifier {
     String text, {
     List<String> speechAlternatives = const <String>[],
   }) async {
-    if (!_isActive || _state != AgentState.listening) return;
+    if (!_isActive || (!_textOnlyMode && _state != AgentState.listening)) return;
 
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
@@ -1051,7 +1084,7 @@ class AgentController extends ChangeNotifier {
     _resolvedContactNumbers.clear();
     _pendingResolvedContactRef = null;
     _setState(AgentState.analyzing);
-    await _voiceService.pauseListeningForProcessing();
+    if (!_textOnlyMode) await _voiceService.pauseListeningForProcessing();
 
     _addConversation(text, true);
     _currentTranscript = '';
@@ -1151,6 +1184,10 @@ class AgentController extends ChangeNotifier {
 
   Future<void> _speakLocalReply(String reply) async {
     _addConversation(reply, false);
+    if (_textOnlyMode) {
+      _setState(AgentState.idle);
+      return;
+    }
     _setState(AgentState.speaking);
     await _voiceService.speak(reply, lang: _currentLang);
   }
@@ -2046,10 +2083,10 @@ class AgentController extends ChangeNotifier {
       }
 
       // 4. Speak the response (only speak if done or has something to say)
-      if (speakText.isNotEmpty) {
+      if (speakText.isNotEmpty && !_textOnlyMode) {
         final ttsStopwatch = Stopwatch()..start();
-        _setState(AgentState.speaking);
-        _updateTaskProgress('Lucy is preparing your answer');
+        _setState(_textOnlyMode ? AgentState.analyzing : AgentState.speaking);
+        _updateTaskProgress(_textOnlyMode ? 'Preparing written reply' : 'Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
         final speech = streamedSpeech
@@ -2706,11 +2743,26 @@ class AgentController extends ChangeNotifier {
         'reason: ${action.params['reason']}',
     ].join('. ');
     final prompt = requiredRisk == 'medium'
-        ? 'Lucy wants to $details. Is that okay? Say yes or no.'
-        : 'Lucy wants to $details. This is a high-risk action. Say approve to continue, or cancel to stop.';
+        ? 'Lucy wants to $details. Is that okay?'
+        : 'Lucy wants to $details. This is a high-risk action.';
     _setState(AgentState.waitingConfirmation);
-    _statusMessage = 'Waiting for your spoken approval...';
-    _addConversation(prompt, false);
+    _statusMessage = _textOnlyMode ? 'Approval required' : 'Waiting for your spoken approval...';
+    _addConversation(prompt + (_textOnlyMode ? ' Choose Approve or Cancel below.' : ' Say approve to continue, or cancel to stop.'), false);
+    if (_textOnlyMode) {
+      final chatCompleter = Completer<bool>();
+      _pendingVoiceApproval = chatCompleter;
+      var chatApproved = false;
+      try {
+        chatApproved = await chatCompleter.future.timeout(const Duration(seconds: 60));
+      } on TimeoutException {
+        _addConversation('Approval timed out. The action was not performed.', false);
+      } finally {
+        _pendingVoiceApproval = null;
+        if (_isActive) _setState(AgentState.executingAction);
+      }
+      if (chatApproved) _addConversation('Approval received. Continuing the task.', false);
+      return chatApproved;
+    }
     await _voiceService.speak(prompt, lang: _currentLang);
     await Future.delayed(const Duration(milliseconds: 250));
     while (_voiceService.isSpeaking && _isActive) {
@@ -3706,7 +3758,7 @@ class AgentController extends ChangeNotifier {
       const message =
           'Your phone is locked. Unlock it first, then say the call command again. I will not bypass your phone lock.';
       _addConversation(message, false);
-      await _voiceService.speak(message, lang: _currentLang);
+      if (!_textOnlyMode) await _voiceService.speak(message, lang: _currentLang);
       _cancelRequested = true;
       return;
     }
@@ -3776,7 +3828,7 @@ class AgentController extends ChangeNotifier {
           '${charging ? 'charging' : 'not charging'}. '
           'Storage used: ${usedGb.toStringAsFixed(1)} of ${totalGb.toStringAsFixed(1)} GB.';
       _addConversation(message, false);
-      await _voiceService.speak(message, lang: _currentLang);
+      if (!_textOnlyMode) await _voiceService.speak(message, lang: _currentLang);
     } else if (action.type == 'read_contact') {
       final name = resultMap['name']?.toString() ?? 'the requested contact';
       _addConversation('I found $name in your contacts.', false);
