@@ -208,6 +208,16 @@ class AgentController extends ChangeNotifier {
     return removed;
   }
 
+  Future<int> forgetLearnedAppLayouts(String packageName) async {
+    final removed = await _learningStore.forgetAppLayout(packageName);
+    if (removed > 0 &&
+        (_lastRecordedUiSignature?.startsWith('$packageName::') ?? false)) {
+      _lastRecordedUiSignature = null;
+    }
+    notifyListeners();
+    return removed;
+  }
+
   Future<void> _replyToMemoryCommand(
     String context, {
     String event = 'memory_update',
@@ -2924,6 +2934,50 @@ class AgentController extends ChangeNotifier {
           _lastActionDispatchSucceeded = name.isNotEmpty &&
               beforeSnapshot != null &&
               await _tryReplayLearnedSkill(name, beforeSnapshot);
+          break;
+
+        case 'forget_skill':
+          final skillName = (action.params['name'] ??
+                  action.params['skill'] ??
+                  action.params['query'])
+              ?.toString()
+              .trim() ?? '';
+          final skillRemoved = skillName.isNotEmpty &&
+              await forgetLearnedSkill(skillName);
+          _lastActionDispatchSucceeded = skillRemoved;
+          _lastToolResult = jsonEncode(<String, dynamic>{
+            'success': skillRemoved,
+            'action': 'forget_skill',
+          });
+          await _speakEvent(
+            'skill_forgotten',
+            context: skillRemoved
+                ? 'The requested learned skill was deleted.'
+                : 'No learned skill matched the requested name.',
+          );
+          break;
+
+        case 'forget_app_layout':
+          final packageName = (action.params['package'] ??
+                  action.params['package_name'] ??
+                  beforeSnapshot?.packageName)
+              ?.toString()
+              .trim() ?? '';
+          final removedLayouts = packageName.isEmpty
+              ? 0
+              : await forgetLearnedAppLayouts(packageName);
+          _lastActionDispatchSucceeded = removedLayouts > 0;
+          _lastToolResult = jsonEncode(<String, dynamic>{
+            'success': removedLayouts > 0,
+            'action': 'forget_app_layout',
+            'removed': removedLayouts,
+          });
+          await _speakEvent(
+            'app_layout_forgotten',
+            context: removedLayouts > 0
+                ? 'The saved layout for the current app was deleted.'
+                : 'No saved layout was found for the requested app.',
+          );
           break;
 
         case 'remember':
