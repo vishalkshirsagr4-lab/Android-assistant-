@@ -356,6 +356,15 @@ class MainActivity : FlutterActivity() {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
                 }
+                "keepScreenAwake" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        result.success(service.keepScreenAwake(enabled))
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "getUITree" -> {
                     val service = ScreenActionService.instance
                     if (service != null) {
