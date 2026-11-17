@@ -79,10 +79,14 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     Map<String, bool> values,
     Set<String> excludedPackages,
   ) async {
+    final autopilotEnabled = values[LucySettingsStore.autopilot] ?? true;
     await widget.controller.screenCapture.configureScreenWatcher(
-      enabled: values[LucySettingsStore.screenWatcher] ?? true,
-      skipAds: values[LucySettingsStore.autoSkipAds] ?? true,
-      dismissPopups: values[LucySettingsStore.autoDismissPopups] ?? true,
+      enabled: autopilotEnabled &&
+          (values[LucySettingsStore.screenWatcher] ?? true),
+      skipAds: autopilotEnabled &&
+          (values[LucySettingsStore.autoSkipAds] ?? true),
+      dismissPopups: autopilotEnabled &&
+          (values[LucySettingsStore.autoDismissPopups] ?? true),
       excludedPackages: excludedPackages,
     );
   }
@@ -93,6 +97,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       LucySettingsStore.screenWatcher,
       LucySettingsStore.autoSkipAds,
       LucySettingsStore.autoDismissPopups,
+      LucySettingsStore.autopilot,
     }.contains(key)) {
       final nextValues = <String, bool>{..._values, key: enabled};
       await _applyScreenWatcherSettings(nextValues, _excludedWatcherPackages);
