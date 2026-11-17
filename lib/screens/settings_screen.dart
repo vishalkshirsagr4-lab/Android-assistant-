@@ -789,7 +789,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
           _capabilitySwitch(
             keyName: LucySettingsStore.learnSkills,
             title: 'Learn safe workflows',
-            subtitle: 'Save and replay exact-match navigation/reading sequences only. Typing, sending, calls, purchases and destructive actions are never replayed.',
+            subtitle: 'Lucy suggests a workflow only after two successful matching runs. You must approve it here before exact-screen replay is enabled. External or sensitive actions are never learned.',
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
