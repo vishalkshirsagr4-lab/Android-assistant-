@@ -358,22 +358,22 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     const copy = <String, Map<String, String>>{
       'en': {
         'title': 'Set up Lucy',
-        'intro': _setupText('intro'),
-        'accessibility': _setupText('accessibility'),
+        'intro': 'Enable only the capabilities you want. Android controls these permissions; Lucy cannot grant them silently.',
+        'accessibility': 'Accessibility is required for screen reading and requested UI actions.',
         'open_accessibility': 'Open Accessibility settings',
-        'capture': _setupText('capture'),
+        'capture': 'Screen capture is optional. Android displays its own consent prompt when a task needs screenshots.',
         'set_capture': 'Set up screen capture',
-        'capture_ready': _setupText('capture_ready'),
-        'capture_off': _setupText('capture_off'),
-        'notifications': _setupText('notifications'),
+        'capture_ready': 'Screen capture is ready.',
+        'capture_off': 'Screen capture was not enabled.',
+        'notifications': 'Notification access is optional and is used only when notification context is enabled.',
         'open_notifications': 'Open notification access',
-        'usage': _setupText('usage'),
+        'usage': 'Usage access is optional and adds the foreground app name to context.',
         'open_usage': 'Open Usage access',
-        'calendar': _setupText('calendar'),
+        'calendar': 'Calendar access is optional and requested only for calendar context.',
         'set_calendar': 'Set up Calendar access',
-        'calendar_ready': _setupText('calendar_ready'),
-        'calendar_off': _setupText('calendar_off'),
-        'mic_contacts': _setupText('mic_contacts'),
+        'calendar_ready': 'Calendar access is ready.',
+        'calendar_off': 'Calendar access was not granted.',
+        'mic_contacts': 'Microphone and Contacts permissions are requested only when you use the related feature. Never enable access you are uncomfortable with.',
         'finish': 'Finish',
       },
       'hi': {
@@ -474,13 +474,9 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Enable only the capabilities you want. Android controls these permissions; Lucy cannot grant them silently.',
-              ),
+              Text(_setupText('intro')),
               const SizedBox(height: 14),
-              const Text(
-                'Accessibility is required for screen reading and requested UI actions.',
-              ),
+              Text(_setupText('accessibility')),
               OutlinedButton.icon(
                 onPressed: () async {
                   await widget.controller.screenCapture.openAccessibilitySettings();
@@ -489,17 +485,15 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                 label: Text(_setupText('open_accessibility')),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Screen capture is optional. Android displays its own consent prompt when a task needs screenshots.',
-              ),
+              Text(_setupText('capture')),
               OutlinedButton.icon(
                 onPressed: () async {
                   final granted = await widget.controller.screenCapture.requestPermission();
                   if (dialogContext.mounted) {
                     _message(
                       granted
-                          ? 'Screen capture is ready.'
-                          : 'Screen capture was not enabled.',
+                          ? _setupText('capture_ready')
+                          : _setupText('capture_off'),
                     );
                   }
                 },
@@ -507,9 +501,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                 label: Text(_setupText('set_capture')),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Notification access is optional and is used only when notification context is enabled.',
-              ),
+              Text(_setupText('notifications')),
               OutlinedButton.icon(
                 onPressed: () async {
                   await _context.openNotificationAccessSettings();
@@ -518,9 +510,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                 label: Text(_setupText('open_notifications')),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Usage access is optional and adds the foreground app name to context.',
-              ),
+              Text(_setupText('usage')),
               OutlinedButton.icon(
                 onPressed: () async {
                   await _context.openUsageAccessSettings();
@@ -529,25 +519,21 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                 label: Text(_setupText('open_usage')),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Calendar access is optional and requested only for calendar context.',
-              ),
+              Text(_setupText('calendar')),
               OutlinedButton.icon(
                 onPressed: () async {
                   final granted = await _context.requestCalendarAccess();
                   _message(
                     granted
-                        ? 'Calendar access is ready.'
-                        : 'Calendar access was not granted.',
+                        ? _setupText('calendar_ready')
+                        : _setupText('calendar_off'),
                   );
                 },
                 icon: const Icon(Icons.calendar_month_outlined),
                 label: Text(_setupText('set_calendar')),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Microphone and Contacts permissions are requested only when you use the related feature. Never enable access you are uncomfortable with.',
-              ),
+              Text(_setupText('mic_contacts')),
             ],
           ),
         ),
