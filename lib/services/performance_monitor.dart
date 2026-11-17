@@ -127,9 +127,11 @@ class LucyPerformanceMonitor {
       _failedTasks++;
     }
 
+    final startValue = await (_taskStartChargeFuture ?? Future<int?>.value(_taskStartChargeUah));
+    // Sample the end only after the baseline completes, so channel scheduling
+    // cannot reverse the two charge-counter timestamps.
     final endingMetrics = await _readNativeMetrics();
     final endValue = endingMetrics['chargeCounterUah'];
-    final startValue = await (_taskStartChargeFuture ?? Future<int?>.value(_taskStartChargeUah));
     if (startValue != null && endValue is num && endValue >= 0) {
       _lastNetBatteryChangeMah = ((startValue - endValue.toInt()) / 1000).round();
     }
