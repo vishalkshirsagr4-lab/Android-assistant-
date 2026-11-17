@@ -147,7 +147,7 @@ class NativeVoiceService : Service() {
                     override fun onPartialResults(results: android.os.Bundle?) { publish(results, false) }
                     override fun onResults(results: android.os.Bundle?) {
                         publish(results, true)
-                        scheduleRestart(350L)
+                        scheduleRestart(900L)
                     }
                     override fun onError(error: Int) {
                         if (stopped || pausedForProcessing) return
@@ -193,9 +193,17 @@ class NativeVoiceService : Service() {
     }
 
     private fun publish(bundle: android.os.Bundle?, final: Boolean) {
-        val words = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+        val alternatives = bundle
+            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.distinct()
+            ?.take(3)
+            ?: return
+        val words = alternatives.firstOrNull() ?: return
         sendBroadcast(Intent(ACTION_RESULT).setPackage(packageName).apply {
             putExtra("text", words)
+            putStringArrayListExtra("alternatives", ArrayList(alternatives))
             putExtra("isFinal", final)
         })
     }
