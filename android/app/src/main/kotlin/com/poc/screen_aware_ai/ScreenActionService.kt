@@ -105,6 +105,12 @@ class ScreenActionService : AccessibilityService() {
         return true
     }
 
+    /** Starts a new bounded deep-scroll operation before its worker is launched. */
+    fun beginScrollOperation(): Boolean {
+        cancelDeepScroll = false
+        return true
+    }
+
     /** Requests cancellation of the current bounded deep-scroll operation. */
     fun cancelScreenOperation(): Boolean {
         cancelDeepScroll = true
@@ -582,7 +588,6 @@ class ScreenActionService : AccessibilityService() {
             }.toString()
         }
 
-        cancelDeepScroll = false
         val limit = maxScrolls.coerceIn(1, 120)
         val collected = LinkedHashSet<String>()
         val initial = captureScrollSnapshot(collect)
