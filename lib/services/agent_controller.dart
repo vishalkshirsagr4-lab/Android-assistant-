@@ -1008,20 +1008,23 @@ class AgentController extends ChangeNotifier {
         final percent = data['batteryPercent'];
         final charging = data['charging'] == true;
         final value = percent is num ? percent.round().toString() : null;
-        final reply = value == null
-            ? 'I could not read the battery status on this device.'
-            : switch (_currentLang) {
-                'hi' => 'बैटरी ' + value + ' प्रतिशत है' +
-                    (charging ? ' और फोन चार्ज हो रहा है।' : '।'),
-                'kn' => 'ಬ್ಯಾಟರಿ ' + value + ' ಪ್ರತಿಶತ ಇದೆ' +
-                    (charging ? ' ಮತ್ತು ಫೋನ್ ಚಾರ್ಜ್ ಆಗುತ್ತಿದೆ.' : '.'),
-                'ja' => 'バッテリー残量は ' + value + ' パーセントです' +
-                    (charging ? '。充電中です。' : '。'),
-                'ar' => 'مستوى البطارية ' + value + ' بالمئة' +
-                    (charging ? '، والهاتف قيد الشحن.' : '.'),
-                _ => 'Battery is at ' + value + ' percent' +
-                    (charging ? ' and charging.' : '.'),
-              };
+        String reply;
+        if (value == null) {
+          reply = 'I could not read the battery status on this device.';
+        } else {
+          reply = switch (_currentLang) {
+            'hi' => 'बैटरी ' + value + ' प्रतिशत है' +
+                (charging ? ' और फोन चार्ज हो रहा है।' : '।'),
+            'kn' => 'ಬ್ಯಾಟರಿ ' + value + ' ಪ್ರತಿಶತ ಇದೆ' +
+                (charging ? ' ಮತ್ತು ಫೋನ್ ಚಾರ್ಜ್ ಆಗುತ್ತಿದೆ.' : '.'),
+            'ja' => 'バッテリー残量は ' + value + ' パーセントです' +
+                (charging ? '。充電中です。' : '。'),
+            'ar' => 'مستوى البطارية ' + value + ' بالمئة' +
+                (charging ? '، والهاتف قيد الشحن.' : '.'),
+            _ => 'Battery is at ' + value + ' percent' +
+                (charging ? ' and charging.' : '.'),
+          };
+        }
         await _speakLocalReply(reply);
       } catch (_) {
         await _speakLocalReply('I could not read the battery status right now.');
