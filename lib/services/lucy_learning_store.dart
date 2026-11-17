@@ -173,6 +173,11 @@ class LucyLearningStore {
 
     final now = DateTime.now().toIso8601String();
     final existing = _skills[id];
+    final sameSequence = existing != null &&
+        jsonEncode(existing['actions']) == jsonEncode(safeActions);
+    final successCount = sameSequence
+        ? ((existing['successCount'] as num?) ?? 0).toInt() + 1
+        : 1;
     _skills.remove(id);
     _skills[id] = <String, dynamic>{
       'id': id,
@@ -182,8 +187,13 @@ class LucyLearningStore {
       'appVersionCode': appVersionCode,
       'startSignature': startSignature,
       'actions': safeActions,
-      'successCount': ((existing?['successCount'] as num?) ?? 0).toInt() + 1,
-      'failureCount': ((existing?['failureCount'] as num?) ?? 0).toInt(),
+      // A skill becomes eligible for approval only after the same sequence
+      // has succeeded twice. A changed sequence resets approval and count.
+      'successCount': successCount,
+      'failureCount': sameSequence
+          ? ((existing['failureCount'] as num?) ?? 0).toInt()
+          : 0,
+      'approved': sameSequence && existing['approved'] == true,
       'createdAt': existing?['createdAt'] ?? now,
       'lastUsedAt': now,
     };
@@ -201,6 +211,10 @@ class LucyLearningStore {
     var invalidated = false;
     for (final entry in _skills.entries.toList().reversed) {
       final skill = entry.value;
+      if (skill['approved'] != true ||
+          ((skill['successCount'] as num?) ?? 0).toInt() < 2) {
+        continue;
+      }
       if (skill['package'] != packageName) continue;
       final template = skill['commandTemplate']?.toString() ??
           skill['command']?.toString() ??
@@ -250,6 +264,22 @@ class LucyLearningStore {
     return query.isEmpty ? null : <String, String>{'query': query};
   }
 
+  /// User approval is required before any learned workflow can replay.
+  /// The exact same workflow must have succeeded at least twice first.
+  Future<bool> setSkillApproved(
+    String id, {
+    required bool approved,
+  }) async {
+    final skill = _skills[id];
+    if (skill == null) return false;
+    final successfulRuns = ((skill['successCount'] as num?) ?? 0).toInt();
+    if (approved && successfulRuns < 2) return false;
+    skill['approved'] = approved;
+    skill['lastUsedAt'] = DateTime.now().toIso8601String();
+    await _persist();
+    return true;
+  }
+
   Future<void> markSkillResult(String id, {required bool success}) async {
     final skill = _skills[id];
     if (skill == null) return;
@@ -287,6 +317,12 @@ class LucyLearningStore {
     }
     if (matches.isNotEmpty) await _persist();
     return matches.isNotEmpty;
+  }
+
+  Future<bool> forgetUiMap(String key) async {
+    if (_uiMaps.remove(key) == null) return false;
+    await _persist();
+    return true;
   }
 
   Future<void> clear() async {

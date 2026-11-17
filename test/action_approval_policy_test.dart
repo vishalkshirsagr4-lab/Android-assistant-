@@ -184,7 +184,13 @@ void main() {
     });
 
     test('Autopilot disabled permits only explicit memory operations', () {
-      for (final action in ['remember', 'forget', 'recall_memories']) {
+      for (final action in [
+        'remember',
+        'forget',
+        'recall_memories',
+        'forget_skill',
+        'forget_app_layout',
+      ]) {
         expect(
           LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
           isTrue,

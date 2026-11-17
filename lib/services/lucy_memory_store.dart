@@ -91,6 +91,7 @@ class LucyMemoryStore {
 
   final SharedPreferences _prefs;
   final List<LucyMemory> _items = [];
+  Future<void> _writeQueue = Future<void>.value();
 
   LucyMemoryStore(this._prefs);
 
@@ -295,19 +296,34 @@ class LucyMemoryStore {
       'from', 'about', 'please', 'lucy', 'remember', 'forget', 'tell', 'me',
       'my', 'is', 'a', 'an', 'to', 'of', 'in', 'on', 'it', 'i',
     };
-    return RegExp(r'[\p{L}\p{N}]+', unicode: true)
-        .allMatches(value.toLowerCase())
+    final normalized = value.toLowerCase();
+    final tokens = RegExp(r'[\p{L}\p{N}]+', unicode: true)
+        .allMatches(normalized)
         .map((match) => match.group(0)!)
         .where((token) => token.length > 1 && !ignored.contains(token))
         .toSet();
+
+    // Japanese text is commonly written without spaces. Overlapping bigrams
+    // allow a short query to match a phrase inside a longer saved memory.
+    for (final match in RegExp(r'[\u3040-\u30ff\u3400-\u9fff]{2,}')
+        .allMatches(normalized)) {
+      final run = match.group(0)!;
+      for (var index = 0; index < run.length - 1; index++) {
+        tokens.add(run.substring(index, index + 2));
+      }
+    }
+    return tokens;
   }
 
-  Future<void> _persist() async {
-    await _prefs.setString(
-      _storageKey,
-      jsonEncode(_items.map((item) => item.toJson()).toList()),
-    );
-    await _prefs.remove(_previousStorageKey);
-    await _prefs.remove(_legacyKey);
+  Future<void> _persist() {
+    // Serialize writes so an older asynchronous write cannot finish after a
+    // newer remember/forget operation and restore stale data.
+    final snapshot = jsonEncode(_items.map((item) => item.toJson()).toList());
+    _writeQueue = _writeQueue.catchError((_) {}).then((_) async {
+      await _prefs.setString(_storageKey, snapshot);
+      await _prefs.remove(_previousStorageKey);
+      await _prefs.remove(_legacyKey);
+    });
+    return _writeQueue;
   }
 }
