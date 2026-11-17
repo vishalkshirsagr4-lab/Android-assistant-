@@ -221,6 +221,7 @@ void main() {
     test('detects Android permission prompts in supported languages', () {
       for (final prompt in [
         'Allow Lucy to access the microphone? Only this time',
+        'Allow WhatsApp to send you notifications? Allow / Don’t allow',
         'अनुमति दें · ऐप इस्तेमाल करते समय',
         'ಅನುಮತಿಸಿ · ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ',
         'アプリの使用中に許可しますか？ 今回のみ',
