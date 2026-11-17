@@ -375,6 +375,25 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
           Text('Capabilities', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           _capabilitySwitch(
+            keyName: LucySettingsStore.autopilot,
+            title: 'Autopilot · low-risk actions',
+            subtitle: 'Automatically handle reversible navigation, reading and search tasks. Sensitive actions still require your review.',
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Safety stop'),
+            subtitle: const Text('Always on: keeps Stop available and prevents sensitive actions from bypassing user control.'),
+            value: true,
+            onChanged: null,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Ask before sending or calling'),
+            subtitle: const Text('Always on: Lucy can prepare a draft, but you review and press Send or Call.'),
+            value: true,
+            onChanged: null,
+          ),
+          _capabilitySwitch(
             keyName: LucySettingsStore.aiRequests,
             title: 'Cloud AI requests',
             subtitle: 'Allow Lucy to send task text and enabled context to an external AI provider. Offline commands remain available.',
