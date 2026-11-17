@@ -14,6 +14,7 @@ import '../services/routine_scheduler.dart';
 import '../services/proactive_decision_service.dart';
 import '../services/lucy_context_builder.dart';
 import 'settings_screen.dart';
+import 'chat_screen.dart';
 import '../widgets/lucy_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -334,6 +335,13 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: colorScheme.surface,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'Open independent Chat Mode',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ChatScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.shield_outlined),
             tooltip: 'Privacy & settings',
