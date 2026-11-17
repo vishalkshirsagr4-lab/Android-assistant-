@@ -113,12 +113,40 @@ void main() {
         },
       ],
     );
-    final found = await store.findSkill(
-      command: ' OPEN SETTINGS ',
+    Future<Map<String, dynamic>?> find() => store.findSkill(
+          command: ' OPEN SETTINGS ',
+          packageName: 'com.android.launcher',
+          startSignature: 'home_signature',
+          appVersionCode: '7',
+        );
+
+    expect(await find(), isNull, reason: 'One successful run is only a suggestion.');
+    expect(
+      await store.setSkillApproved('skill_open_settings', approved: true),
+      isFalse,
+      reason: 'A skill cannot be approved before two matching successful runs.',
+    );
+    await store.recordSkill(
+      id: 'skill_open_settings',
+      command: 'Open settings',
       packageName: 'com.android.launcher',
       startSignature: 'home_signature',
       appVersionCode: '7',
+      actions: <Map<String, dynamic>>[
+        <String, dynamic>{'type': 'open_app', 'package': 'com.android.settings'},
+        <String, dynamic>{
+          'type': 'tap',
+          'resourceId': 'com.android.settings:id/network',
+          'label': 'Network',
+        },
+      ],
     );
+    expect(await find(), isNull, reason: 'Repeated runs still require user approval.');
+    expect(
+      await store.setSkillApproved('skill_open_settings', approved: true),
+      isTrue,
+    );
+    final found = await find();
     expect(found, isNotNull);
     expect(found!['actions'], hasLength(2));
     expect(
@@ -131,7 +159,7 @@ void main() {
       isNull,
     );
     await store.markSkillResult('skill_open_settings', success: true);
-    expect(store.skills.single['successCount'], 2);
+    expect(store.skills.single['successCount'], 3);
   });
 
   test('matches parameterized search skills without storing the query text', () async {
@@ -147,6 +175,29 @@ void main() {
         <String, dynamic>{'type': 'tap', 'resourceId': 'chrome:id/search', 'label': 'Search'},
         <String, dynamic>{'type': 'type', 'parameter': 'query'},
       ],
+    );
+    await store.recordSkill(
+      id: 'skill_search',
+      command: 'Search cats on Chrome',
+      commandTemplate: 'search {query} on chrome',
+      packageName: 'com.android.chrome',
+      startSignature: 'chrome_home',
+      actions: <Map<String, dynamic>>[
+        <String, dynamic>{'type': 'tap', 'resourceId': 'chrome:id/search', 'label': 'Search'},
+        <String, dynamic>{'type': 'type', 'parameter': 'query'},
+      ],
+    );
+    expect(
+      await store.findSkill(
+        command: 'Search red pandas on Chrome',
+        packageName: 'com.android.chrome',
+        startSignature: 'chrome_home',
+      ),
+      isNull,
+    );
+    expect(
+      await store.setSkillApproved('skill_search', approved: true),
+      isTrue,
     );
     final match = await store.findSkill(
       command: 'Search red pandas on Chrome',
