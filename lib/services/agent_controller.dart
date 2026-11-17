@@ -2040,6 +2040,17 @@ class AgentController extends ChangeNotifier {
     final results = <Map<String, dynamic>>[];
     var totalCollectedChars = 0;
     var current = startingSnapshot ?? await _fetchUiSnapshot();
+    final currentPackage = current?.packageName?.toLowerCase() ?? '';
+    if (const {'bank', 'wallet', 'payment', 'upi', 'finance'}
+        .any(currentPackage.contains)) {
+      return <String, dynamic>{
+        'error': 'financial_app_not_supported',
+        'reachedEnd': false,
+        'limited': false,
+        'processed': 0,
+        'items': <Map<String, dynamic>>[],
+      };
+    }
     var unchangedPages = 0;
     var pageScrolls = 0;
     var reachedEnd = false;
@@ -2073,8 +2084,12 @@ class AgentController extends ChangeNotifier {
           'navigation', 'menu', 'refresh', 'archive', 'delete',
           'remove', 'mark as read', 'mark as unread', 'report spam',
           'block', 'unsubscribe', 'select all',
+          'send', 'send message', 'send now', 'post', 'publish',
+          'share', 'pay', 'payment', 'transfer', 'buy', 'purchase',
+          'checkout', 'confirm', 'allow', 'grant', 'install',
+          'uninstall', 'call', 'dial',
         }.contains(normalized) ||
-            RegExp(r'^(delete|archive|remove|block|report|unsubscribe)\b')
+            RegExp(r'^(delete|archive|remove|block|report|unsubscribe|send|post|publish|share|pay|transfer|buy|purchase|checkout|confirm|allow|grant|install|uninstall|call|dial)\b')
                 .hasMatch(normalized)) {
           continue;
         }
