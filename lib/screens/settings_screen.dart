@@ -383,14 +383,14 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Safety stop'),
             subtitle: const Text('Always on: keeps Stop available and prevents sensitive actions from bypassing user control.'),
-            value: true,
+            value: _values[LucySettingsStore.safetyStop] ?? true,
             onChanged: null,
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Ask before sending or calling'),
             subtitle: const Text('Always on: Lucy can prepare a draft, but you review and press Send or Call.'),
-            value: true,
+            value: _values[LucySettingsStore.askBeforeSending] ?? true,
             onChanged: null,
           ),
           _capabilitySwitch(
