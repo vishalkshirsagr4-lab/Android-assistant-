@@ -158,6 +158,12 @@ class AgentController extends ChangeNotifier {
     return removed;
   }
 
+  Future<bool> forgetUserMemoryById(String id) async {
+    final removed = await _memoryStore?.forgetById(id) ?? false;
+    notifyListeners();
+    return removed;
+  }
+
   Future<void> clearUserMemories() async {
     await _memoryStore?.clear();
     notifyListeners();
