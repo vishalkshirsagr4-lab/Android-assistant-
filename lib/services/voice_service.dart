@@ -169,7 +169,7 @@ class VoiceService {
       _volume = volume.clamp(0.3, 1.0).toDouble();
     }
 
-    if (_isInitialized) {
+    if (await _initializeTts()) {
       await _applyTtsSettings();
     }
 
