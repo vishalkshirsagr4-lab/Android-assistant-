@@ -1709,22 +1709,17 @@ class AgentController extends ChangeNotifier {
       _cancelRequested = true;
       return beforeSnapshot;
     }
-    final baseRisk = LucyActionApprovalPolicy.effectiveRisk(
+    final requiredRisk = LucyActionApprovalPolicy.effectiveRisk(
       action.type,
       targetLabel: targetLabel,
       packageName: beforeSnapshot?.packageName,
-      modelRisk: (action.type == 'place_call' || action.type == 'send_sms')
-          ? 'low'
-          : action.params['risk']?.toString(),
+      modelRisk: action.params['risk']?.toString(),
       confidence: modelConfidence,
       sensitiveInput: sensitiveInput,
     );
-    final autopilotEnabled =
-        await _settingsStore.isEnabled(LucySettingsStore.autopilot);
-    // Turning Autopilot off asks before even low-risk screen actions.
-    final requiredRisk = !autopilotEnabled && baseRisk == 'low'
-        ? 'medium'
-        : baseRisk;
+    // Autopilot controls whether routine actions may run automatically, but
+    // the approval policy itself only pauses for locally identified
+    // consequential actions. The model cannot add prompts to routine tasks.
     if (requiredRisk != 'low') {
       final approved = await _requestVoiceApproval(
         action,
