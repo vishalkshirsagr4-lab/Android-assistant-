@@ -594,16 +594,16 @@ Found a security issue? Please read **[SECURITY.md](SECURITY.md)** — don't ope
 
 ## 🗺️ Roadmap
 
-Ideas that would make great contributions. Comment on an issue or open one to claim it:
+Current implementation milestones:
 
-- [x] 🔒 **Confirmation gate** for consequential actions (sending messages, purchases, deletions)
-- [ ] 🧩 **Pluggable AI backends** — OpenAI, Anthropic, or a local model behind the `AiService` interface
-- [ ] 🚫 **App allowlist/blocklist** so Lucy can never touch chosen apps
-- [ ] 💾 **Persistent conversation history** across restarts
-- [ ] 🌐 **More languages** (see [CONTRIBUTING.md](CONTRIBUTING.md#-adding-a-language) — it's a ~20-line change)
-- [ ] 🧪 **Test coverage** for the `AgentController` state machine
-- [ ] 📊 **Token/cost counter** in the UI
-- [ ] ♿ **Better UI-tree extraction** for apps with weak accessibility semantics
+- [x] 🔒 **Safety controls** — executor-side Autopilot gate, always-available Stop, and review for consequential actions
+- [x] 👁️ **Screen intelligence** — accessibility-driven popup/ad handling with app exclusions and manual system permission dialogs
+- [x] 🧠 **User-controlled learning** — repeated successful safe workflows require explicit approval before replay
+- [x] 🌍 **Five-language voice setup** — English, Hindi, Kannada, Japanese and Arabic locale requests with localized onboarding
+- [x] 📊 **Performance diagnostics** — bounded latency percentiles, task stability and optional Android charge-counter deltas
+- [ ] 🧪 **Physical-device regression** — complete [the device checklist](docs/DEVICE_REGRESSION.md) on supported Android versions before stable release
+- [ ] 🧭 **More app-specific accessibility adapters** for apps that expose weak or inconsistent UI trees
+- [ ] 🗂️ **Persistent conversation history** with user-controlled retention and deletion
 
 ---
 
@@ -619,17 +619,7 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 
-## ☕ Support the Project
-
-Lucy is free, open source, and developed in spare time. If she saves you some of yours, you can chip in:
-
-<a href=""><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="36"></a>
-
-Support is entirely optional and buys no priority on issues or pull requests — it just keeps the API bills paid and the roadmap moving. Starring the repo and filing good bug reports helps just as much.
-
----
-
-## 📄 License
+## 🧪 Release validation\n\nThe final physical-device checks are listed in [docs/DEVICE_REGRESSION.md](docs/DEVICE_REGRESSION.md). CI passing is necessary but does not replace testing permissions, Stop, deep reading, speech packs, battery behavior and signed updates on a real device.\n\n## 📄 License
 
 Released under the [MIT License](LICENSE).
 
