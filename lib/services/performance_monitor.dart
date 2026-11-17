@@ -77,6 +77,7 @@ class LucyPerformanceMonitor {
   int? _lastTaskDurationMs;
   int? _lastNetBatteryChangeMah;
   int? _taskStartChargeUah;
+  Future<int?>? _taskStartChargeFuture;
   DateTime? _taskStartedAt;
 
   void recordResponse(Duration duration) =>
@@ -99,13 +100,20 @@ class LucyPerformanceMonitor {
     if (_taskStartedAt != null) _currentTaskSteps++;
   }
 
-  Future<void> beginTask() async {
+  void beginTask() {
     _taskStartedAt = DateTime.now();
     _taskStartChargeUah = null;
     _currentTaskSteps = 0;
-    final metrics = await _readNativeMetrics();
-    final value = metrics['chargeCounterUah'];
-    if (value is num && value >= 0) _taskStartChargeUah = value.toInt();
+    // Sample in the background so battery diagnostics never delay the first
+    // user-visible action. endTask awaits this bounded sample before comparing.
+    _taskStartChargeFuture = _readNativeMetrics().then((metrics) {
+      final value = metrics['chargeCounterUah'];
+      if (value is num && value >= 0) {
+        _taskStartChargeUah = value.toInt();
+        return value.toInt();
+      }
+      return null;
+    });
   }
 
   Future<void> endTask({required bool success}) async {
@@ -121,7 +129,7 @@ class LucyPerformanceMonitor {
 
     final endingMetrics = await _readNativeMetrics();
     final endValue = endingMetrics['chargeCounterUah'];
-    final startValue = _taskStartChargeUah;
+    final startValue = await (_taskStartChargeFuture ?? Future<int?>.value(_taskStartChargeUah));
     if (startValue != null && endValue is num && endValue >= 0) {
       _lastNetBatteryChangeMah = ((startValue - endValue.toInt()) / 1000).round();
     }
