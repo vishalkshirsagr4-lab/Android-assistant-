@@ -42,6 +42,7 @@ class VoiceService {
   bool _isListening = false;
   bool _isPausedForProcessing = false;
   bool _isSpeaking = false;
+  bool _ttsCancelledCurrentUtterance = false;
   bool _disposed = false;
   String _currentTtsLanguage = '';
 
@@ -125,6 +126,7 @@ class VoiceService {
         _isSpeaking = false;
       });
       _tts.setCancelHandler(() {
+        _ttsCancelledCurrentUtterance = true;
         _isSpeaking = false;
       });
       _tts.setPauseHandler(() {
@@ -134,6 +136,7 @@ class VoiceService {
         _isSpeaking = true;
       });
       _tts.setErrorHandler((_) {
+        _ttsCancelledCurrentUtterance = true;
         _isSpeaking = false;
       });
       _isTtsInitialized = true;
@@ -388,11 +391,15 @@ class VoiceService {
   }) async {
     for (var attempt = 0; attempt <= retries; attempt++) {
       if (_disposed || generation != _speechGeneration) return false;
+      _ttsCancelledCurrentUtterance = false;
       _isSpeaking = true;
       try {
         final result = await _tts.speak(text, focus: true);
         if (result is num && result < 0) {
           throw StateError('Android TTS rejected the utterance');
+        }
+        if (_ttsCancelledCurrentUtterance) {
+          throw StateError('Android TTS cancelled the utterance');
         }
         if (generation == _speechGeneration) _isSpeaking = false;
         return true;
