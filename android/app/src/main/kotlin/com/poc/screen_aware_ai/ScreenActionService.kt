@@ -274,6 +274,7 @@ class ScreenActionService : AccessibilityService() {
         var unchangedChecks = 0
         var reachedEnd = false
         var dispatchFailed = false
+        val verificationUnavailable = initial.signature.isEmpty()
         val display = resources.displayMetrics
         val width = display.widthPixels.toFloat()
         val height = display.heightPixels.toFloat()
@@ -328,7 +329,9 @@ class ScreenActionService : AccessibilityService() {
                 val next = captureScrollSnapshot(collect)
                 if (collect) addCollected(collected, next.texts)
 
-                if (next.signature == current.signature) {
+                if (next.signature.isNotEmpty() &&
+                    next.signature == current.signature
+                ) {
                     unchangedChecks++
                 } else {
                     unchangedChecks = 0
@@ -353,6 +356,7 @@ class ScreenActionService : AccessibilityService() {
             put("reachedEnd", reachedEnd)
             put("limited", !reachedEnd && scrolls >= limit)
             put("dispatchFailed", dispatchFailed)
+            put("verificationUnavailable", verificationUnavailable)
             put("locked", isDeviceLocked())
             put("forward", forward)
             put("items", items)
