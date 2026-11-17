@@ -111,6 +111,37 @@ void main() {
     expect(item.updatedAt, item.createdAt);
   });
 
+  test('retrieves Japanese memories by overlapping phrase fragments', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember(
+      '私は日本語での説明が好きです',
+      category: 'preference',
+    );
+
+    expect(
+      store.relevantContext('日本語の説明'),
+      contains('日本語での説明'),
+    );
+  });
+
+  test('serializes concurrent memory writes without losing entries', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await Future.wait([
+      for (var index = 0; index < 30; index++)
+        store.remember('Concurrent approved memory $index'),
+    ]);
+
+    final reloaded = LucyMemoryStore(prefs);
+    await reloaded.initialize();
+    expect(reloaded.items, hasLength(30));
+  });
+
   test('stores more than fifty typed memories without truncation', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = LucyMemoryStore(prefs);
