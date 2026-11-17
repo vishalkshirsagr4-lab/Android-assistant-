@@ -283,6 +283,7 @@ class ScreenActionService : AccessibilityService() {
             while (scrolls < limit && !isDeviceLocked()) {
                 val target = current.scrollNode
                 var moved = false
+                var gestureFallbackAllowed = target == null
                 if (target != null) {
                     val direction = if (forward) {
                         AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
@@ -290,17 +291,25 @@ class ScreenActionService : AccessibilityService() {
                         AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
                     }
                     try {
-                        moved = target.performAction(direction)
+                        val actionIsExposed = target.actionList.any { it.id == direction }
+                        gestureFallbackAllowed = !actionIsExposed
+                        if (actionIsExposed) {
+                            moved = target.performAction(direction)
+                        }
                     } catch (error: Exception) {
-                        Log.w(TAG, "Accessibility scroll action failed; trying gesture fallback", error)
+                        Log.w(TAG, "Accessibility scroll action failed", error)
+                        gestureFallbackAllowed = true
                     } finally {
                         target.recycle()
                         current = current.copy(scrollNode = null)
                     }
                 }
 
-                // WebViews and some custom lists expose no working scroll action.
-                if (!moved) {
+                // Only gesture-fallback when the node does not expose the
+                // directional action. A supported action returning false is
+                // usually an edge-of-list signal; swiping there can trigger
+                // pull-to-refresh instead of proving the boundary.
+                if (!moved && gestureFallbackAllowed) {
                     val startY = if (forward) height * 0.75f else height * 0.25f
                     val endY = if (forward) height * 0.25f else height * 0.75f
                     moved = try {
@@ -309,6 +318,25 @@ class ScreenActionService : AccessibilityService() {
                         Log.w(TAG, "Scroll gesture fallback failed", error)
                         false
                     }
+                }
+
+                if (!moved && !gestureFallbackAllowed) {
+                    scrolls++
+                    val boundaryCheck = captureScrollSnapshot(collect)
+                    if (collect) addCollected(collected, boundaryCheck.texts)
+                    if (boundaryCheck.signature.isNotEmpty() &&
+                        boundaryCheck.signature == current.signature
+                    ) {
+                        unchangedChecks++
+                    } else {
+                        unchangedChecks = 0
+                    }
+                    current = boundaryCheck
+                    if (unchangedChecks >= 2) {
+                        reachedEnd = true
+                        break
+                    }
+                    continue
                 }
 
                 if (!moved) {
