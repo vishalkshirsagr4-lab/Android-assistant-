@@ -1611,6 +1611,7 @@ class AgentController extends ChangeNotifier {
       String speakText = agentResponse.speak;
       bool actionVerified = true;
       String? toolResultForNextTurn;
+      var autopilotBlocked = false;
 
       // 3. Execute and verify the returned action.
       if (agentResponse.actions.isNotEmpty) {
@@ -1619,7 +1620,6 @@ class AgentController extends ChangeNotifier {
         _updateTaskProgress('Carrying out your task · Step $step');
 
         var latestSnapshot = uiSnapshot;
-        var autopilotBlocked = false;
         for (final action in agentResponse.actions) {
           if (_cancelRequested) break;
           final isMemoryManagementAction = const {
