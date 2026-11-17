@@ -134,6 +134,31 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Execute up to five reversible UI primitives in one native round trip.
+  /// The controller must run its local risk checks before calling this method.
+  Future<Map<String, dynamic>?> performBatch(
+    List<Map<String, dynamic>> actions,
+  ) async {
+    if (actions.isEmpty || actions.length > 5) return null;
+    try {
+      final raw = await _channel.invokeMethod<String>(
+        'performBatch',
+        <String, dynamic>{'actions': actions},
+      );
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_batch_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return null;
+    }
+  }
+
   /// Current monotonic accessibility-event sequence for the foreground UI.
   Future<int> getUiEventSequence() async {
     try {
