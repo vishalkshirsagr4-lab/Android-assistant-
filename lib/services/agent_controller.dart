@@ -80,6 +80,11 @@ class AgentController extends ChangeNotifier {
   final LucyLearningStore _learningStore = LucyLearningStore();
   String? _lastRecordedUiSignature;
   Map<String, int>? _cachedScreenSize;
+  final List<Map<String, dynamic>> _pendingSkillActions = <Map<String, dynamic>>[];
+  String? _taskStartPackage;
+  String? _taskStartSignature;
+  String? _taskStartVersion;
+  bool _taskSkillEligible = true;
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -1345,6 +1350,11 @@ class AgentController extends ChangeNotifier {
     // Android omits optional sources unless the user granted access.
     final screenSize = await _screenCapture.getScreenSize();
     _cachedScreenSize = screenSize;
+    _pendingSkillActions.clear();
+    _taskStartPackage = null;
+    _taskStartSignature = null;
+    _taskStartVersion = null;
+    _taskSkillEligible = true;
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
@@ -1383,6 +1393,16 @@ class AgentController extends ChangeNotifier {
       var uiTree = uiSnapshot == null
           ? null
           : _buildUiTreePayload(uiSnapshot, step);
+
+      if (step == 1 && uiSnapshot != null &&
+          await _tryReplayLearnedSkill(userMessage, uiSnapshot)) {
+        LucyReliabilityLog.event('learned_skill_replayed', success: true);
+        await _speakEvent(
+          'skill_replayed',
+          context: 'A previously successful low-risk navigation or reading skill was replayed and verified.',
+        );
+        return;
+      }
 
       // Explicit reading requests collect the complete accessible scrollable
       // surface before planning. Inbox-wide requests use open_each instead.
@@ -1574,6 +1594,11 @@ class AgentController extends ChangeNotifier {
           final beforeAction = latestSnapshot;
           _lastActionDispatchSucceeded = true;
           latestSnapshot = await _executeAction(action, beforeAction);
+          if (_lastActionDispatchSucceeded) {
+            _recordSkillAction(action, beforeAction);
+          } else {
+            _taskSkillEligible = false;
+          }
           if (const {
             'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
           }.contains(action.type)) {
@@ -1717,6 +1742,7 @@ class AgentController extends ChangeNotifier {
         }.contains(action.type),
       );
       if (agentResponse.done && actionVerified && !hasDeepReadToolAction) {
+        await _saveCompletedSkill(userMessage);
         LucyReliabilityLog.event('agent_task_completed', step: step, success: true);
         break;
       }
@@ -1828,6 +1854,11 @@ class AgentController extends ChangeNotifier {
           packageName: packageName,
           elements: elements,
         );
+        if (_isActive && _taskStartPackage == null) {
+          _taskStartPackage = packageName;
+          _taskStartSignature = signature;
+          _taskStartVersion = versionCode;
+        }
         if (signature != _lastRecordedUiSignature &&
             await _settingsStore.isEnabled(LucySettingsStore.uiMemory)) {
           _lastRecordedUiSignature = signature;
