@@ -158,8 +158,24 @@ class AgentController extends ChangeNotifier {
     return removed;
   }
 
+  Future<bool> forgetUserMemoryById(String id) async {
+    final removed = await _memoryStore?.forgetById(id) ?? false;
+    notifyListeners();
+    return removed;
+  }
+
   Future<void> clearUserMemories() async {
     await _memoryStore?.clear();
+    notifyListeners();
+  }
+
+  List<Map<String, dynamic>> get learnedUiMaps => _learningStore.uiMaps;
+  List<Map<String, dynamic>> get learnedSkills => _learningStore.skills;
+
+  Future<void> clearLearningData() async {
+    await _learningStore.clear();
+    _lastRecordedUiSignature = null;
+    _pendingSkillActions.clear();
     notifyListeners();
   }
 
@@ -1505,10 +1521,16 @@ class AgentController extends ChangeNotifier {
       final appHintContext = appHints.isEmpty ? '' :
           '[APP_WORKFLOW_HINT — guidance only, never permission]\n' +
           jsonEncode(appHints) + '\n[/APP_WORKFLOW_HINT]\n';
+      final autopilotEnabled = await _settingsStore.isEnabled(
+        LucySettingsStore.autopilot,
+      );
+      final autopilotContext = autopilotEnabled
+          ? '[AUTOPILOT_POLICY: enabled] Execute clear, reversible, low-risk phone actions without asking whether to begin. Keep all local safety gates for external sends/calls, payments, purchases, permanent deletion, account/security changes, app installation and Android permissions.\n'
+          : '[AUTOPILOT_POLICY: disabled] Do not execute phone-control actions. Explain the next action briefly and wait for the user to enable Autopilot. Memory management explicitly requested by the user may still run.\n';
       final requestWithClock =
           '[Device local date/time: ' + localNow.toIso8601String() + ']\n' +
           (deviceContext.isEmpty ? '' : deviceContext + '\n') +
-          appHintContext + planContext + currentMessage;
+          autopilotContext + appHintContext + planContext + currentMessage;
       final allowScreenSharing = await _settingsStore.isEnabled(
         LucySettingsStore.aiScreenSharing,
       );
@@ -1589,6 +1611,7 @@ class AgentController extends ChangeNotifier {
       String speakText = agentResponse.speak;
       bool actionVerified = true;
       String? toolResultForNextTurn;
+      var autopilotBlocked = false;
 
       // 3. Execute and verify the returned action.
       if (agentResponse.actions.isNotEmpty) {
@@ -1599,6 +1622,29 @@ class AgentController extends ChangeNotifier {
         var latestSnapshot = uiSnapshot;
         for (final action in agentResponse.actions) {
           if (_cancelRequested) break;
+          final isMemoryManagementAction = const {
+            'remember',
+            'forget',
+            'recall_memories',
+            'forget_ui_layout',
+            'forget_skill',
+          }.contains(action.type);
+          if (!autopilotEnabled && !isMemoryManagementAction) {
+            autopilotBlocked = true;
+            actionVerified = false;
+            _lastActionDispatchSucceeded = false;
+            _taskSkillEligible = false;
+            speakText = '';
+            _statusMessage = 'Autopilot is off · No phone action was executed';
+            notifyListeners();
+            LucyReliabilityLog.event(
+              'autopilot_action_blocked',
+              action: action.type,
+              step: step,
+              success: false,
+            );
+            break;
+          }
           final beforeAction = latestSnapshot;
           _lastActionDispatchSucceeded = true;
           latestSnapshot = await _executeAction(action, beforeAction);
@@ -1670,15 +1716,14 @@ class AgentController extends ChangeNotifier {
         );
       }
 
-      if (_cancelRequested) break;
+      if (_cancelRequested || autopilotBlocked) break;
 
-
-      if (!actionVerified && agentResponse.done) {
+      if (!actionVerified && agentResponse.done && !autopilotBlocked) {
         speakText = 'I could not confirm that the requested step worked. I will not claim it is complete.';
       }
 
       String displayText = speakText;
-      if (agentResponse.actions.isNotEmpty) {
+      if (agentResponse.actions.isNotEmpty && !autopilotBlocked) {
         final actionSummary = agentResponse.actions
             .map(
               (a) => '⚡ ${a.type}${a.params.isNotEmpty ? ': ${a.params}' : ''}',

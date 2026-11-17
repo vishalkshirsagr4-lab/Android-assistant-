@@ -145,6 +145,22 @@ void main() {
     expect(store.relevantContext('हिंदी उदाहरण'), contains('हिंदी में'));
   });
 
+
+  test('preserves all supported structured memory types', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    for (final type in ['fact', 'preference', 'routine', 'person', 'place']) {
+      await store.remember('Approved $type detail', type: type);
+    }
+
+    expect(
+      store.items.map((item) => item.type).toSet(),
+      {'fact', 'preference', 'routine', 'person', 'place'},
+    );
+  });
+
   test('does not store blank or oversized memory values', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = LucyMemoryStore(prefs);
@@ -155,4 +171,20 @@ void main() {
 
     expect(store.items, isEmpty);
   });
+
+  test('memory summaries contain real line breaks', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember('First saved detail');
+    await store.remember('Second saved detail');
+
+    expect(store.summary, contains('\n'));
+    expect(store.summary, isNot(contains(r'\n')));
+    final relevant = store.relevantContext('First Second saved detail');
+    expect(relevant, contains('\n'));
+    expect(relevant, isNot(contains(r'\n')));
+  });
+
 }

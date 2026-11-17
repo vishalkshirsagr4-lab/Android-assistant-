@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings]
   pull_request:
-    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings]
   workflow_dispatch:
 
 concurrency:

@@ -522,6 +522,13 @@ This usually means the accessibility tree is incomplete — some apps (games, or
 
 ---
 
+## 🧠 Lucy personality, memory and setup (Phase 6)
+
+- The agent personality and behavior rules are loaded from `assets/lucy_system_prompt.txt`, so prompt updates no longer require editing provider code.
+- User-approved memories remain structured and local, with relevance-based context selection. The settings screen can inspect and delete individual memories or clear all of them.
+- The settings screen can inspect stored app layouts and safe learned skills, or reset that learning data. “Delete all my data” also clears the learning store.
+- A first-time setup guide explains Accessibility, screen capture, notification access, Usage access and optional Calendar access. Android still presents its own consent/settings screens; Lucy cannot silently grant permissions.
+
 ## 🔐 Privacy & Security
 
 Please read this before installing. Lucy is powerful precisely because she has deep access.
@@ -545,7 +552,7 @@ Please read this before installing. Lucy is powerful precisely because she has d
 > [!CAUTION]
 > While a task is running, **anything visible on your screen may be sent to Google** — including messages, emails, banking screens and notifications. The accessibility service can also read text fields and dispatch taps. Don't run Lucy while sensitive information is on screen, and review [Google's Gemini API terms](https://ai.google.dev/gemini-api/terms) to understand how prompt data is handled on your tier.
 
-**Privacy & settings (Phase 7)**
+**Privacy & settings (Phase 6)**
 
 Open the shield icon on Lucy's top bar to control cloud AI requests, provider fallback, voice input/output, screen automation, AI screenshot/UI sharing, direct phone actions, saved memory, scheduled reminders, notification context, calendar context, approximate location and proactive suggestions. Quiet hours are configurable on the same screen. The permissions guide explains each access. **Delete all my data** clears saved memories, local app preferences/history, notification cache, scheduled reminders and provider API keys. Android permissions granted in system settings are not revoked by that button; revoke those separately in Android Settings.
 

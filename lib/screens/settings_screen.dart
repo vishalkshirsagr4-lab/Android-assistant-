@@ -68,6 +68,11 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       _loading = false;
     });
     await _applyScreenWatcherSettings(values, excludedPackages);
+    if (!(prefs.getBool('lucy_setup_wizard_seen') ?? false)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openSetupWizard(markSeen: true);
+      });
+    }
   }
 
   Future<void> _applyScreenWatcherSettings(
@@ -342,6 +347,236 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     );
   }
 
+
+  Future<void> _openSetupWizard({bool markSeen = false}) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Set up Lucy'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enable only the capabilities you want. Android controls these permissions; Lucy cannot grant them silently.',
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Accessibility is required for screen reading and requested UI actions.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await widget.controller.screenCapture.openAccessibilitySettings();
+                },
+                icon: const Icon(Icons.accessibility_new),
+                label: const Text('Open Accessibility settings'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Screen capture is optional. Android displays its own consent prompt when a task needs screenshots.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final granted = await widget.controller.screenCapture.requestPermission();
+                  if (dialogContext.mounted) {
+                    _message(
+                      granted
+                          ? 'Screen capture is ready.'
+                          : 'Screen capture was not enabled.',
+                    );
+                  }
+                },
+                icon: const Icon(Icons.screen_share_outlined),
+                label: const Text('Set up screen capture'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Notification access is optional and is used only when notification context is enabled.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await _context.openNotificationAccessSettings();
+                },
+                icon: const Icon(Icons.notifications_outlined),
+                label: const Text('Open notification access'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Usage access is optional and adds the foreground app name to context.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await _context.openUsageAccessSettings();
+                },
+                icon: const Icon(Icons.apps_outlined),
+                label: const Text('Open Usage access'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Calendar access is optional and requested only for calendar context.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final granted = await _context.requestCalendarAccess();
+                  _message(
+                    granted
+                        ? 'Calendar access is ready.'
+                        : 'Calendar access was not granted.',
+                  );
+                },
+                icon: const Icon(Icons.calendar_month_outlined),
+                label: const Text('Set up Calendar access'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Microphone and Contacts permissions are requested only when you use the related feature. Never enable access you are uncomfortable with.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Finish'),
+          ),
+        ],
+      ),
+    );
+    if (markSeen) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('lucy_setup_wizard_seen', true);
+    }
+  }
+
+  Future<void> _showMemoryManager() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refreshDialog) {
+          final memories = widget.controller.savedMemories;
+          return AlertDialog(
+            title: const Text('Saved memories'),
+            content: SizedBox(
+              width: 480,
+              child: memories.isEmpty
+                  ? const Text('Lucy has no saved memories.')
+                  : ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 420),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: memories.length,
+                        itemBuilder: (context, index) {
+                          final memory = memories[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(memory.text),
+                            subtitle: Text(
+                              '${memory.type} · ${memory.createdAt.toLocal().toString().split('.').first}',
+                            ),
+                            trailing: IconButton(
+                              tooltip: 'Forget this memory',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                await widget.controller.forgetUserMemoryById(memory.id);
+                                refreshDialog(() {});
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+            actions: [
+              if (memories.isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    await widget.controller.clearUserMemories();
+                    refreshDialog(() {});
+                  },
+                  child: const Text('Clear all memories'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showLearningManager() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refreshDialog) {
+          final maps = widget.controller.learnedUiMaps;
+          final skills = widget.controller.learnedSkills;
+          return AlertDialog(
+            title: const Text('Learned layouts & skills'),
+            content: SizedBox(
+              width: 480,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 440),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    Text('Screen layouts · ${maps.length}'),
+                    if (maps.isEmpty) const ListTile(title: Text('No saved layouts')),
+                    for (final map in maps.take(40))
+                      ListTile(
+                        dense: true,
+                        title: Text(map['package']?.toString() ?? 'Unknown app'),
+                        subtitle: Text('Signature: ${map['signature'] ?? 'unknown'}'),
+                      ),
+                    const Divider(),
+                    Text('Safe skills · ${skills.length}'),
+                    if (skills.isEmpty) const ListTile(title: Text('No saved skills')),
+                    for (final skill in skills.take(40))
+                      ListTile(
+                        dense: true,
+                        title: Text(skill['command']?.toString() ?? 'Unnamed skill'),
+                        subtitle: Text('${skill['package'] ?? 'Unknown app'} · successes: ${skill['successCount'] ?? 0} · failures: ${skill['failureCount'] ?? 0}'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              if (maps.isNotEmpty || skills.isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (confirmContext) => AlertDialog(
+                        title: const Text('Reset learned data?'),
+                        content: const Text('This deletes all saved screen layouts and replayable skills on this device.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Cancel')),
+                          FilledButton(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Reset')),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await widget.controller.clearLearningData();
+                      refreshDialog(() {});
+                    }
+                  },
+                  child: const Text('Reset learned data'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _deleteAllData() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -370,6 +605,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     try {
       await widget.controller.stopAgent();
       await widget.controller.clearUserMemories();
+      await widget.controller.clearLearningData();
       await widget.controller.aiService.clearGeminiKey();
       widget.controller.aiService.resetChat();
       await _grok.clearApiKey();
@@ -508,6 +744,13 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             title: 'Saved memory',
             subtitle: 'Allow Lucy to use and save details you explicitly ask her to remember.',
           ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('View and manage saved memories'),
+            subtitle: Text('${widget.controller.savedMemories.length} saved entries on this device'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _busy ? null : _showMemoryManager,
+          ),
           _capabilitySwitch(
             keyName: LucySettingsStore.scheduledReminders,
             title: 'Scheduled reminders',
@@ -524,6 +767,13 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             keyName: LucySettingsStore.learnSkills,
             title: 'Learn safe workflows',
             subtitle: 'Save and replay exact-match navigation/reading sequences only. Typing, sending, calls, purchases and destructive actions are never replayed.',
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('View or reset learned layouts and skills'),
+            subtitle: Text('${widget.controller.learnedUiMaps.length} layouts · ${widget.controller.learnedSkills.length} skills'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _busy ? null : _showLearningManager,
           ),
           const Divider(height: 28),
           Text('Screen intelligence', style: Theme.of(context).textTheme.titleLarge),
@@ -626,6 +876,12 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : () => _openSetupWizard(),
+            icon: const Icon(Icons.tune),
+            label: const Text('Open setup wizard'),
+          ),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _openPermissionGuide,
             icon: const Icon(Icons.privacy_tip_outlined),

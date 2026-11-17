@@ -196,6 +196,15 @@ class LucyMemoryStore {
     await _persist();
   }
 
+  Future<bool> forgetById(String id) async {
+    if (id.trim().isEmpty) return false;
+    final before = _items.length;
+    _items.removeWhere((item) => item.id == id);
+    final removed = _items.length != before;
+    if (removed) await _persist();
+    return removed;
+  }
+
   Future<int> forgetMatching(String query) async {
     final needle = query.trim().toLowerCase();
     if (needle.isEmpty) return 0;
