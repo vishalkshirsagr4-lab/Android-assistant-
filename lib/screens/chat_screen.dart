@@ -57,6 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    unawaited(_controller.closeChatMode());
     _controller.removeListener(_onChanged);
     _controller.dispose();
     _messageController.dispose();
