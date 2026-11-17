@@ -39,6 +39,7 @@ class ScreenActionService : AccessibilityService() {
     @Volatile private var excludedWatcherPackages: Set<String> = emptySet()
     private var lastWatcherClickAt = 0L
     private var lastWatcherClickKey = ""
+    @Volatile private var cancelDeepScroll = false
     private val watcherRunnable = Runnable { inspectAndHandleSafeOverlay() }
 
     override fun onServiceConnected() {
@@ -101,6 +102,12 @@ class ScreenActionService : AccessibilityService() {
             .putStringSet("excluded_packages", excludedPackages)
             .apply()
         if (!enabled) watcherHandler.removeCallbacks(watcherRunnable)
+        return true
+    }
+
+    /** Requests cancellation of the current bounded deep-scroll operation. */
+    fun cancelScreenOperation(): Boolean {
+        cancelDeepScroll = true
         return true
     }
 
@@ -575,6 +582,7 @@ class ScreenActionService : AccessibilityService() {
             }.toString()
         }
 
+        cancelDeepScroll = false
         val limit = maxScrolls.coerceIn(1, 120)
         val collected = LinkedHashSet<String>()
         val initial = captureScrollSnapshot(collect)
@@ -601,7 +609,7 @@ class ScreenActionService : AccessibilityService() {
         val height = display.heightPixels.toFloat()
 
         try {
-            while (scrolls < limit && !isDeviceLocked()) {
+            while (scrolls < limit && !isDeviceLocked() && !cancelDeepScroll) {
                 val target = current.scrollNode
                 var moved = false
                 var gestureFallbackAllowed = target == null
@@ -707,6 +715,7 @@ class ScreenActionService : AccessibilityService() {
             put("dispatchFailed", dispatchFailed)
             put("verificationUnavailable", verificationUnavailable)
             put("locked", isDeviceLocked())
+            put("cancelled", cancelDeepScroll)
             put("forward", forward)
             put("items", items)
         }.toString()
@@ -742,7 +751,7 @@ class ScreenActionService : AccessibilityService() {
             if (visited >= maxNodes || depth > maxDepth) return
             visited++
 
-            if (node.isVisibleToUser) {
+            if (node.isVisibleToUser && !node.isPassword) {
                 val text = node.text?.toString()?.trim().orEmpty()
                 val desc = node.contentDescription?.toString()?.trim().orEmpty()
                 val nodeBounds = Rect()
@@ -824,8 +833,10 @@ class ScreenActionService : AccessibilityService() {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
 
-            val text = node.text?.toString()
-            val contentDesc = node.contentDescription?.toString()
+            // Password fields remain represented only by the boolean marker;
+            // never export their text or content description to the model.
+            val text = if (isPassword) null else node.text?.toString()
+            val contentDesc = if (isPassword) null else node.contentDescription?.toString()
             val isClickable = node.isClickable || clickableAncestor
             val isEditable = node.isEditable
             val isPassword = node.isPassword
@@ -1002,6 +1013,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        cancelDeepScroll = true
         watcherHandler.removeCallbacks(watcherRunnable)
         keepScreenAwake(false)
         super.onDestroy()
