@@ -1,0 +1,13 @@
+{
+  "app": "Notes",
+  "strategy": [
+    "Identify note title and body, then use read_all for long notes.",
+    "Keep reading and editing separate; never overwrite note text as an automatic replay.",
+    "Summarize action items and dates from the complete accessible note."
+  ],
+  "targets": [
+    "Search",
+    "New note",
+    "Back"
+  ]
+}
