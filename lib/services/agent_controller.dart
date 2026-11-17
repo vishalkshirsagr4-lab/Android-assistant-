@@ -1715,7 +1715,9 @@ class AgentController extends ChangeNotifier {
       action.type,
       targetLabel: targetLabel,
       packageName: beforeSnapshot?.packageName,
-      modelRisk: action.params['risk']?.toString(),
+      modelRisk: (action.type == 'place_call' || action.type == 'send_sms')
+          ? 'low'
+          : action.params['risk']?.toString(),
       confidence: modelConfidence,
       sensitiveInput: sensitiveInput,
     );
