@@ -55,7 +55,7 @@ class VoiceService {
   double get pitch => _pitch;
   double get volume => _volume;
 
-  Function(String text, bool isFinal)? onResult;
+  Function(String text, bool isFinal, List<String> alternatives)? onResult;
   Function()? onListeningDone;
   Function(String error)? onError;
 
@@ -107,6 +107,14 @@ class VoiceService {
     if (_isTtsInitialized) return true;
     try {
       await _tts.awaitSpeakCompletion(true);
+      // Navigation-guidance audio attributes make spoken replies resilient to
+      // short notification sounds. Request transient audio focus per utterance
+      // below so Android can duck other audio instead of cancelling Lucy.
+      try {
+        await _tts.setAudioAttributesForNavigation();
+      } catch (_) {
+        // Older or vendor-modified TTS engines may not expose this capability.
+      }
       // Defer locale selection until the caller supplies the user's language.
       // Requiring en-US here would disable an installed Hindi/Kannada voice.
       await _applyTtsSettings();
@@ -117,6 +125,15 @@ class VoiceService {
         _isSpeaking = false;
       });
       _tts.setCancelHandler(() {
+        _isSpeaking = false;
+      });
+      _tts.setPauseHandler(() {
+        _isSpeaking = true;
+      });
+      _tts.setContinueHandler(() {
+        _isSpeaking = true;
+      });
+      _tts.setErrorHandler((_) {
         _isSpeaking = false;
       });
       _isTtsInitialized = true;
@@ -210,8 +227,15 @@ class VoiceService {
         if (call.method == 'onResult' && call.arguments is Map) {
           final data = Map<dynamic, dynamic>.from(call.arguments as Map);
           final words = data['text']?.toString() ?? '';
+          final alternatives = data['alternatives'] is List
+              ? (data['alternatives'] as List)
+                  .map((value) => value.toString().trim())
+                  .where((value) => value.isNotEmpty)
+                  .take(3)
+                  .toList(growable: false)
+              : <String>[];
           if (words.isNotEmpty) {
-            onResult?.call(words, data['isFinal'] == true);
+            onResult?.call(words, data['isFinal'] == true, alternatives);
           }
         } else if (call.method == 'onError' && call.arguments is Map) {
           final data = Map<dynamic, dynamic>.from(call.arguments as Map);
@@ -363,7 +387,7 @@ class VoiceService {
       if (_disposed || generation != _speechGeneration) return;
       _isSpeaking = true;
       try {
-        await _tts.speak(value);
+        await _tts.speak(value, focus: true);
       } catch (_) {
         onError?.call('Text-to-speech failed.');
       } finally {
@@ -413,7 +437,7 @@ class VoiceService {
       if (_disposed || generation != _speechGeneration) break;
       _isSpeaking = true;
       try {
-        await _tts.speak(chunk);
+        await _tts.speak(chunk, focus: true);
       } catch (error) {
         onError?.call('Text-to-speech failed.');
         break;
@@ -440,7 +464,7 @@ class VoiceService {
     try {
       await _setTtsLanguage(targetLocale);
       _isSpeaking = true;
-      await _tts.speak(text);
+      await _tts.speak(text, focus: true);
     } catch (_) {
       _isSpeaking = false;
       onError?.call('tts_unavailable');
