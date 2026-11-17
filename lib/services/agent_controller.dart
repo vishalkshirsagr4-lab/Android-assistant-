@@ -1455,7 +1455,7 @@ class AgentController extends ChangeNotifier {
     _cancelRequested = false;
     int step = 0;
     final isDeepTask = RegExp(
-      r'\\b(all|every|entire|inbox|all chats|all emails|all notifications|last \\d+)\\b',
+      r'\b(all|every|entire|inbox|all chats|all emails|all notifications|last \d+)\b',
       caseSensitive: false,
     ).hasMatch(userMessage);
     final stepLimit = isDeepTask ? 150 : _maxStepsPerCommand;
