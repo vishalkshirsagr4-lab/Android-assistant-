@@ -1701,7 +1701,10 @@ class AgentController extends ChangeNotifier {
       );
       final streamedSpeechCompletion = _voiceService.finishStreamingSpeech();
       aiStopwatch.stop();
-      _performanceMonitor.recordResponse(aiStopwatch.elapsed);
+      _performanceMonitor.recordResponse(
+        aiStopwatch.elapsed,
+        success: !agentResponse.isError && agentResponse.provider != 'none',
+      );
       LucyReliabilityLog.event(
         'agent_model_response',
         provider: agentResponse.provider,
@@ -1907,6 +1910,7 @@ class AgentController extends ChangeNotifier {
             await Future.delayed(const Duration(milliseconds: 100));
           }
           ttsStopwatch.stop();
+          _performanceMonitor.recordTiming('tts', ttsStopwatch.elapsed);
           LucyReliabilityLog.event(
             'agent_tts_timing',
             step: step,
@@ -1918,6 +1922,7 @@ class AgentController extends ChangeNotifier {
           // only a final answer waits for TTS completion.
           unawaited(speech.then((_) {
             ttsStopwatch.stop();
+            _performanceMonitor.recordTiming('tts', ttsStopwatch.elapsed);
             LucyReliabilityLog.event(
               'agent_tts_timing',
               step: step,
@@ -1926,6 +1931,11 @@ class AgentController extends ChangeNotifier {
             );
           }, onError: (_) {
             ttsStopwatch.stop();
+            _performanceMonitor.recordTiming(
+              'tts',
+              ttsStopwatch.elapsed,
+              success: false,
+            );
             LucyReliabilityLog.event(
               'agent_tts_timing',
               step: step,
