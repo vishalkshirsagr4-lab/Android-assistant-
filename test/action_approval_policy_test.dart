@@ -24,6 +24,7 @@ void main() {
         'scroll_to_top',
         'read_all',
         'open_each',
+        'batch',
       ]) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
             reason: action);
