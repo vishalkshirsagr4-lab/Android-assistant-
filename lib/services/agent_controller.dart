@@ -1993,7 +1993,7 @@ class AgentController extends ChangeNotifier {
       return false;
     }
     final signature = LucyLearningStore.stableSignature(packageName: packageName, elements: startingSnapshot.elements);
-    final skill = _learningStore.findSkill(command: command, packageName: packageName, startSignature: signature, appVersionCode: startingSnapshot.appVersionCode);
+    final skill = await _learningStore.findSkill(command: command, packageName: packageName, startSignature: signature, appVersionCode: startingSnapshot.appVersionCode);
     if (skill == null) return false;
     final skillId = skill['id']?.toString() ?? '';
     final rawActions = skill['actions'];
