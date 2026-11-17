@@ -113,7 +113,7 @@ void main() {
         },
       ],
     );
-    final found = store.findSkill(
+    final found = await store.findSkill(
       command: ' OPEN SETTINGS ',
       packageName: 'com.android.launcher',
       startSignature: 'home_signature',
@@ -122,7 +122,7 @@ void main() {
     expect(found, isNotNull);
     expect(found!['actions'], hasLength(2));
     expect(
-      store.findSkill(
+      await store.findSkill(
         command: 'Open settings',
         packageName: 'com.android.launcher',
         startSignature: 'different_screen',
@@ -148,7 +148,7 @@ void main() {
         <String, dynamic>{'type': 'type', 'parameter': 'query'},
       ],
     );
-    final match = store.findSkill(
+    final match = await store.findSkill(
       command: 'Search red pandas on Chrome',
       packageName: 'com.android.chrome',
       startSignature: 'chrome_home',
