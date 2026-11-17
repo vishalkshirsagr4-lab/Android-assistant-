@@ -365,6 +365,21 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                "configureScreenWatcher" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    val skipAds = call.argument<Boolean>("skipAds") ?: true
+                    val dismissPopups = call.argument<Boolean>("dismissPopups") ?: true
+                    val excludedPackages = call.argument<List<String>>("excludedPackages")?.toSet() ?: emptySet()
+                    val service = ScreenActionService.instance
+                    result.success(
+                        service?.configureScreenWatcher(
+                            enabled,
+                            skipAds,
+                            dismissPopups,
+                            excludedPackages
+                        ) ?: false
+                    )
+                }
                 "scrollScreen" -> {
                     val forward = call.argument<Boolean>("forward") ?: true
                     val maxScrolls = call.argument<Int>("maxScrolls") ?: 80
