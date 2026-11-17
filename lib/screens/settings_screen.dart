@@ -446,7 +446,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                               tooltip: 'Forget this memory',
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () async {
-                                await widget.controller.forgetUserMemory(memory.text);
+                                await widget.controller.forgetUserMemoryById(memory.id);
                                 refreshDialog(() {});
                               },
                             ),
