@@ -6,6 +6,8 @@ void main() {
     test('parses a plan and one risk-scored action', () {
       final response = AgentResponse.fromJson(
         <String, dynamic>{
+          'route': 'phone',
+          'needs_screen': false,
           'plan': <String>['Open the app', 'Verify the target screen'],
           'actions': <dynamic>[
             <String, dynamic>{
@@ -28,6 +30,81 @@ void main() {
       expect(response.actions, hasLength(1));
       expect(response.actions.single.type, 'open_app');
       expect(response.provider, 'gemini');
+    });
+
+    test('parses the Phase 1 route and goal/done_when schema', () {
+      final response = AgentResponse.fromJson(
+        <String, dynamic>{
+          'route': 'read',
+          'needs_screen': true,
+          'plan': <String, dynamic>{
+            'goal': 'Read the current article',
+            'done_when': 'All available article text has been collected',
+          },
+          'actions': <dynamic>[],
+          'speak': 'Here is the summary.',
+          'done': true,
+          'lang': 'en',
+          'confidence': 0.91,
+          'risk': 'low',
+          'collected': <String, dynamic>{'items': <String>['First point']},
+        },
+        '{}',
+        provider: 'groq',
+      );
+
+      expect(response.route, 'read');
+      expect(response.needsScreen, isTrue);
+      expect(response.goal, 'Read the current article');
+      expect(response.doneWhen, 'All available article text has been collected');
+      expect(response.confidence, 0.91);
+      expect(response.risk, 'low');
+      expect(response.collected['items'], <String>['First point']);
+    });
+
+    test('parses a model-directed memory action', () {
+      final response = AgentResponse.fromJson(
+        <String, dynamic>{
+          'route': 'phone',
+          'needs_screen': false,
+          'plan': <String, dynamic>{
+            'goal': 'Remember the requested preference',
+            'done_when': 'The preference is stored locally',
+          },
+          'actions': <dynamic>[
+            <String, dynamic>{
+              'type': 'remember',
+              'text': 'The user prefers short explanations',
+              'memory_type': 'preference',
+              'confidence': 0.99,
+              'risk': 'low',
+              'reason': 'The user explicitly asked to save this preference.',
+            },
+          ],
+          'speak': '',
+          'done': true,
+          'lang': 'en',
+        },
+        '{}',
+      );
+
+      expect(response.route, 'phone');
+      expect(response.actions.single.type, 'remember');
+    });
+
+    test('keeps event responses action-free', () {
+      final response = AgentResponse.fromJson(
+        <String, dynamic>{
+          'actions': <dynamic>[],
+          'speak': 'Memory saved.',
+          'done': true,
+          'lang': 'en',
+        },
+        '{}',
+      );
+
+      expect(response.actions, isEmpty);
+      expect(response.done, isTrue);
     });
 
     test('rejects actions without a plan', () {

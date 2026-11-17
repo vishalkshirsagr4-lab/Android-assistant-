@@ -171,84 +171,6 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(response.speak, lang: _currentLang);
   }
 
-  String _memoryReply(
-    String key, {
-    String value = '',
-    int count = 0,
-  }) {
-    switch (_currentLang) {
-      case 'ja':
-        return switch (key) {
-          'empty' => 'まだ保存された思い出はありません。「覚えておいて」と言えば保存できます。',
-          'show' => 'あなたが保存を頼んだ内容はこちらです。$value',
-          'cleared' => 'この端末に保存していたLucyのメモリーを消去しました。',
-          'nameForgot' => '呼び方の設定を忘れました。',
-          'noName' => '保存された呼び方はありません。',
-          'askForget' => '忘れてほしい内容を教えてください。',
-          'forgot' => '一致した$count件のメモリーを忘れました。',
-          'noMatch' => 'その内容に一致するメモリーは見つかりませんでした。',
-          'askRemember' => '覚えておく内容を教えてください。',
-          'saved' => '$valueとしてこの端末に保存しました。いつでも確認したり、削除したりできます。',
-          _ => 'メモリーを更新しました。',
-        };
-      case 'ar':
-        return switch (key) {
-          'empty' => 'لا توجد ذكريات محفوظة بعد. قل «تذكّر أن…» لحفظ شيء.',
-          'show' => 'هذه هي المعلومات التي طلبت مني حفظها: $value',
-          'cleared' => 'مسحت الذكريات التي حفظتها على هذا الجهاز.',
-          'nameForgot' => 'نسيت الاسم الذي طلبت مني استخدامه.',
-          'noName' => 'لا يوجد اسم مفضّل محفوظ.',
-          'askForget' => 'ما المعلومة التي تريد مني نسيانها؟',
-          'forgot' => 'نسيت $count من عناصر الذاكرة المطابقة.',
-          'noMatch' => 'لم أجد معلومة محفوظة تطابق ذلك.',
-          'askRemember' => 'ما الذي تريد مني تذكّره؟',
-          'saved' => 'حفظت ذلك على هذا الجهاز ضمن $value. يمكنك طلب عرضه أو حذفه في أي وقت.',
-          _ => 'تم تحديث الذاكرة.',
-        };
-      case 'hi':
-        return switch (key) {
-          'empty' => 'अभी कोई याद सेव नहीं है। कुछ सेव करवाने के लिए कहो, “याद रखना कि…”।',
-          'show' => 'तुमने जो बातें सेव करने को कहा था, वे ये हैं: $value',
-          'cleared' => 'मैंने इस डिवाइस पर सेव की गई यादें मिटा दी हैं।',
-          'nameForgot' => 'मैंने तुम्हारा पसंदीदा नाम भूल दिया है।',
-          'noName' => 'कोई पसंदीदा नाम सेव नहीं है।',
-          'askForget' => 'बताओ, कौन-सी सेव की हुई बात भूलनी है?',
-          'forgot' => 'मैंने मेल खाने वाली $count यादें हटा दी हैं।',
-          'noMatch' => 'उस बात से मेल खाती कोई सेव की हुई याद नहीं मिली।',
-          'askRemember' => 'बताओ, क्या याद रखना है?',
-          'saved' => 'मैंने इसे इस डिवाइस पर $value के रूप में सेव कर लिया है।',
-          _ => 'याद अपडेट कर दी है।',
-        };
-      case 'kn':
-        return switch (key) {
-          'empty' => 'ಇನ್ನೂ ಯಾವುದೇ ನೆನಪುಗಳನ್ನು ಉಳಿಸಿಲ್ಲ. “ಇದನ್ನು ನೆನಪಿಟ್ಟುಕೋ…” ಎಂದು ಹೇಳಬಹುದು.',
-          'show' => 'ನೀವು ಉಳಿಸಲು ಕೇಳಿದ ವಿಷಯಗಳು ಇವು: $value',
-          'cleared' => 'ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ್ದ ನೆನಪುಗಳನ್ನು ಅಳಿಸಿದ್ದೇನೆ.',
-          'nameForgot' => 'ನಿಮ್ಮ ಇಷ್ಟದ ಹೆಸರನ್ನು ಮರೆತಿದ್ದೇನೆ.',
-          'noName' => 'ಯಾವುದೇ ಇಷ್ಟದ ಹೆಸರು ಉಳಿಸಿಲ್ಲ.',
-          'askForget' => 'ಯಾವ ಉಳಿಸಿದ ವಿಷಯವನ್ನು ಮರೆಯಬೇಕು ಎಂದು ಹೇಳಿ.',
-          'forgot' => 'ಹೊಂದಿಕೆಯಾದ $count ನೆನಪುಗಳನ್ನು ಮರೆತಿದ್ದೇನೆ.',
-          'noMatch' => 'ಆ ವಿಷಯಕ್ಕೆ ಹೊಂದುವ ಉಳಿಸಿದ ನೆನಪು ಸಿಗಲಿಲ್ಲ.',
-          'askRemember' => 'ಏನು ನೆನಪಿಟ್ಟುಕೊಳ್ಳಬೇಕು ಎಂದು ಹೇಳಿ.',
-          'saved' => '$value ಎಂದು ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ್ದೇನೆ. ಬೇಕಾದಾಗ ನೋಡಬಹುದು ಅಥವಾ ಅಳಿಸಬಹುದು.',
-          _ => 'ನೆನಪನ್ನು ನವೀಕರಿಸಿದ್ದೇನೆ.',
-        };
-      default:
-        return switch (key) {
-          'empty' => 'I do not have any saved memories yet. Say “remember that…” when you want me to save something.',
-          'show' => 'Here is what I have saved because you asked me to remember it: $value',
-          'cleared' => 'I cleared the memories Lucy saved on this device.',
-          'nameForgot' => 'I forgot your saved preferred name.',
-          'noName' => 'I do not have a preferred name saved.',
-          'askForget' => 'Tell me the saved detail you want me to forget.',
-          'forgot' => 'I forgot $count matching saved memory items.',
-          'noMatch' => 'I could not find a saved memory matching that detail.',
-          'askRemember' => 'Tell me what you want me to remember.',
-          'saved' => 'Saved on this device as a $value. You can ask what I remember or tell me to forget it.',
-          _ => 'Memory updated.',
-        };
-    }
-  }
 
   bool _containsAny(String value, List<String> terms) =>
       terms.any(value.contains);
@@ -260,6 +182,9 @@ class AgentController extends ChangeNotifier {
     const recallCommands = {
       'what do you remember',
       'what do you remember about me',
+      'kya yaad hai',
+      'mere baare mein kya yaad hai',
+      'meri memories dikhao',
       'show my memories',
       'list memories',
       '何を覚えてる',
@@ -279,8 +204,8 @@ class AgentController extends ChangeNotifier {
       final summary = memorySummary;
       await _replyToMemoryCommand(
         summary.isEmpty
-            ? _memoryReply('empty')
-            : _memoryReply('show', value: summary),
+            ? 'No saved memories were found.'
+            : 'The user asked what is remembered. Summarize these saved details: $summary',
         event: 'memory_recalled',
       );
       return true;
@@ -289,6 +214,9 @@ class AgentController extends ChangeNotifier {
     const clearCommands = {
       'forget all memories',
       'forget everything',
+      'sab kuch bhool jao',
+      'sab yaadein bhool jao',
+      'meri saari memories clear karo',
       'clear my memories',
       'delete all memories',
       'すべて忘れて',
@@ -304,7 +232,7 @@ class AgentController extends ChangeNotifier {
     if (clearCommands.contains(lower)) {
       await clearUserMemories();
       await _replyToMemoryCommand(
-        _memoryReply('cleared'),
+        'The requested saved memories were successfully cleared.',
         event: 'memory_cleared',
       );
       return true;
@@ -326,7 +254,9 @@ class AgentController extends ChangeNotifier {
     if (forgetNameCommands.contains(lower)) {
       final removed = await forgetUserMemory('prefers to be addressed as');
       await _replyToMemoryCommand(
-        _memoryReply(removed > 0 ? 'nameForgot' : 'noName'),
+        removed > 0
+            ? 'The saved preferred-name detail was removed.'
+            : 'There was no saved preferred-name detail to remove.',
         event: 'memory_forgotten',
       );
       return true;
@@ -341,6 +271,7 @@ class AgentController extends ChangeNotifier {
     }
     if (preferredName == null) {
       final patterns = <RegExp>[
+        RegExp(r'^mujhe\s+(.+?)\s+bulao$'),
         RegExp(r'^私を(.+?)と呼んで$'),
         RegExp(r'^نادني\s+(.+)$'),
         RegExp(r'^मुझे\s+(.+?)\s+बुलाओ$'),
@@ -363,20 +294,12 @@ class AgentController extends ChangeNotifier {
           category: 'preference',
         );
         await _replyToMemoryCommand(
-          _currentLang == 'hi'
-              ? 'ठीक है, मैं तुम्हें $preferredName कहूँगा।'
-              : _currentLang == 'kn'
-              ? 'ಸರಿ, ಇನ್ನು ಮುಂದೆ ನಿಮ್ಮನ್ನು $preferredName ಎಂದು ಕರೆಯುತ್ತೇನೆ.'
-              : _currentLang == 'ja'
-              ? 'わかりました。これから$preferredNameと呼びます。'
-              : _currentLang == 'ar'
-              ? 'حسنًا، سأناديك $preferredName.'
-              : 'Okay. I will call you $preferredName.',
+          'Saved the user-approved preferred name.',
           event: 'memory_saved',
         );
       } else {
         await _replyToMemoryCommand(
-            _memoryReply('askRemember'),
+            'The user asked to remember something but did not provide the detail. Ask one short question.',
             event: 'clarification_needed',
           );
       }
@@ -386,6 +309,9 @@ class AgentController extends ChangeNotifier {
     const forgetPrefixes = [
       'forget that ',
       'forget ',
+      'bhool jao ',
+      'bhul jao ',
+      'भूल जाओ ',
       '忘れて ',
       'انسَ ',
       'भूल जाओ ',
@@ -396,13 +322,15 @@ class AgentController extends ChangeNotifier {
         final query = trimmed.substring(prefix.length).trim();
         if (query.isEmpty || query == 'this') {
           await _replyToMemoryCommand(
-            _memoryReply('askForget'),
+            'The user asked to forget something but did not identify it. Ask one short question.',
             event: 'clarification_needed',
           );
         } else {
           final removed = await forgetUserMemory(query);
           await _replyToMemoryCommand(
-            _memoryReply(removed > 0 ? 'forgot' : 'noMatch', count: removed),
+            removed > 0
+                ? 'Successfully removed $removed matching memory item(s).'
+                : 'No saved memory matched the requested detail.',
             event: 'memory_forgotten',
           );
         }
@@ -414,6 +342,11 @@ class AgentController extends ChangeNotifier {
       'remember that ',
       'remember: ',
       'lucy remember ',
+      'yaad rakhna ki ',
+      'yaad rakhna ',
+      'याद रखना कि ',
+      'ಯಾದಿಟ್ಟುಕೋ ',
+      'ನೆನಪಿಟ್ಟುಕೋ ',
       '覚えておいて ',
       'تذكر أن ',
       'याद रखना कि ',
@@ -423,7 +356,10 @@ class AgentController extends ChangeNotifier {
       if (lower.startsWith(prefix)) {
         final fact = trimmed.substring(prefix.length).trim();
         if (fact.isEmpty) {
-          await _replyToMemoryCommand(_memoryReply('askRemember'));
+          await _replyToMemoryCommand(
+            'The user asked to remember something but did not provide the detail. Ask one short question.',
+            event: 'clarification_needed',
+          );
           return true;
         }
         final factLower = fact.toLowerCase();
@@ -477,7 +413,21 @@ class AgentController extends ChangeNotifier {
                 '母',
                 'صديقي',
               ])
-            ? 'relationship'
+            ? 'person'
+            : _containsAny(factLower, [
+                'live in',
+                'my address',
+                'my city',
+                'my hometown',
+                'मेरा शहर',
+                'मेरा पता',
+                'ನನ್ನ ಊರು',
+                'ನನ್ನ ವಿಳಾಸ',
+                '住んでいる',
+                'عنواني',
+                'مدينتي',
+              ])
+            ? 'place'
             : _containsAny(factLower, [
                 'goal',
                 'want to become',
@@ -487,11 +437,11 @@ class AgentController extends ChangeNotifier {
                 '目標',
                 'هدفي',
               ])
-            ? 'goal'
+            ? 'fact'
             : 'fact';
         await rememberUserMemory(fact, category: category);
         await _replyToMemoryCommand(
-          _memoryReply('saved', value: category),
+          'Successfully saved one user-approved memory of type $category.',
           event: 'memory_saved',
         );
         return true;
@@ -852,8 +802,7 @@ class AgentController extends ChangeNotifier {
     await _voiceService.stopSpeaking();
     // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
     _setState(AgentState.idle);
-    _statusMessage = 'I can see your screen and help you interact with apps';
-    _addConversation('Agent stopped.', false);
+    _statusMessage = 'Stopped';
     notifyListeners();
   }
 
@@ -965,25 +914,15 @@ class AgentController extends ChangeNotifier {
       return;
     }
 
-    _updateTaskProgress('Got it · Planning your request');
-    final acknowledgement = switch (_currentLang) {
-      'hi' => 'समझ गया। मैं इस पर काम कर रहा हूँ।',
-      'kn' => 'ಸರಿ, ನಾನು ಇದನ್ನು ಮಾಡುತ್ತಿದ್ದೇನೆ.',
-      'ja' => 'わかりました。対応しています。',
-      'ar' => 'حسنًا، أنا أعمل على ذلك.',
-      _ => 'Got it. I’m working on that.',
-    };
-    _addConversation(acknowledgement, false);
-    // Speak the acknowledgement without delaying the AI request. If the final
-    // answer arrives first, VoiceService safely replaces this short acknowledgement.
-    unawaited(_voiceService.speak(acknowledgement, lang: _currentLang));
+    _updateTaskProgress('Planning your request');
     await _screenCapture.keepScreenAwake(true);
     try {
       await _runAgentLoop(text);
     } finally {
       await _screenCapture.keepScreenAwake(false);
     }
-    if (!_statusMessage.startsWith('AI unavailable')) {
+    if (!_statusMessage.startsWith('AI unavailable') &&
+        !_statusMessage.startsWith('Phone locked')) {
       _updateTaskProgress('Task finished · Listening again');
     }
 
@@ -1113,6 +1052,17 @@ class AgentController extends ChangeNotifier {
 
     LucyReliabilityLog.event('agent_task_started');
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
+      if (await _screenCapture.isDeviceLocked()) {
+        _statusMessage = 'Phone locked · Unlock to continue';
+        notifyListeners();
+        await _speakEvent(
+          'device_locked',
+          context: 'The phone is locked. Tell the user to unlock it before Lucy continues. Do not attempt to interact with the lock screen.',
+        );
+        _statusMessage = 'Phone locked · Unlock to continue';
+        notifyListeners();
+        break;
+      }
       step++;
 
       // 1. Capture screenshot (with retries for reliability after app switches)
@@ -1198,6 +1148,14 @@ class AgentController extends ChangeNotifier {
         );
         break;
       }
+
+      // Route is semantic model output, not an English keyword gate.
+      // It is surfaced in task progress and validated by the response parser.
+      _updateTaskProgress(switch (agentResponse.route) {
+        'read' => 'Reading and checking the requested content · Step $step',
+        'phone' => 'Handling your phone task · Step $step',
+        _ => 'Working on your request · Step $step',
+      });
 
       if (agentResponse.plan.isNotEmpty) {
         currentPlan = agentResponse.plan;
@@ -1345,16 +1303,15 @@ class AgentController extends ChangeNotifier {
     if (_cancelRequested) {
       _cancelRequested = false;
       LucyReliabilityLog.event('agent_task_stopped', step: step, success: false);
-      _addConversation('🛑 Stopped to avoid an unsafe or repeated action.', false);
+      _statusMessage = 'Task stopped';
+      notifyListeners();
       return;
     }
 
     if (step >= _maxStepsPerCommand) {
       LucyReliabilityLog.event('agent_step_limit_reached', step: step, success: false);
-      _addConversation(
-        '⚠️ Reached maximum steps ($_maxStepsPerCommand). Stopping.',
-        false,
-      );
+      _statusMessage = 'Task stopped at the $_maxStepsPerCommand-step safety limit';
+      notifyListeners();
     }
   }
 
@@ -1920,6 +1877,62 @@ class AgentController extends ChangeNotifier {
         case 'take_photo':
         case 'share_text':
           await _executeNativePhoneAction(action);
+          break;
+
+        case 'remember':
+          final memoryText = (action.params['text'] ??
+                  action.params['content'] ??
+                  action.params['memory'])
+              ?.toString()
+              .trim() ?? '';
+          final memoryType =
+              action.params['memory_type']?.toString() ??
+              action.params['category']?.toString() ??
+              'fact';
+          if (memoryText.isEmpty) {
+            _lastActionDispatchSucceeded = false;
+          } else {
+            await rememberUserMemory(memoryText, category: memoryType);
+            _lastActionDispatchSucceeded = true;
+            await _speakEvent(
+              'memory_saved',
+              context: 'A user-requested memory was saved locally.',
+            );
+          }
+          break;
+
+        case 'forget':
+          final query = action.params['query']?.toString().trim() ?? '';
+          if (query.isEmpty) {
+            _lastActionDispatchSucceeded = false;
+          } else if (const {'all', 'everything', 'all memories'}
+              .contains(query.toLowerCase())) {
+            await clearUserMemories();
+            _lastActionDispatchSucceeded = true;
+            await _speakEvent(
+              'memory_cleared',
+              context: 'The user explicitly requested that all saved memories be cleared.',
+            );
+          } else {
+            final removed = await forgetUserMemory(query);
+            _lastActionDispatchSucceeded = removed > 0;
+            await _speakEvent(
+              'memory_forgotten',
+              context: removed > 0
+                  ? 'The requested matching memory was removed.'
+                  : 'No saved memory matched the requested detail.',
+            );
+          }
+          break;
+
+        case 'recall_memories':
+          _lastActionDispatchSucceeded = true;
+          await _replyToMemoryCommand(
+            memorySummary.isEmpty
+                ? 'No saved memories were found.'
+                : 'Summarize these user-approved saved memories in the user’s language: $memorySummary',
+            event: 'memory_recalled',
+          );
           break;
 
         case 'wait':

@@ -32,7 +32,15 @@ class LucySettingsStore {
     askBeforeSending: true,
   };
 
+  /// These controls are intentionally non-disableable: they protect users
+  /// from unattended external actions and security-sensitive changes.
+  static const Set<String> mandatorySafetyControls = <String>{
+    safetyStop,
+    askBeforeSending,
+  };
+
   Future<bool> isEnabled(String key) async {
+    if (mandatorySafetyControls.contains(key)) return true;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(key) ?? defaults[key] ?? false;
   }
@@ -40,6 +48,9 @@ class LucySettingsStore {
   Future<void> setEnabled(String key, bool enabled) async {
     if (!defaults.containsKey(key)) {
       throw ArgumentError.value(key, 'key', 'Unknown Lucy capability');
+    }
+    if (mandatorySafetyControls.contains(key) && !enabled) {
+      throw StateError('This safety control cannot be disabled.');
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, enabled);
@@ -49,7 +60,9 @@ class LucySettingsStore {
     final prefs = await SharedPreferences.getInstance();
     return <String, bool>{
       for (final entry in defaults.entries)
-        entry.key: prefs.getBool(entry.key) ?? entry.value,
+        entry.key: mandatorySafetyControls.contains(entry.key)
+            ? true
+            : prefs.getBool(entry.key) ?? entry.value,
     };
   }
 }

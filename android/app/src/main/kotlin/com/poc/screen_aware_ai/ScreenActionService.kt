@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.PixelFormat
 import android.os.Bundle
+import android.os.PowerManager
 import android.app.KeyguardManager
 import android.util.Log
 import android.view.View
@@ -26,6 +27,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     private var keepAwakeView: View? = null
+    private var screenWakeLock: PowerManager.WakeLock? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -46,39 +48,78 @@ class ScreenActionService : AccessibilityService() {
     fun keepScreenAwake(enabled: Boolean): Boolean {
         val manager = getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
         if (!enabled) {
-            val existing = keepAwakeView ?: return true
-            return try {
-                manager.removeView(existing)
-                keepAwakeView = null
-                true
-            } catch (error: Exception) {
-                Log.w(TAG, "Could not release keep-awake overlay", error)
-                false
-            } finally {
-                keepAwakeView = null
+            var released = true
+            val existing = keepAwakeView
+            if (existing != null) {
+                try {
+                    manager.removeView(existing)
+                } catch (error: Exception) {
+                    Log.w(TAG, "Could not release keep-awake overlay", error)
+                    released = false
+                } finally {
+                    keepAwakeView = null
+                }
             }
+            val wakeLock = screenWakeLock
+            if (wakeLock != null) {
+                try {
+                    if (wakeLock.isHeld) wakeLock.release()
+                } catch (error: Exception) {
+                    Log.w(TAG, "Could not release screen wake lock", error)
+                    released = false
+                } finally {
+                    screenWakeLock = null
+                }
+            }
+            return released
         }
+
+        // Never wake or interact with a locked device. The user must unlock it.
         if (isDeviceLocked()) {
-            Log.i(TAG, "Not keeping the display awake while the device is locked")
+            Log.i(TAG, "Not waking or keeping the display awake while the device is locked")
             return false
         }
-        if (keepAwakeView != null) return true
+
         return try {
-            val view = View(this)
-            val params = WindowManager.LayoutParams(
-                1,
-                1,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                PixelFormat.TRANSLUCENT
-            )
-            manager.addView(view, params)
-            keepAwakeView = view
+            if (screenWakeLock?.isHeld != true) {
+                val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+                @Suppress("DEPRECATION")
+                val wakeLock = powerManager.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                        PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                        PowerManager.ON_AFTER_RELEASE,
+                    "$packageName:LucyTaskScreen"
+                )
+                wakeLock.setReferenceCounted(false)
+                // Hard ceiling: even a crashed Flutter task cannot hold this
+                // deprecated screen wake lock for longer than 15 minutes.
+                wakeLock.acquire(15 * 60 * 1000L)
+                screenWakeLock = wakeLock
+            }
+
+            if (keepAwakeView == null) {
+                val view = View(this)
+                val params = WindowManager.LayoutParams(
+                    1,
+                    1,
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    PixelFormat.TRANSLUCENT
+                )
+                manager.addView(view, params)
+                keepAwakeView = view
+            }
             true
         } catch (error: Exception) {
-            Log.w(TAG, "Could not add keep-awake accessibility overlay", error)
+            Log.w(TAG, "Could not acquire task-scoped screen wake lock/overlay", error)
+            // Roll back a partially acquired wake lock if overlay creation failed.
+            val wakeLock = screenWakeLock
+            if (wakeLock?.isHeld == true) {
+                try { wakeLock.release() } catch (_: Exception) { }
+            }
+            screenWakeLock = null
             false
         }
     }

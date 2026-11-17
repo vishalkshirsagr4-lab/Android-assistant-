@@ -45,6 +45,9 @@ class LucyActionApprovalPolicy {
     'set_volume',
     'set_brightness',
     'get_device_status',
+    'remember',
+    'forget',
+    'recall_memories',
   };
 
   /// Computes risk locally. A model may raise risk, but cannot lower it.

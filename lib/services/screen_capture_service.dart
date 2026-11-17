@@ -196,6 +196,22 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Read the actual keyguard state. Screen-off alone does not prove that
+  /// the phone is locked.
+  Future<bool> isDeviceLocked() async {
+    try {
+      return await _channel.invokeMethod<bool>('isDeviceLocked') ?? false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'device_lock_state_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      // Fail closed for screen automation if lock state cannot be verified.
+      return true;
+    }
+  }
+
   /// Keep the display awake during an explicitly started task.
   /// This does not wake or unlock a locked phone.
   Future<bool> keepScreenAwake(bool enabled) async {
