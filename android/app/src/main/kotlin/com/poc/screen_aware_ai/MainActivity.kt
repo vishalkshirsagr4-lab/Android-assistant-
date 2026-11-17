@@ -389,6 +389,7 @@ class MainActivity : FlutterActivity() {
                     val collect = call.argument<Boolean>("collect") ?: false
                     val service = ScreenActionService.instance
                     if (service != null) {
+                        service.beginScrollOperation()
                         Thread {
                             val payload = try {
                                 service.scrollScreen(forward, maxScrolls, collect)
