@@ -70,6 +70,7 @@ class LucyActionApprovalPolicy {
     'take_photo',
     'open_settings',
     'tap',
+    'batch',
   };
 
   /// Computes risk locally. Model-provided risk/confidence cannot turn a
