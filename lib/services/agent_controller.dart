@@ -1431,6 +1431,8 @@ class AgentController extends ChangeNotifier {
       final allowMemory = await _settingsStore.isEnabled(
         LucySettingsStore.memory,
       );
+      await _voiceService.beginStreamingSpeech(lang: _currentLang);
+      var streamedSpeech = false;
       final agentResponse = await _aiService.agentChat(
         requestWithClock,
         imageBytes: allowScreenSharing ? screenshotBytes : null,
@@ -1439,7 +1441,16 @@ class AgentController extends ChangeNotifier {
         memoryContext: allowMemory
             ? (_memoryStore?.relevantContext(userMessage) ?? '')
             : '',
+        onSpeakChunk: (sentence) {
+          streamedSpeech = true;
+          _voiceService.addStreamingSpeechText(sentence);
+        },
+        onSpeakReset: () {
+          streamedSpeech = false;
+          unawaited(_voiceService.cancelStreamingSpeech());
+        },
       );
+      final streamedSpeechCompletion = _voiceService.finishStreamingSpeech();
       aiStopwatch.stop();
       _performanceMonitor.recordResponse(aiStopwatch.elapsed);
       LucyReliabilityLog.event(
@@ -1599,10 +1610,12 @@ class AgentController extends ChangeNotifier {
         _updateTaskProgress('Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
-        final speech = _voiceService.speakProgressively(
-          ttsText,
-          lang: _currentLang,
-        );
+        final speech = streamedSpeech
+            ? streamedSpeechCompletion
+            : _voiceService.speakProgressively(
+                ttsText,
+                lang: _currentLang,
+              );
         if (agentResponse.done) {
           await speech;
           await Future.delayed(const Duration(milliseconds: 250));
