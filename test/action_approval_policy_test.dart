@@ -61,6 +61,29 @@ void main() {
       }
     });
 
+    test('requires approval for horizontal gestures in mail apps', () {
+      for (final package in [
+        'com.google.android.gm',
+        'com.microsoft.office.outlook',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval(
+            'swipe',
+            packageName: package,
+          ),
+          isTrue,
+          reason: package,
+        );
+      }
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'swipe',
+          packageName: 'com.example.reader',
+        ),
+        isFalse,
+      );
+    });
+
     test('requires approval for external communication actions', () {
       for (final action in ['place_call', 'send_sms', 'share_text']) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isTrue,
