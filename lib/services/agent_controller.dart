@@ -1074,13 +1074,12 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(reply, lang: _currentLang);
   }
 
-  String _autopilotDisabledReply() => switch (_currentLang) {
-        'hi' => 'ऑटोपायलट बंद है, इसलिए मैंने फोन में कोई बदलाव नहीं किया।',
-        'kn' => 'ಆಟೋಪೈಲಟ್ ಆಫ್ ಆಗಿದೆ; ಫೋನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಬದಲಾವಣೆ ಮಾಡಿಲ್ಲ.',
-        'ja' => '自動操作はオフです。端末には変更を加えていません。',
-        'ar' => 'التشغيل التلقائي متوقف، لذلك لم أغيّر أي شيء على الهاتف.',
-        _ => 'Autopilot is off, so I did not change anything on your phone.',
-      };
+  void _showAutopilotDisabledStatus() {
+    _statusMessage = 'Autopilot is off · no phone action was performed';
+    _addConversation(_statusMessage, false);
+    _setState(AgentState.idle);
+    notifyListeners();
+  }
 
   Future<bool> _runLocalPhoneAction(
     String action,
@@ -1088,7 +1087,7 @@ class AgentController extends ChangeNotifier {
     String successReply,
   ) async {
     if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
-      await _speakLocalReply(_autopilotDisabledReply());
+      _showAutopilotDisabledStatus();
       return true;
     }
     if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
@@ -1180,7 +1179,7 @@ class AgentController extends ChangeNotifier {
 
     if (asksFlashlight) {
       if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
-        await _speakLocalReply(_autopilotDisabledReply());
+        _showAutopilotDisabledStatus();
         return true;
       }
       if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
@@ -1228,7 +1227,7 @@ class AgentController extends ChangeNotifier {
     ).hasMatch(command);
     if (asksVolumeUp || asksVolumeDown || asksMute) {
       if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
-        await _speakLocalReply(_autopilotDisabledReply());
+        _showAutopilotDisabledStatus();
         return true;
       }
       if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
@@ -1294,7 +1293,7 @@ class AgentController extends ChangeNotifier {
     final packageName = requestedApp == null ? null : appPackages[requestedApp];
     if (packageName != null) {
       if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
-        await _speakLocalReply(_autopilotDisabledReply());
+        _showAutopilotDisabledStatus();
         return true;
       }
       if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
@@ -2606,7 +2605,7 @@ class AgentController extends ChangeNotifier {
       });
       _cancelRequested = true;
       _statusMessage = 'Autopilot is off · no phone action was performed';
-      _addConversation(_autopilotDisabledReply(), false);
+      _addConversation(_statusMessage, false);
       notifyListeners();
       return beforeSnapshot;
     }
