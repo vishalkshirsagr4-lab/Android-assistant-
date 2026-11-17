@@ -1234,7 +1234,8 @@ class AgentController extends ChangeNotifier {
     }
 
     final navigationMatch = RegExp(
-      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)
+      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
+    ).firstMatch(command);
     final destination = navigationMatch?.group(1)?.trim();
     if (destination != null && destination.isNotEmpty) {
       final reply = switch (_currentLang) {
@@ -1252,7 +1253,9 @@ class AgentController extends ChangeNotifier {
     }
 
     final urlMatch = RegExp(
-      r'^(?:open|visit)\s+((?:https?://)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?)
+      r'^(?:open|visit)\s+((?:https?://)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?)$',
+    ).firstMatch(command);
+    final requestedUrl = urlMatch?.group(1);
     if (requestedUrl != null) {
       final url = requestedUrl.startsWith('http')
           ? requestedUrl
@@ -1273,7 +1276,7 @@ class AgentController extends ChangeNotifier {
 
     final musicMatch = RegExp(
       r'^(?:play music|search song|find song|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
-    ).firstMatch(text.trim());
+    ).firstMatch(command);
     final musicQuery = musicMatch?.group(1)?.trim();
     if (musicQuery != null && musicQuery.isNotEmpty) {
       final reply = switch (_currentLang) {
@@ -1310,81 +1313,6 @@ class AgentController extends ChangeNotifier {
         )) return true;
       }
     }
-
-    final asksHome = RegExp(
-      r'^(go home|home screen|open home|मुख्य स्क्रीन|होम पर जाओ|ಮನೆ ಪರದೆ|ಹೋಮ್‌ಗೆ ಹೋಗು|ホームに戻って|اذهب إلى الشاشة الرئيسية)$',
-    ).hasMatch(command);
-    final asksBack = RegExp(
-      r'^(go back|back|press back|वापस जाओ|पीछे जाओ|ಹಿಂದೆ ಹೋಗು|戻って|ارجع)$',
-    ).hasMatch(command);
-    if (asksHome || asksBack) {
-      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation) ||
-          !await _screenCapture.isAccessibilityEnabled()) {
-        return false;
-      }
-      final success = asksHome
-          ? await _screenCapture.pressHome()
-          : await _screenCapture.pressBack();
-      if (success) {
-        final reply = switch (_currentLang) {
-          'hi' => asksHome ? 'होम स्क्रीन खोल दी।' : 'वापस चला गया।',
-          'kn' => asksHome ? 'ಹೋಮ್ ಸ್ಕ್ರೀನ್ ತೆರೆಯಿತು.' : 'ಹಿಂದೆ ಹೋದೆ.',
-          'ja' => asksHome ? 'ホーム画面を開きました。' : '戻りました。',
-          'ar' => asksHome ? 'فتحت الشاشة الرئيسية.' : 'رجعت خطوة للخلف.',
-          _ => asksHome ? 'Home screen opened.' : 'Went back.',
-        };
-        await _speakLocalReply(reply);
-      }
-      return true;
-    }
-
-    final asksScrollBottom = RegExp(
-      r'(scroll to (the )?(bottom|end)|go to (the )?(bottom|end)|नीचे तक स्क्रॉल|सबसे नीचे जाओ|ಕೆಳಗೆ ಸ್ಕ್ರೋಲ್|ಕೆಳಭಾಗಕ್ಕೆ ಹೋಗು|一番下までスクロール|مرر إلى الأسفل|اذهب إلى الأسفل)',
-    ).hasMatch(command);
-    final asksScrollTop = RegExp(
-      r'(scroll to (the )?top|go to (the )?top|ऊपर तक स्क्रॉल|सबसे ऊपर जाओ|ಮೇಲಕ್ಕೆ ಸ್ಕ್ರೋಲ್|ಮೇಲ್ಭಾಗಕ್ಕೆ ಹೋಗು|一番上までスクロール|مرر إلى الأعلى|اذهب إلى الأعلى)',
-    ).hasMatch(command);
-    if (asksScrollBottom || asksScrollTop) {
-      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation) ||
-          !await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing) ||
-          !await _screenCapture.isAccessibilityEnabled()) {
-        return false;
-      }
-      final result = await _screenCapture.scrollScreen(
-        forward: asksScrollBottom,
-        maxScrolls: 80,
-        collect: false,
-      );
-      if (result == null ||
-          result['locked'] == true ||
-          result['dispatchFailed'] == true) {
-        return false;
-      }
-      final reachedEnd = result['reachedEnd'] == true;
-      final limited = result['limited'] == true;
-      final reply = switch (_currentLang) {
-        'hi' => reachedEnd
-            ? (asksScrollBottom ? 'सूची के अंत तक पहुँच गया।' : 'सूची के शीर्ष तक पहुँच गया।')
-            : (limited ? 'स्क्रॉल सीमा तक पहुँचा; अंत की पुष्टि नहीं हुई।' : 'स्क्रॉल पूरा होने की पुष्टि नहीं कर सका।'),
-        'kn' => reachedEnd
-            ? (asksScrollBottom ? 'ಪಟ್ಟಿಯ ಕೊನೆಯವರೆಗೆ ತಲುಪಿದೆ.' : 'ಪಟ್ಟಿಯ ಮೇಲ್ಭಾಗಕ್ಕೆ ತಲುಪಿದೆ.')
-            : (limited ? 'ಸ್ಕ್ರೋಲ್ ಮಿತಿ ತಲುಪಿದೆ; ಅಂತ್ಯವನ್ನು ಖಚಿತಪಡಿಸಲಾಗಿಲ್ಲ.' : 'ಸ್ಕ್ರೋಲ್ ಅನ್ನು ಖಚಿತಪಡಿಸಲಾಗಲಿಲ್ಲ.'),
-        'ja' => reachedEnd
-            ? (asksScrollBottom ? 'リストの最後まで移動しました。' : 'リストの先頭まで移動しました。')
-            : (limited ? 'スクロール上限に達しました。最後かどうかは未確認です。' : 'スクロールを確認できませんでした。'),
-        'ar' => reachedEnd
-            ? (asksScrollBottom ? 'وصلت إلى نهاية القائمة.' : 'وصلت إلى أعلى القائمة.')
-            : (limited ? 'وصلت إلى حد التمرير، ولم يتم تأكيد النهاية.' : 'تعذر التحقق من التمرير.'),
-        _ => reachedEnd
-            ? (asksScrollBottom ? 'Reached the end of the list.' : 'Reached the top of the list.')
-            : (limited ? 'Reached the scroll limit; the boundary is not verified.' : 'I could not verify the scroll position.'),
-      };
-      await _speakLocalReply(reply);
-      return true;
-    }
-
-    return false;
-  }
 
   /// The core agent loop: capture → analyze → act → repeat.
   Future<void> _runAgentLoop(String userMessage) async {
