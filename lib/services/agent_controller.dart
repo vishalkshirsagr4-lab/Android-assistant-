@@ -1401,6 +1401,10 @@ class AgentController extends ChangeNotifier {
           final refreshed = await _fetchUiSnapshot();
           if (refreshed != null) {
             uiSnapshot = refreshed;
+            // The original tree was not sent to the model, so force a full
+            // refreshed tree rather than emitting a diff against unseen data.
+            _previousModelTreePackage = null;
+            _previousModelTreeElements = <int, String>{};
             uiTree = _buildUiTreePayload(refreshed, step);
           }
           LucyReliabilityLog.event(
