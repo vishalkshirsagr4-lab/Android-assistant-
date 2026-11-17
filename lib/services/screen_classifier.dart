@@ -43,7 +43,7 @@ class ScreenClassifier {
         }
       }
     }
-    final corpus = '$packageName \${labels.join(' ')}';
+    final corpus = '$packageName ${labels.join(' ')}';
     bool hasAny(List<String> terms) => terms.any(corpus.contains);
     List<String> matched(List<String> terms) => terms.where(corpus.contains).take(5).toList();
 
