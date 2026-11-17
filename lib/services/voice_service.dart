@@ -38,6 +38,7 @@ class VoiceService {
 
   bool _nativeHandlerInstalled = false;
   bool _isInitialized = false;
+  bool _isTtsInitialized = false;
   bool _isListening = false;
   bool _isPausedForProcessing = false;
   bool _isSpeaking = false;
@@ -87,39 +88,42 @@ class VoiceService {
       _volume = (prefs.getDouble(_volumeKey) ?? 1.0)
           .clamp(0.3, 1.0)
           .toDouble();
-
-      // Initialize recognition independently. A missing TTS voice pack must
-      // never prevent Hindi/Kannada speech recognition from starting.
       _isInitialized = await _speech.initialize(
         onError: (_) {},
         onStatus: (_) {},
       );
     } catch (_) {
       _isInitialized = false;
-      onError?.call('speech_recognition_unavailable');
-      return false;
     }
 
+    // TTS is independent of microphone/STT permission. Spoken setup guidance
+    // and error explanations must work even when recording permission is denied.
+    await _initializeTts();
+    return _isInitialized;
+  }
+
+  Future<bool> _initializeTts() async {
+    if (_disposed) return false;
+    if (_isTtsInitialized) return true;
     try {
       await _tts.awaitSpeakCompletion(true);
       await _setTtsLanguage('en-US');
       await _applyTtsSettings();
+      _tts.setStartHandler(() {
+        _isSpeaking = true;
+      });
+      _tts.setCompletionHandler(() {
+        _isSpeaking = false;
+      });
+      _tts.setCancelHandler(() {
+        _isSpeaking = false;
+      });
+      _isTtsInitialized = true;
+      return true;
     } catch (_) {
-      // TTS is optional. Recognition remains usable even if no voice engine or
-      // selected language pack is installed; speak() reports failure safely.
+      _isTtsInitialized = false;
+      return false;
     }
-
-    _tts.setStartHandler(() {
-      _isSpeaking = true;
-    });
-    _tts.setCompletionHandler(() {
-      _isSpeaking = false;
-    });
-    _tts.setCancelHandler(() {
-      _isSpeaking = false;
-    });
-
-    return _isInitialized;
   }
 
   Future<void> _setTtsLanguage(String targetLocale) async {
@@ -334,7 +338,7 @@ class VoiceService {
     if (_disposed) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
-    if (!_isInitialized && !await initialize()) return;
+    if (!await _initializeTts()) return;
     if (_isSpeaking) await stopSpeaking();
     final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     try {
@@ -388,7 +392,7 @@ class VoiceService {
     if (_disposed || text.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
-    if (!_isInitialized && !await initialize()) return;
+    if (!await _initializeTts()) return;
 
     if (_isListening && !_isPausedForProcessing) {
       await stopListening();
@@ -422,7 +426,7 @@ class VoiceService {
     if (_disposed || text.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
-    if (!_isInitialized && !await initialize()) return;
+    if (!await _initializeTts()) return;
 
     if (_isListening && !_isPausedForProcessing) {
       await stopListening();
@@ -458,6 +462,7 @@ class VoiceService {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _isTtsInitialized = false;
     _native.setMethodCallHandler(null);
     unawaited(_disposeNative());
     unawaited(_disposeSpeech());
