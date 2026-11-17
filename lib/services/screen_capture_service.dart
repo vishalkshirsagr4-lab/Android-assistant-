@@ -116,7 +116,7 @@ class ScreenCaptureManager {
         'scrollScreen',
         <String, dynamic>{
           'forward': forward,
-          'maxScrolls': maxScrolls.clamp(1, 120),
+          'maxScrolls': maxScrolls.clamp(1, 120).toInt(),
           'collect': collect,
         },
       );
