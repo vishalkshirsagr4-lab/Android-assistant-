@@ -9,6 +9,7 @@ class ReadingModePlanner {
     'article',
     'note',
     'event',
+    'event_calendar',
   };
 
   static bool isReadingRequest(String text) {
