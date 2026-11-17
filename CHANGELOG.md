@@ -23,6 +23,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-11-17
+
+### Added
+
+- 🛑 Executor-level Autopilot enforcement across local shortcuts, model actions, learned-skill replay and ScreenWatcher automation; turning Autopilot off stops an active task.
+- 🧭 Safer ScreenWatcher matching for separate text/content descriptions, localized popup choices and context-aware dialog close controls.
+- 🧠 User-controlled routine learning: the same safe workflow must succeed twice and be explicitly approved before replay; approval can be revoked. Individual skills and app layouts can also be forgotten by voice or in Settings.
+- 🗣️ Localized Hindi and Kannada first-run permission guidance, spoken setup explanations and clearer handling when Android speech-language packs are unavailable. TTS setup remains independent of microphone permission.
+- 📊 Bounded performance diagnostics for model/tree/screenshot/execution/TTS timings, p50/p95 latency, task counts, task duration and optional charge-counter deltas.
+- 🧪 Expanded regression tests for safety policy, localized watcher labels, approved skills, concurrent memory writes, Japanese retrieval, voice locales and performance metrics.
+- 📋 Physical-device regression checklist covering permissions, Stop, WhatsApp/Gmail deep reading, YouTube ad skip, multilingual voice, battery and release updates.
+
+### Changed
+
+- Ordinary tasks use a 50-step / 3-minute budget; explicit deep-list tasks can use up to 150 steps / 6 minutes.
+- Memory persistence writes are serialized; Japanese phrase retrieval uses overlapping Kana/Kanji bigrams.
+- Release documentation and README now describe the current five-language, safety, notification and learning behavior.
+
+### Fixed
+
+- Fixed a ScreenWatcher Kotlin compile failure caused by a stale deduplication variable after label extraction changed.
+- Fixed localized setup wizard constant-expression and recursive-translation-map errors found by CI.
+- Prevented unavailable speech-language packs from triggering endless recognizer retries.
+- Prevented TTS language setup failures from escaping the speech error boundary or disabling otherwise working STT.
+- Added task exception containment and best-effort release of wake locks, screen operations and voice resources on Stop.
+
+### Validation notes
+
+- CI validation is required on the final release-candidate commit. A passing CI run does not replace the physical-device checklist in [docs/DEVICE_REGRESSION.md](docs/DEVICE_REGRESSION.md).
+- Battery charge-counter data and Hindi/Kannada voice availability depend on the Android device and installed services.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added
@@ -90,6 +121,7 @@ from GitHub, everything below is new to you.
 
 ---
 
-[Unreleased]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/tag/v0.3.0
 [0.2.0]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alzin/lucy-screen-agent/releases/tag/v0.1.0
