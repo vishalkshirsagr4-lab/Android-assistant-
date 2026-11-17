@@ -145,6 +145,22 @@ void main() {
     expect(store.relevantContext('हिंदी उदाहरण'), contains('हिंदी में'));
   });
 
+
+  test('preserves all supported structured memory types', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    for (final type in ['fact', 'preference', 'routine', 'person', 'place']) {
+      await store.remember('Approved $type detail', type: type);
+    }
+
+    expect(
+      store.items.map((item) => item.type).toSet(),
+      {'fact', 'preference', 'routine', 'person', 'place'},
+    );
+  });
+
   test('does not store blank or oversized memory values', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = LucyMemoryStore(prefs);
