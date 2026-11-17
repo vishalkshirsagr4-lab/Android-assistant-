@@ -486,14 +486,6 @@ class AgentController extends ChangeNotifier {
     'hi': 'क्या आपको और किसी मदद की ज़रूरत है?',
     'kn': 'ನಿಮಗೆ ಇನ್ನೇನಾದರೂ ಸಹಾಯ ಬೇಕೇ?',
   };
-  static const Map<String, String> _stoppingMessages = {
-    'en': 'Alright, stopping the agent.',
-    'ja': 'わかりました。エージェントを停止します。',
-    'ar': 'حسنًا، سأوقف المساعد الآن.',
-    'hi': 'ठीक है, मैं Lucy को रोक रहा हूँ।',
-    'kn': 'ಸರಿ, Lucy ಅನ್ನು ನಿಲ್ಲಿಸುತ್ತಿದ್ದೇನೆ.',
-  };
-
   // Patterns that mean "no, I'm done" when replying to the follow-up prompt.
   static final RegExp _negativeEn = RegExp(
     r'^(no|nope|nah|stop|exit|nothing|not\b.*)$',
@@ -842,6 +834,7 @@ class AgentController extends ChangeNotifier {
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
     _cancelRequested = false;
+    await _screenCapture.keepScreenAwake(false);
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
     // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
@@ -972,17 +965,7 @@ class AgentController extends ChangeNotifier {
           _negativeHiKn.hasMatch(trimmed) ||
           _negativeAr.hasMatch(trimmed);
       if (isNegative) {
-        _setState(AgentState.speaking);
-        final stopMsg =
-            _stoppingMessages[_currentLang] ?? _stoppingMessages['en']!;
-        _addConversation(stopMsg, false);
-        await _voiceService.speak(stopMsg, lang: _currentLang);
-
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking) {
-          await Future.delayed(const Duration(milliseconds: 200));
-        }
-
+        // Stop immediately and silently; do not delay shutdown for a canned phrase.
         await stopAgent();
         return;
       }
@@ -1000,7 +983,12 @@ class AgentController extends ChangeNotifier {
     // Speak the acknowledgement without delaying the AI request. If the final
     // answer arrives first, VoiceService safely replaces this short acknowledgement.
     unawaited(_voiceService.speak(acknowledgement, lang: _currentLang));
-    await _runAgentLoop(text);
+    await _screenCapture.keepScreenAwake(true);
+    try {
+      await _runAgentLoop(text);
+    } finally {
+      await _screenCapture.keepScreenAwake(false);
+    }
     _updateTaskProgress('Task finished · Listening again');
 
     // Continuous mode resumes; push-to-talk closes after one completed turn.
@@ -1204,6 +1192,16 @@ class AgentController extends ChangeNotifier {
       );
 
       if (_cancelRequested) break;
+      if (agentResponse.isError) {
+        _updateTaskProgress('AI unavailable · Check your provider or connection');
+        LucyReliabilityLog.event(
+          'agent_provider_unavailable',
+          provider: agentResponse.provider,
+          step: step,
+          success: false,
+        );
+        break;
+      }
 
       if (agentResponse.plan.isNotEmpty) {
         currentPlan = agentResponse.plan;
@@ -1294,17 +1292,7 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
 
-      if (agentResponse.done && actionVerified) {
-        if (speakText.isNotEmpty &&
-            !speakText.endsWith(' ') &&
-            !speakText.endsWith('\n')) {
-          speakText += ' ';
-        }
-        speakText += _followUps[_currentLang] ?? _followUps['en']!;
-        _isAskingForFurtherHelp = true;
-      } else {
-        _isAskingForFurtherHelp = false;
-      }
+      _isAskingForFurtherHelp = false;
 
       if (!actionVerified && agentResponse.done) {
         speakText = 'I could not confirm that the requested step worked. I will not claim it is complete.';
@@ -1770,7 +1758,7 @@ class AgentController extends ChangeNotifier {
       _cancelRequested = true;
       return beforeSnapshot;
     }
-    final requiredRisk = LucyActionApprovalPolicy.effectiveRisk(
+    final baseRisk = LucyActionApprovalPolicy.effectiveRisk(
       action.type,
       targetLabel: targetLabel,
       packageName: beforeSnapshot?.packageName,
@@ -1778,6 +1766,12 @@ class AgentController extends ChangeNotifier {
       confidence: modelConfidence,
       sensitiveInput: sensitiveInput,
     );
+    final autopilotEnabled =
+        await _settingsStore.isEnabled(LucySettingsStore.autopilot);
+    // Turning Autopilot off asks before even low-risk screen actions.
+    final requiredRisk = !autopilotEnabled && baseRisk == 'low'
+        ? 'medium'
+        : baseRisk;
     if (requiredRisk != 'low') {
       final approved = await _requestVoiceApproval(
         action,
