@@ -1,0 +1,14 @@
+{
+  "app": "Files",
+  "strategy": [
+    "Use folder and file labels to understand current location.",
+    "Do not move, overwrite or delete files in automatic learned skills.",
+    "Respect Android storage access boundaries."
+  ],
+  "targets": [
+    "Search",
+    "Downloads",
+    "Recent",
+    "Back"
+  ]
+}
