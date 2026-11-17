@@ -1732,7 +1732,7 @@ class AgentController extends ChangeNotifier {
     _lastToolResult = null;
     const accessibilityActions = {
       'open_app', 'tap', 'type', 'swipe', 'back', 'home',
-      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
     };
     const directPhoneActions = {
       'set_alarm', 'set_timer', 'place_call', 'send_sms', 'open_url',
@@ -1754,7 +1754,7 @@ class AgentController extends ChangeNotifier {
     }
     if (const {
       'tap', 'type', 'swipe', 'back', 'home',
-      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
     }.contains(action.type) &&
         !await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing)) {
       _lastActionDispatchSucceeded = false;
@@ -1964,6 +1964,12 @@ class AgentController extends ChangeNotifier {
           _lastActionDispatchSucceeded = result['error'] == null;
           break;
 
+        case 'batch':
+          final result = await _executeBatchAction(action, beforeSnapshot);
+          _lastToolResult = jsonEncode(result);
+          _lastActionDispatchSucceeded = result['success'] == true;
+          break;
+
         case 'schedule_reminder':
           final title = action.params['title']?.toString().trim() ?? '';
           final body = action.params['body']?.toString().trim() ?? title;
@@ -2097,11 +2103,107 @@ class AgentController extends ChangeNotifier {
     }
 
     if (const {
-      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
     }.contains(action.type)) {
       return _fetchUiSnapshot();
     }
     return _waitForActionReadiness(action, beforeSnapshot);
+  }
+
+  Future<Map<String, dynamic>> _executeBatchAction(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
+    final rawActions = action.params['actions'];
+    if (rawActions is! List || rawActions.isEmpty || rawActions.length > 5) {
+      return <String, dynamic>{
+        'success': false,
+        'error': 'invalid_batch_size',
+        'completed': 0,
+      };
+    }
+
+    const allowed = {'tap', 'type', 'swipe', 'back', 'wait'};
+    final nativeActions = <Map<String, dynamic>>[];
+    for (final raw in rawActions) {
+      if (raw is! Map) {
+        return <String, dynamic>{
+          'success': false,
+          'error': 'invalid_batch_action',
+          'completed': nativeActions.length,
+        };
+      }
+      final item = Map<String, dynamic>.from(raw);
+      final type = item['type']?.toString() ?? '';
+      if (!allowed.contains(type)) {
+        return <String, dynamic>{
+          'success': false,
+          'error': 'unsupported_batch_action',
+          'completed': nativeActions.length,
+        };
+      }
+
+      String? targetLabel;
+      var sensitiveInput = false;
+      if (type == 'tap') {
+        final elementId = (item['element'] as num?)?.toInt();
+        final element = elementId == null || beforeSnapshot == null
+            ? null
+            : _findElementById(elementId, beforeSnapshot.elements);
+        if (element == null) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_target_not_found',
+            'completed': nativeActions.length,
+          };
+        }
+        targetLabel = [
+          element['text']?.toString() ?? '',
+          element['desc']?.toString() ?? '',
+        ].where((value) => value.isNotEmpty).join(' ').trim();
+      } else if (type == 'type' && beforeSnapshot != null) {
+        final focused = beforeSnapshot.elements.cast<Map<String, dynamic>?>().firstWhere(
+          (element) => element != null &&
+              element['focused'] == true &&
+              element['editable'] == true,
+          orElse: () => null,
+        );
+        sensitiveInput = focused?['password'] == true;
+      }
+
+      final risk = LucyActionApprovalPolicy.effectiveRisk(
+        type,
+        targetLabel: targetLabel,
+        packageName: beforeSnapshot?.packageName,
+        sensitiveInput: sensitiveInput,
+      );
+      if (risk != 'low') {
+        final approved = await _requestVoiceApproval(
+          AgentAction(type: type, params: item),
+          targetLabel,
+          requiredRisk: risk,
+          sensitiveInput: sensitiveInput,
+        );
+        if (!approved) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'approval_denied',
+            'completed': nativeActions.length,
+          };
+        }
+      }
+      nativeActions.add(item);
+    }
+
+    final result = await _screenCapture.performBatch(nativeActions);
+    if (result == null) {
+      return <String, dynamic>{
+        'success': false,
+        'error': 'native_batch_unavailable',
+        'completed': 0,
+      };
+    }
+    return result;
   }
 
   Future<Map<String, dynamic>> _executeOpenEach(
