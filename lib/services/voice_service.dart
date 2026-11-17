@@ -61,6 +61,17 @@ class VoiceService {
   static String? sttLocaleFor(String? lang) =>
       _langToSttLocale[lang?.toLowerCase()];
 
+  static String? ttsLocaleFor(String? lang) =>
+      _langToTtsLocale[lang?.toLowerCase()];
+
+  static const Map<String, String> languageNames = <String, String>{
+    'en': 'English',
+    'hi': 'हिन्दी',
+    'kn': 'ಕನ್ನಡ',
+    'ja': '日本語',
+    'ar': 'العربية',
+  };
+
   Future<bool> initialize() async {
     if (_isInitialized) return true;
     if (_disposed) return false;
@@ -175,9 +186,15 @@ class VoiceService {
           }
         } else if (call.method == 'onError' && call.arguments is Map) {
           final data = Map<dynamic, dynamic>.from(call.arguments as Map);
-          onError?.call(
-            data['message']?.toString() ?? 'Speech recognition error',
-          );
+          final message = data['message']?.toString() ?? '';
+          if (message.startsWith('LANGUAGE_UNAVAILABLE:')) {
+            onError?.call('language_unavailable');
+          } else if (message == 'MICROPHONE_PERMISSION_REQUIRED') {
+            onError?.call('microphone_permission_required');
+          } else {
+            // Do not expose platform exception text to spoken replies or UI.
+            onError?.call('speech_recognition_unavailable');
+          }
         } else if (call.method == 'onStopped') {
           final data = call.arguments is Map
               ? Map<dynamic, dynamic>.from(call.arguments as Map)
@@ -293,7 +310,7 @@ class VoiceService {
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
     if (!_isInitialized && !await initialize()) return;
     if (_isSpeaking) await stopSpeaking();
-    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
+    final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
       await _tts.setLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
