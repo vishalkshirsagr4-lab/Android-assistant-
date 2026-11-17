@@ -11,6 +11,9 @@ void main() {
     expect(prompt, contains('MEMORY AND PRIVACY'));
     expect(prompt, contains('RESPONSE FORMAT'));
     expect(prompt, contains('LANGUAGE RULES'));
+    expect(prompt, contains('MULTI-STEP TASK COMPLETION'));
+    expect(prompt, contains('Completion requires the done_when condition'));
+    expect(prompt, contains('wait for explicit approval of that exact batch'));
     expect(prompt, isNot(contains(r'\n')));
   });
 }
