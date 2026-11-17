@@ -143,10 +143,12 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> _replyToMemoryCommand(
-    String context, {
+    String _, {
     String event = 'memory_update',
   }) async {
-    await _speakEvent(event, context: context);
+    // The localized legacy phrase is intentionally not spoken. The event
+    // protocol lets the selected model phrase the result naturally.
+    await _speakEvent(event);
   }
 
   /// Ask the configured model to phrase a short, localized status event.
@@ -386,9 +388,11 @@ class AgentController extends ChangeNotifier {
     const forgetPrefixes = [
       'forget that ',
       'forget ',
+      'bhool jao ',
+      'bhul jao ',
+      'भूल जाओ ',
       '忘れて ',
       'انسَ ',
-      'भूल जाओ ',
       'ಮರೆತುಬಿಡು ',
     ];
     for (final prefix in forgetPrefixes) {
@@ -414,10 +418,13 @@ class AgentController extends ChangeNotifier {
       'remember that ',
       'remember: ',
       'lucy remember ',
+      'yaad rakhna ',
+      'yaad rakhna ki ',
+      'याद रखना कि ',
+      'ಯಾದಿಟ್ಟುಕೋ ',
+      'ನೆನಪಿಟ್ಟುಕೋ ',
       '覚えておいて ',
       'تذكر أن ',
-      'याद रखना कि ',
-      'ನೆನಪಿಟ್ಟುಕೋ ',
     ];
     for (final prefix in rememberPrefixes) {
       if (lower.startsWith(prefix)) {
@@ -477,7 +484,21 @@ class AgentController extends ChangeNotifier {
                 '母',
                 'صديقي',
               ])
-            ? 'relationship'
+            ? 'person'
+            : _containsAny(factLower, [
+                'live in',
+                'my address',
+                'my city',
+                'my hometown',
+                'मेरा शहर',
+                'मेरा पता',
+                'ನನ್ನ ಊರು',
+                'ನನ್ನ ವಿಳಾಸ',
+                '住んでいる',
+                'عنواني',
+                'مدينتي',
+              ])
+            ? 'place'
             : _containsAny(factLower, [
                 'goal',
                 'want to become',
@@ -487,7 +508,7 @@ class AgentController extends ChangeNotifier {
                 '目標',
                 'هدفي',
               ])
-            ? 'goal'
+            ? 'fact'
             : 'fact';
         await rememberUserMemory(fact, category: category);
         await _replyToMemoryCommand(
@@ -852,8 +873,8 @@ class AgentController extends ChangeNotifier {
     await _voiceService.stopSpeaking();
     // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
     _setState(AgentState.idle);
-    _statusMessage = 'I can see your screen and help you interact with apps';
-    _addConversation('Agent stopped.', false);
+    _statusMessage = 'Stopped';
+    // Stop is immediate and silent; never delay shutdown for a network call.
     notifyListeners();
   }
 
@@ -965,18 +986,7 @@ class AgentController extends ChangeNotifier {
       return;
     }
 
-    _updateTaskProgress('Got it · Planning your request');
-    final acknowledgement = switch (_currentLang) {
-      'hi' => 'समझ गया। मैं इस पर काम कर रहा हूँ।',
-      'kn' => 'ಸರಿ, ನಾನು ಇದನ್ನು ಮಾಡುತ್ತಿದ್ದೇನೆ.',
-      'ja' => 'わかりました。対応しています。',
-      'ar' => 'حسنًا، أنا أعمل على ذلك.',
-      _ => 'Got it. I’m working on that.',
-    };
-    _addConversation(acknowledgement, false);
-    // Speak the acknowledgement without delaying the AI request. If the final
-    // answer arrives first, VoiceService safely replaces this short acknowledgement.
-    unawaited(_voiceService.speak(acknowledgement, lang: _currentLang));
+    _updateTaskProgress('Planning your request');
     await _screenCapture.keepScreenAwake(true);
     try {
       await _runAgentLoop(text);
@@ -1345,16 +1355,15 @@ class AgentController extends ChangeNotifier {
     if (_cancelRequested) {
       _cancelRequested = false;
       LucyReliabilityLog.event('agent_task_stopped', step: step, success: false);
-      _addConversation('🛑 Stopped to avoid an unsafe or repeated action.', false);
+      _statusMessage = 'Task stopped';
+      notifyListeners();
       return;
     }
 
     if (step >= _maxStepsPerCommand) {
       LucyReliabilityLog.event('agent_step_limit_reached', step: step, success: false);
-      _addConversation(
-        '⚠️ Reached maximum steps ($_maxStepsPerCommand). Stopping.',
-        false,
-      );
+      _statusMessage = 'Task stopped at the $_maxStepsPerCommand-step safety limit';
+      notifyListeners();
     }
   }
 
