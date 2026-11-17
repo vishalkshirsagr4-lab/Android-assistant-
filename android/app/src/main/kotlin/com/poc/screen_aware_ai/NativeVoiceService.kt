@@ -151,17 +151,29 @@ class NativeVoiceService : Service() {
                     }
                     override fun onError(error: Int) {
                         if (stopped || pausedForProcessing) return
-                        if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                            emitError("Microphone permission is missing.")
-                            stopSelf()
-                        } else {
-                            // SpeechRecognizer commonly ends an utterance with
-                            // ERROR_SPEECH_TIMEOUT. This is recoverable: retry
-                            // inside the foreground service only. Do not also
-                            // ask Flutter to restart, which caused competing
-                            // recognizers and repeated listening-timeout loops.
-                            Log.w(TAG, "Recoverable speech interruption (code $error); reconnecting")
-                            scheduleRestart(retryMs)
+                        when (error) {
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                                emitError("MICROPHONE_PERMISSION_REQUIRED")
+                                stopped = true
+                                stopSelf()
+                            }
+                            SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
+                            SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> {
+                                // A missing Hindi/Kannada pack must not cause an
+                                // endless exponential reconnect loop.
+                                emitError("LANGUAGE_UNAVAILABLE:$localeId")
+                                stopped = true
+                                stopSelf()
+                            }
+                            else -> {
+                                // SpeechRecognizer commonly ends an utterance with
+                                // ERROR_SPEECH_TIMEOUT. This is recoverable: retry
+                                // inside the foreground service only. Do not also
+                                // ask Flutter to restart, which caused competing
+                                // recognizers and repeated listening-timeout loops.
+                                Log.w(TAG, "Recoverable speech interruption (code $error); reconnecting")
+                                scheduleRestart(retryMs)
+                            }
                         }
                     }
                 })

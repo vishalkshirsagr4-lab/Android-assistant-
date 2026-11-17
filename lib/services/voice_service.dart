@@ -38,6 +38,7 @@ class VoiceService {
 
   bool _nativeHandlerInstalled = false;
   bool _isInitialized = false;
+  bool _isTtsInitialized = false;
   bool _isListening = false;
   bool _isPausedForProcessing = false;
   bool _isSpeaking = false;
@@ -61,6 +62,17 @@ class VoiceService {
   static String? sttLocaleFor(String? lang) =>
       _langToSttLocale[lang?.toLowerCase()];
 
+  static String? ttsLocaleFor(String? lang) =>
+      _langToTtsLocale[lang?.toLowerCase()];
+
+  static const Map<String, String> languageNames = <String, String>{
+    'en': 'English',
+    'hi': 'हिन्दी',
+    'kn': 'ಕನ್ನಡ',
+    'ja': '日本語',
+    'ar': 'العربية',
+  };
+
   Future<bool> initialize() async {
     if (_isInitialized) return true;
     if (_disposed) return false;
@@ -76,18 +88,28 @@ class VoiceService {
       _volume = (prefs.getDouble(_volumeKey) ?? 1.0)
           .clamp(0.3, 1.0)
           .toDouble();
-
-      // speech_to_text requests RECORD_AUDIO while Lucy is visible. The native
-      // service owns the actual recognizer so there is only one microphone.
       _isInitialized = await _speech.initialize(
         onError: (_) {},
         onStatus: (_) {},
       );
+    } catch (_) {
+      _isInitialized = false;
+    }
 
+    // TTS is independent of microphone/STT permission. Spoken setup guidance
+    // and error explanations must work even when recording permission is denied.
+    await _initializeTts();
+    return _isInitialized;
+  }
+
+  Future<bool> _initializeTts() async {
+    if (_disposed) return false;
+    if (_isTtsInitialized) return true;
+    try {
       await _tts.awaitSpeakCompletion(true);
-      await _tts.setLanguage(_currentTtsLanguage);
+      // Defer locale selection until the caller supplies the user's language.
+      // Requiring en-US here would disable an installed Hindi/Kannada voice.
       await _applyTtsSettings();
-
       _tts.setStartHandler(() {
         _isSpeaking = true;
       });
@@ -97,11 +119,29 @@ class VoiceService {
       _tts.setCancelHandler(() {
         _isSpeaking = false;
       });
-
-      return _isInitialized;
-    } catch (error) {
-      onError?.call('Failed to initialize voice: $error');
+      _isTtsInitialized = true;
+      return true;
+    } catch (_) {
+      _isTtsInitialized = false;
       return false;
+    }
+  }
+
+  Future<void> _setTtsLanguage(String targetLocale) async {
+    if (targetLocale == _currentTtsLanguage) return;
+    try {
+      final result = await _tts.setLanguage(targetLocale);
+      if (result is num && result < 0) {
+        throw StateError('Selected TTS language is unavailable');
+      }
+      _currentTtsLanguage = targetLocale;
+    } catch (_) {
+      if (targetLocale == 'en-US') rethrow;
+      final fallback = await _tts.setLanguage('en-US');
+      if (fallback is num && fallback < 0) {
+        throw StateError('No supported TTS language is installed');
+      }
+      _currentTtsLanguage = 'en-US';
     }
   }
 
@@ -130,7 +170,7 @@ class VoiceService {
       _volume = volume.clamp(0.3, 1.0).toDouble();
     }
 
-    if (_isInitialized) {
+    if (await _initializeTts()) {
       await _applyTtsSettings();
     }
 
@@ -175,9 +215,15 @@ class VoiceService {
           }
         } else if (call.method == 'onError' && call.arguments is Map) {
           final data = Map<dynamic, dynamic>.from(call.arguments as Map);
-          onError?.call(
-            data['message']?.toString() ?? 'Speech recognition error',
-          );
+          final message = data['message']?.toString() ?? '';
+          if (message.startsWith('LANGUAGE_UNAVAILABLE:')) {
+            onError?.call('language_unavailable');
+          } else if (message == 'MICROPHONE_PERMISSION_REQUIRED') {
+            onError?.call('microphone_permission_required');
+          } else {
+            // Do not expose platform exception text to spoken replies or UI.
+            onError?.call('speech_recognition_unavailable');
+          }
         } else if (call.method == 'onStopped') {
           final data = call.arguments is Map
               ? Map<dynamic, dynamic>.from(call.arguments as Map)
@@ -291,11 +337,11 @@ class VoiceService {
     if (_disposed) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
-    if (!_isInitialized && !await initialize()) return;
+    if (!await _initializeTts()) return;
     if (_isSpeaking) await stopSpeaking();
-    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
+    final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
-      await _tts.setLanguage(targetLocale);
+      await _setTtsLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
     }
     _streamingSpeechGeneration = ++_speechGeneration;
@@ -343,7 +389,7 @@ class VoiceService {
     if (_disposed || text.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
-    if (!_isInitialized && !await initialize()) return;
+    if (!await _initializeTts()) return;
 
     if (_isListening && !_isPausedForProcessing) {
       await stopListening();
@@ -353,7 +399,7 @@ class VoiceService {
     final generation = ++_speechGeneration;
     final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
-      await _tts.setLanguage(targetLocale);
+      await _setTtsLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
     }
 
@@ -375,7 +421,7 @@ class VoiceService {
     if (_disposed || text.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
-    if (!_isInitialized && !await initialize()) return;
+    if (!await _initializeTts()) return;
 
     if (_isListening && !_isPausedForProcessing) {
       await stopListening();
@@ -386,7 +432,7 @@ class VoiceService {
 
     final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
-      await _tts.setLanguage(targetLocale);
+      await _setTtsLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
     }
 
@@ -415,6 +461,7 @@ class VoiceService {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _isTtsInitialized = false;
     _native.setMethodCallHandler(null);
     unawaited(_disposeNative());
     unawaited(_disposeSpeech());

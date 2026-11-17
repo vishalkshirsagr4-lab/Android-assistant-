@@ -108,7 +108,7 @@ That turned out to be one case out of several. The common thread is *your hands 
 | 🗣️ **Voice-driven** | Speech-to-text in, text-to-speech out. No typing required. |
 | 👁️ **Screen-aware** | Combines a JPEG screenshot with a structured accessibility tree, so the model sees *and* reads the screen. |
 | 🎯 **No hallucinated taps** | The model taps elements **by ID**, never by guessed coordinates. Real pixel bounds are resolved on the Dart side from the accessibility tree. |
-| 🌍 **Trilingual** | English 🇬🇧, Japanese 🇯🇵 and Arabic 🇸🇦 — with language detection and matching TTS/STT locales. |
+| 🌍 **Five languages** | English, Hindi, Kannada, Japanese and Arabic, with matching Android STT/TTS locale requests and language-aware replies. Actual recognition/voice availability depends on installed Android language packs. |
 | 🔄 **Agentic loop** | Observe → decide → act → re-observe, up to 50 steps per command. |
 | 🛑 **Always interruptible** | A persistent "Stop Lucy" notification cancels the agent instantly, even while she's inside another app. |
 | 🎨 **Live transcript** | Every screenshot, action and reply is shown in a scrollable conversation view. |
@@ -344,7 +344,7 @@ Voice commands are supported in English, Japanese, Arabic, Hindi and Kannada. Ex
 - `Forget my nickname`
 - `Forget everything`
 
-Memory is not learned silently from conversations or repeated app behavior. Lucy saves only details you explicitly ask her to remember or approve. Up to 50 entries are stored locally with a category, timestamps and confidence value. Only a small relevance-ranked subset is attached to an AI request when it helps with that request. You can inspect or delete entries in **Lucy tools → Manage saved memory**.
+Memory is not learned silently from conversations or repeated app behavior. Lucy saves only details you explicitly ask her to remember or approve. Entries are stored locally with a category, timestamps and confidence value; only relevant entries are included in each AI request. Only a small relevance-ranked subset is attached to an AI request when it helps with that request. You can inspect or delete entries in **Lucy tools → Manage saved memory**.
 
 ### Proactive suggestions and action approval
 
@@ -358,7 +358,7 @@ Every AI action carries `confidence`, `risk` and `reason` metadata. A local poli
 
 ### Switching language 🌍
 
-Tap the 🌐 **language selector** in the top bar to pick **English**, **日本語** or **العربية**. This sets the speech-recognition locale.
+Tap the 🌐 **language selector** in the top bar to pick **English**, **हिन्दी**, **ಕನ್ನಡ**, **日本語** or **العربية**. This sets the Android speech-recognition locale. On first launch, Lucy speaks a short setup guide in the selected language. If Android reports that a language pack is unavailable, Lucy stops the retry loop and explains that you need to install the language in your device's speech service or choose another language.
 
 Lucy also **detects the language you actually spoke** and replies in it — the AI tags each response with a language code, and the app switches its TTS voice and follow-up prompts to match. Your choice persists across restarts.
 
