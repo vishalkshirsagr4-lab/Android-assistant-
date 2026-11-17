@@ -529,21 +529,21 @@ class AiService {
             text = await _hmsService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
-            ).timeout(const Duration(seconds: 6));
+            ).timeout(const Duration(seconds: 25));
           } else if (provider == 'groq') {
             if (!await _groqService.isConfigured()) continue;
             text = await _groqService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
               imageBytes: imageBytes,
-            ).timeout(const Duration(seconds: 6));
+            ).timeout(const Duration(seconds: 25));
           } else if (provider == 'grok') {
             if (!await _grokService.isConfigured()) continue;
             text = await _grokService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
               imageBytes: imageBytes,
-            ).timeout(const Duration(seconds: 6));
+            ).timeout(const Duration(seconds: 25));
           } else {
             if (_chat == null) continue;
             Content content;
@@ -563,7 +563,7 @@ class AiService {
               });
               await for (final response in _chat!
                   .sendMessageStream(content)
-                  .timeout(const Duration(seconds: 6))) {
+                  .timeout(const Duration(seconds: 25))) {
                 final delta = response.text ?? '';
                 if (delta.isNotEmpty) {
                   responseBuffer.write(delta);
@@ -575,7 +575,7 @@ class AiService {
             } else {
               final response = await _chat!
                   .sendMessage(content)
-                  .timeout(const Duration(seconds: 6));
+                  .timeout(const Duration(seconds: 25));
               text = response.text ?? '{}';
             }
           }
