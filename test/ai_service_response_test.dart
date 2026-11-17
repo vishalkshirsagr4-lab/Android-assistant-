@@ -6,6 +6,8 @@ void main() {
     test('parses a plan and one risk-scored action', () {
       final response = AgentResponse.fromJson(
         <String, dynamic>{
+          'route': 'phone',
+          'needs_screen': false,
           'plan': <String>['Open the app', 'Verify the target screen'],
           'actions': <dynamic>[
             <String, dynamic>{
@@ -58,6 +60,36 @@ void main() {
       expect(response.confidence, 0.91);
       expect(response.risk, 'low');
       expect(response.collected['items'], <String>['First point']);
+    });
+
+    test('parses a model-directed memory action', () {
+      final response = AgentResponse.fromJson(
+        <String, dynamic>{
+          'route': 'phone',
+          'needs_screen': false,
+          'plan': <String, dynamic>{
+            'goal': 'Remember the requested preference',
+            'done_when': 'The preference is stored locally',
+          },
+          'actions': <dynamic>[
+            <String, dynamic>{
+              'type': 'remember',
+              'text': 'The user prefers short explanations',
+              'memory_type': 'preference',
+              'confidence': 0.99,
+              'risk': 'low',
+              'reason': 'The user explicitly asked to save this preference.',
+            },
+          ],
+          'speak': '',
+          'done': true,
+          'lang': 'en',
+        },
+        '{}',
+      );
+
+      expect(response.route, 'phone');
+      expect(response.actions.single.type, 'remember');
     });
 
     test('keeps event responses action-free', () {
