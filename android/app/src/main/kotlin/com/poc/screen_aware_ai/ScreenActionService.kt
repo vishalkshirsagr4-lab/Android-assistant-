@@ -309,6 +309,7 @@ class ScreenActionService : AccessibilityService() {
             }
 
             val type = item.optString("type", "")
+            val eventBaseline = getUiEventSequence()
             val actionSuccess = try {
                 when (type) {
                     "tap" -> {
@@ -359,6 +360,7 @@ class ScreenActionService : AccessibilityService() {
             val expect = item.optJSONObject("expect")
             var expectationMatched = true
             if (actionSuccess && expect != null) {
+                waitForUiEvent(eventBaseline, 450L)
                 val treeText = getUITree()
                 val tree = JSONObject(treeText)
                 val expectedPackage = expect.optString("package", "")
