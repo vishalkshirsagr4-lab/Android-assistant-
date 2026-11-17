@@ -139,6 +139,7 @@ class ScreenActionService : AccessibilityService() {
                 val labels = listOf(text, desc)
                     .map(ScreenWatcherPolicy::normalize)
                     .filter(String::isNotEmpty)
+                val normalized = labels.joinToString(" ")
                 val isAdSkipId = viewId.endsWith("skip_ad_button") ||
                     viewId.endsWith("skip_ads_button") || viewId.endsWith("ad_skip_button")
                 val isAdSkipLabel = labels.any(ScreenWatcherPolicy::isAdSkipLabel)
