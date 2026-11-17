@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings, fix/lucy-deep-read-stop-coverage, stage2/safety-settings-hardening, stage3/screenwatcher-hardening, stage4/approved-learning-memory, stage5/hindi-kannada-voice-onboarding, stage6/performance-stability]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings, fix/lucy-deep-read-stop-coverage, stage2/safety-settings-hardening, stage3/screenwatcher-hardening, stage4/approved-learning-memory, stage5/hindi-kannada-voice-onboarding, stage6/performance-stability, stage7/release-regression-docs]
   pull_request:
-    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings, fix/lucy-deep-read-stop-coverage, stage2/safety-settings-hardening, stage3/screenwatcher-hardening, stage4/approved-learning-memory, stage5/hindi-kannada-voice-onboarding, stage6/performance-stability]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings, fix/lucy-deep-read-stop-coverage, stage2/safety-settings-hardening, stage3/screenwatcher-hardening, stage4/approved-learning-memory, stage5/hindi-kannada-voice-onboarding, stage6/performance-stability, stage7/release-regression-docs]
   workflow_dispatch:
 
 concurrency:
