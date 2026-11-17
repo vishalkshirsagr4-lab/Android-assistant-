@@ -1302,10 +1302,12 @@ class AgentController extends ChangeNotifier {
 
       // Not done, or an action was not verified: inspect the fresh screen and
       // continue from the retained plan rather than assuming success.
-      if (actionVerified) {
-        currentMessage = toolResultForNextTurn == null
-            ? 'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.'
-            : 'The native deep-reading operation has finished. Inspect its measured results and continue the task.\\n[TOOL_RESULT]\\n$toolResultForNextTurn\\n[/TOOL_RESULT]';
+      if (toolResultForNextTurn != null) {
+        currentMessage =
+            'The native deep-reading operation has finished. Inspect its measured results and continue the task.\\n[TOOL_RESULT]\\n$toolResultForNextTurn\\n[/TOOL_RESULT]';
+      } else if (actionVerified) {
+        currentMessage =
+            'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.';
       }
       // If screenshot capture might fail next iteration, the AI will still
       // receive the message but without an image. The retry logic in
@@ -2024,10 +2026,13 @@ class AgentController extends ChangeNotifier {
   ) async {
     final requestedLimit = action.params['maxItems'];
     final maxItems = (requestedLimit is num ? requestedLimit.toInt() : 10)
-        .clamp(1, 30);
+        .clamp(1, 30)
+        .toInt();
     final requestedScrolls = action.params['detailMaxScrolls'];
     final detailMaxScrolls =
-        (requestedScrolls is num ? requestedScrolls.toInt() : 20).clamp(1, 40);
+        (requestedScrolls is num ? requestedScrolls.toInt() : 20)
+            .clamp(1, 40)
+            .toInt();
     final screenSize = await _screenCapture.getScreenSize();
     final width = (screenSize?['width'] ?? 1080).toDouble();
     final height = (screenSize?['height'] ?? 1920).toDouble();
@@ -2082,10 +2087,13 @@ class AgentController extends ChangeNotifier {
       // Group sender/subject/preview text that belongs to the same visible row.
       final rows = <Map<String, dynamic>>[];
       for (final candidate in candidates) {
-        final existing = rows.cast<Map<String, dynamic>?>().firstWhere(
-              (row) => ((row!['y'] as double) - (candidate['y'] as double)).abs() < 60,
-              orElse: () => null,
-            );
+        Map<String, dynamic>? existing;
+        for (final row in rows) {
+          if (((row['y'] as double) - (candidate['y'] as double)).abs() < 60) {
+            existing = row;
+            break;
+          }
+        }
         if (existing == null) {
           rows.add(<String, dynamic>{
             'id': candidate['id'],
