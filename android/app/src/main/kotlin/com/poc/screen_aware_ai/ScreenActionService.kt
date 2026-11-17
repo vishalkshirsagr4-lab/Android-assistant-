@@ -840,11 +840,11 @@ class ScreenActionService : AccessibilityService() {
 
             // Password fields remain represented only by the boolean marker;
             // never export their text or content description to the model.
+            val isPassword = node.isPassword
             val text = if (isPassword) null else node.text?.toString()
             val contentDesc = if (isPassword) null else node.contentDescription?.toString()
             val isClickable = node.isClickable || clickableAncestor
             val isEditable = node.isEditable
-            val isPassword = node.isPassword
             val isCheckable = node.isCheckable
             val isScrollable = node.isScrollable
             val isVisible = node.isVisibleToUser
