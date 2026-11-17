@@ -3101,6 +3101,10 @@ class AgentController extends ChangeNotifier {
         }
 
         await Future<void>.delayed(const Duration(milliseconds: 350));
+        if (_cancelRequested || !_isActive) {
+          nativeOperationCancelled = true;
+          break;
+        }
         final openedSnapshot = await _fetchUiSnapshot();
         if (openedSnapshot == null ||
             (openedSnapshot.packageName == current?.packageName &&
