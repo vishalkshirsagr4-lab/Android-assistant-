@@ -19,6 +19,8 @@ import 'agent_reliability.dart';
 import 'screen_classifier.dart';
 import 'reading_mode_planner.dart';
 import 'lucy_settings_store.dart';
+import 'lucy_learning_store.dart';
+import 'lucy_app_hint_catalog.dart';
 
 enum AgentState {
   idle,
@@ -74,6 +76,10 @@ class AgentController extends ChangeNotifier {
   final PhoneActionService _phoneActions = PhoneActionService();
   final LucySettingsStore _settingsStore = LucySettingsStore();
   final ScreenClassifier _screenClassifier = ScreenClassifier();
+  final LucyAppHintCatalog _appHintCatalog = LucyAppHintCatalog();
+  final LucyLearningStore _learningStore = LucyLearningStore();
+  String? _lastRecordedUiSignature;
+  Map<String, int>? _cachedScreenSize;
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -534,6 +540,7 @@ class AgentController extends ChangeNotifier {
       await prefs.remove('gemini_api_key');
     }
     _memoryStore = LucyMemoryStore(prefs);
+    await _learningStore.initialize();
     await _memoryStore!.initialize();
     final savedProvider = prefs.getString(_providerPrefKey);
     final provider =
@@ -1337,6 +1344,7 @@ class AgentController extends ChangeNotifier {
     // network, foreground-app and calendar changes are visible to Lucy.
     // Android omits optional sources unless the user granted access.
     final screenSize = await _screenCapture.getScreenSize();
+    _cachedScreenSize = screenSize;
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
@@ -1464,10 +1472,15 @@ class AgentController extends ChangeNotifier {
                 '${currentPlan.asMap().entries.map((entry) => '${entry.key + 1}. ${entry.value}').join('\n')}\n'
                 'Completed steps: $completedPlanSteps\n'
                 '[/CURRENT_PLAN]\n';
+      final appHints = await _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
+      final appHintContext = appHints.isEmpty
+          ? ''
+          : '[APP_WORKFLOW_HINT — guidance only, never permission]\n'
+              '\${jsonEncode(appHints)}\n[/APP_WORKFLOW_HINT]\n';
       final requestWithClock =
-          '[Device local date/time: ${localNow.toIso8601String()}]\n'
-          '${deviceContext.isEmpty ? '' : '$deviceContext\n'}'
-          '${planContext}${currentMessage}';
+          '[Device local date/time: \${localNow.toIso8601String()}]\n'
+          '\${deviceContext.isEmpty ? '' : '$deviceContext\n'}'
+          '\${appHintContext}\${planContext}\${currentMessage}';
       final allowScreenSharing = await _settingsStore.isEnabled(
         LucySettingsStore.aiScreenSharing,
       );
@@ -1808,9 +1821,34 @@ class AgentController extends ChangeNotifier {
         (element) => element['editable'] == true && element['focused'] == true,
       );
 
+      final packageName = parsed['package'] as String? ?? '';
+      final versionCode = parsed['appVersionCode']?.toString() ?? 'unknown';
+      if (packageName.isNotEmpty) {
+        final signature = LucyLearningStore.stableSignature(
+          packageName: packageName,
+          elements: elements,
+        );
+        if (signature != _lastRecordedUiSignature &&
+            await _settingsStore.isEnabled(LucySettingsStore.uiMemory)) {
+          _lastRecordedUiSignature = signature;
+          final size = _cachedScreenSize;
+          unawaited(_learningStore.recordUiMap(
+            packageName: packageName,
+            signature: signature,
+            elements: elements,
+            appVersionCode: versionCode,
+            screenSize: size == null
+                ? null
+                : <String, double>{
+                    'width': (size['width'] ?? 1).toDouble(),
+                    'height': (size['height'] ?? 1).toDouble(),
+                  },
+          ));
+        }
+      }
       return _UiSnapshot(
         rawTree: uiTree,
-        packageName: parsed['package'] as String?,
+        packageName: packageName,
         elements: elements,
         hasFocusedEditable: hasFocusedEditable,
       );
