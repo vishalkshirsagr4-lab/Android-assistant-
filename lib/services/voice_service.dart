@@ -377,6 +377,38 @@ class VoiceService {
     _streamingSpeechActive = true;
   }
 
+  /// Speak one complete utterance and retry once when the Android TTS
+  /// engine reports an interruption/error. The native TTS engine is configured
+  /// for navigation guidance so short notification sounds should duck rather
+  /// than permanently cancel Lucy's speech.
+  Future<bool> _speakUtterance(
+    String text, {
+    required int generation,
+    int retries = 1,
+  }) async {
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      if (_disposed || generation != _speechGeneration) return false;
+      _isSpeaking = true;
+      try {
+        final result = await _tts.speak(text, focus: true);
+        if (result is num && result < 0) {
+          throw StateError('Android TTS rejected the utterance');
+        }
+        if (generation == _speechGeneration) _isSpeaking = false;
+        return true;
+      } catch (_) {
+        if (generation == _speechGeneration) _isSpeaking = false;
+        if (attempt >= retries || _disposed || generation != _speechGeneration) {
+          return false;
+        }
+        // Give the notification/audio-focus transition time to settle before
+        // retrying the same sentence. Do not restart the microphone here.
+        await Future.delayed(const Duration(milliseconds: 650));
+      }
+    }
+    return false;
+  }
+
   /// Queues a complete sentence emitted from the partial model response.
   void addStreamingSpeechText(String sentence) {
     if (!_streamingSpeechActive || _disposed) return;
@@ -385,13 +417,12 @@ class VoiceService {
     final generation = _streamingSpeechGeneration;
     _streamingSpeechQueue = _streamingSpeechQueue.then((_) async {
       if (_disposed || generation != _speechGeneration) return;
-      _isSpeaking = true;
-      try {
-        await _tts.speak(value, focus: true);
-      } catch (_) {
-        onError?.call('Text-to-speech failed.');
-      } finally {
-        if (generation == _speechGeneration) _isSpeaking = false;
+      final spoken = await _speakUtterance(
+        value,
+        generation: generation,
+      );
+      if (!spoken && generation == _speechGeneration) {
+        onError?.call('Text-to-speech was interrupted and could not be resumed.');
       }
     });
   }
@@ -435,14 +466,13 @@ class VoiceService {
 
     for (final chunk in splitSpeechChunks(text)) {
       if (_disposed || generation != _speechGeneration) break;
-      _isSpeaking = true;
-      try {
-        await _tts.speak(chunk, focus: true);
-      } catch (error) {
-        onError?.call('Text-to-speech failed.');
+      final spoken = await _speakUtterance(
+        chunk,
+        generation: generation,
+      );
+      if (!spoken) {
+        onError?.call('Text-to-speech was interrupted and could not be resumed.');
         break;
-      } finally {
-        _isSpeaking = false;
       }
     }
   }
@@ -463,8 +493,12 @@ class VoiceService {
     final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     try {
       await _setTtsLanguage(targetLocale);
-      _isSpeaking = true;
-      await _tts.speak(text, focus: true);
+      final generation = ++_speechGeneration;
+      final spoken = await _speakUtterance(
+        text,
+        generation: generation,
+      );
+      if (!spoken) onError?.call('tts_unavailable');
     } catch (_) {
       _isSpeaking = false;
       onError?.call('tts_unavailable');
