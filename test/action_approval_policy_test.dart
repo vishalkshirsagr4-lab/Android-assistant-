@@ -215,6 +215,28 @@ void main() {
       }
     });
 
+    test('detects Android permission prompts in supported languages', () {
+      for (final prompt in [
+        'Allow Lucy to access the microphone? Only this time',
+        'अनुमति दें · ऐप इस्तेमाल करते समय',
+        'ಅನುಮತಿಸಿ · ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ',
+        'アプリの使用中に許可しますか？ 今回のみ',
+        'السماح أثناء استخدام التطبيق',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.isPermissionPromptText(prompt),
+          isTrue,
+          reason: prompt,
+        );
+      }
+      expect(
+        LucyActionApprovalPolicy.isPermissionPromptText(
+          'Allow notifications from this website?',
+        ),
+        isFalse,
+      );
+    });
+
     test('unknown action types fail closed', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval('unknown_action'),
