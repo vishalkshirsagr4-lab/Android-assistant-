@@ -1124,7 +1124,10 @@ class AgentController extends ChangeNotifier {
       _resolvedContactNumbers.clear();
       _pendingResolvedContactRef = null;
     }
-    final taskStopped = _statusMessage.startsWith('AI unavailable') ||
+    final taskStopped =
+        _statusMessage.startsWith('AI unavailable') ||
+        _statusMessage.startsWith('AI temporarily unavailable') ||
+        _statusMessage.startsWith('AI provider not configured') ||
         _statusMessage.startsWith('Phone locked') ||
         _statusMessage.startsWith('Task failed') ||
         _statusMessage.startsWith('Task stopped');
@@ -1562,9 +1565,9 @@ class AgentController extends ChangeNotifier {
       r'\b(all|every|entire|inbox|all chats|all emails|all notifications|last \d+)\b',
       caseSensitive: false,
     ).hasMatch(userMessage);
-    final stepLimit = isDeepTask ? 150 : _maxStepsPerCommand;
+    final stepLimit = isDeepTask ? 250 : _maxStepsPerCommand;
     final taskTimeBudget = isDeepTask
-        ? const Duration(minutes: 6)
+        ? const Duration(minutes: 10)
         : const Duration(minutes: 3);
     final taskStopwatch = Stopwatch()..start();
     final alternatives = speechAlternatives
