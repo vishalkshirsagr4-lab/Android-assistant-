@@ -143,6 +143,41 @@ void main() {
       );
     });
 
+    test('Autopilot disabled permits only explicit memory operations', () {
+      for (final action in ['remember', 'forget', 'recall_memories']) {
+        expect(
+          LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
+          isTrue,
+          reason: action,
+        );
+      }
+      for (final action in [
+        'open_app',
+        'tap',
+        'type',
+        'swipe',
+        'back',
+        'home',
+        'scroll_to_end',
+        'scroll_to_top',
+        'read_all',
+        'open_each',
+        'batch',
+        'run_skill',
+        'place_call',
+        'send_sms',
+        'share_text',
+        'set_flashlight',
+        'set_volume',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
+          isFalse,
+          reason: action,
+        );
+      }
+    });
+
     test('unknown action types fail closed', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval('unknown_action'),
