@@ -1980,8 +1980,9 @@ class AgentController extends ChangeNotifier {
   Future<void> _saveCompletedSkill(String command) async {
     if (!_taskSkillEligible || !await _settingsStore.isEnabled(LucySettingsStore.learnSkills) || _taskStartPackage == null || _taskStartSignature == null || _pendingSkillActions.isEmpty) return;
     final normalized = LucyLearningStore.normalizeCommand(command);
+    final identity = normalized + '|' + _taskStartPackage! + '|' + _taskStartSignature!;
     var hash = 0x811c9dc5;
-    for (final unit in normalized.codeUnits) { hash = ((hash ^ unit) * 0x01000193) & 0xffffffff; }
+    for (final unit in identity.codeUnits) { hash = ((hash ^ unit) * 0x01000193) & 0xffffffff; }
     await _learningStore.recordSkill(id: 'skill_' + hash.toRadixString(16), command: command, packageName: _taskStartPackage!, startSignature: _taskStartSignature!, appVersionCode: _taskStartVersion ?? 'unknown', actions: _pendingSkillActions);
   }
 
