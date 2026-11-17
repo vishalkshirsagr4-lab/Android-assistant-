@@ -3076,7 +3076,7 @@ class AgentController extends ChangeNotifier {
     }
 
     while (results.length < maxItems && pageScrolls < maxListScrolls) {
-      if (_cancelRequested) break;
+      if (_cancelRequested || !_isActive) break;
       final rows = listRows(current);
       Map<String, dynamic>? nextRow;
       for (final row in rows) {
@@ -3125,7 +3125,7 @@ class AgentController extends ChangeNotifier {
           maxScrolls: detailMaxScrolls,
           collect: true,
         );
-        if (_cancelRequested || detailScroll?['cancelled'] == true) {
+        if (_cancelRequested || !_isActive || detailScroll?['cancelled'] == true) {
           nativeOperationCancelled = true;
           break;
         }
@@ -3236,7 +3236,7 @@ class AgentController extends ChangeNotifier {
       'processed': results.length,
       'requestedMaxItems': maxItems,
       'maxListScrolls': maxListScrolls,
-      'cancelled': nativeOperationCancelled || _cancelRequested,
+      'cancelled': nativeOperationCancelled || _cancelRequested || !_isActive,
       'reachedEnd': reachedEnd,
       'limited': !reachedEnd &&
           (results.length >= maxItems || pageScrolls >= maxListScrolls),
