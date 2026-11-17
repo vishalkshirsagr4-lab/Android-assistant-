@@ -1,23 +1,33 @@
-/// Local action-risk policy. Model metadata can only increase, never reduce, risk.
+/// Local action-risk policy. Consequential actions require a deliberate
+/// user confirmation. Routine navigation and ordinary phone tasks do not.
 class LucyActionApprovalPolicy {
   static const Set<String> _sensitiveTapLabels = {
-    'send', 'send message', 'send now', 'post', 'publish', 'share',
-    'send money', 'transfer money', 'delete', 'delete permanently',
-    'remove', 'buy', 'purchase', 'pay', 'checkout', 'confirm payment',
-    'submit order', 'uninstall', 'call', 'video call', 'place call',
-    'make call', 'start call', 'dial', 'confirm', 'submit', 'transfer',
-    'install', 'allow', 'grant', 'enable administrator',
-  };
-
-  static const Set<String> _messagingPackages = {
-    'com.whatsapp',
-    'org.telegram.messenger',
-    'com.google.android.apps.messaging',
-    'com.facebook.orca',
-    'com.instagram.android',
-    'com.android.dialer',
-    'com.google.android.dialer',
-    'com.android.contacts',
+    'send',
+    'send message',
+    'send now',
+    'post',
+    'publish',
+    'share',
+    'share text',
+    'send money',
+    'transfer money',
+    'transfer',
+    'delete',
+    'delete permanently',
+    'remove',
+    'buy',
+    'purchase',
+    'pay',
+    'checkout',
+    'confirm payment',
+    'submit order',
+    'uninstall',
+    'call',
+    'video call',
+    'place call',
+    'make call',
+    'start call',
+    'dial',
   };
 
   static const Set<String> _sensitivePackageMarkers = {
@@ -28,7 +38,7 @@ class LucyActionApprovalPolicy {
     'finance',
   };
 
-  static const Set<String> _lowRiskActions = {
+  static const Set<String> _knownActions = {
     'open_app',
     'type',
     'swipe',
@@ -48,12 +58,19 @@ class LucyActionApprovalPolicy {
     'remember',
     'forget',
     'recall_memories',
+    'place_call',
+    'send_sms',
+    'share_text',
+    'read_contact',
+    'create_calendar_event',
+    'take_photo',
+    'open_settings',
+    'tap',
   };
 
-  /// Computes risk locally. A model may raise risk, but cannot lower it.
-  ///
-  /// [sensitiveInput] is true when the focused accessibility field is a
-  /// password field. Financial-app text entry is also treated as high risk.
+  /// Computes risk locally. Model-provided risk/confidence cannot turn a
+  /// routine action into an approval prompt; only local sensitive-action
+  /// checks decide whether approval is required.
   static String effectiveRisk(
     String action, {
     String? targetLabel,
@@ -62,53 +79,41 @@ class LucyActionApprovalPolicy {
     double? confidence,
     bool sensitiveInput = false,
   }) {
+    if (!_knownActions.contains(action)) return 'high';
+
     final package = (packageName ?? '').toLowerCase();
     final sensitivePackage = _sensitivePackageMarkers.any(package.contains);
-    var localRisk = 'high';
+
+    if (action == 'place_call' || action == 'send_sms' ||
+        action == 'share_text') {
+      return 'high';
+    }
 
     if (action == 'type') {
-      localRisk = sensitiveInput || sensitivePackage ? 'high' : 'low';
-    } else if (_lowRiskActions.contains(action)) {
-      localRisk = 'low';
-    } else if (action == 'place_call' || action == 'send_sms') {
-      // These native actions only open a dialer or prefilled composer.
-      // The final Call/Send control remains a separate user-confirmed UI action.
-      localRisk = 'low';
-    } else if (action == 'share_text') {
-      localRisk = 'medium';
-    } else if (action == 'read_contact' ||
-        action == 'create_calendar_event' ||
-        action == 'take_photo') {
-      localRisk = 'medium';
-    } else if (action == 'open_settings') {
+      return sensitiveInput || sensitivePackage ? 'high' : 'low';
+    }
+
+    if (action == 'open_settings') {
       final page = (targetLabel ?? '').toLowerCase();
-      localRisk = page.contains('security') ||
+      return page.contains('security') ||
               page.contains('account') ||
               page.contains('password') ||
               page.contains('privacy') ||
               page.contains('developer')
           ? 'high'
-          : 'medium';
-    } else if (action == 'tap') {
-      final label = (targetLabel ?? '').trim().toLowerCase();
-      if (sensitivePackage ||
-          _sensitiveTapLabels.any(label.contains) ||
-          (label.isEmpty && _messagingPackages.contains(package))) {
-        localRisk = 'high';
-      } else if (label.isEmpty) {
-        localRisk = 'medium';
-      } else {
-        localRisk = 'low';
-      }
+          : 'low';
     }
 
-    var rank = _rank(localRisk);
-    final modelRank = _rank(_normalizeRisk(modelRisk));
-    if (modelRank > rank) rank = modelRank;
-    if (confidence != null && confidence < 0.55 && rank < 1) {
-      rank = 1;
+    if (action == 'tap') {
+      final label = (targetLabel ?? '').trim().toLowerCase();
+      if (sensitivePackage ||
+          _sensitiveTapLabels.any((term) => label.contains(term))) {
+        return 'high';
+      }
+      return 'low';
     }
-    return rank == 0 ? 'low' : rank == 1 ? 'medium' : 'high';
+
+    return 'low';
   }
 
   static bool requiresApproval(
@@ -128,30 +133,5 @@ class LucyActionApprovalPolicy {
           sensitiveInput: sensitiveInput,
         ) !=
         'low';
-  }
-
-  static int _rank(String risk) {
-    switch (risk) {
-      case 'low':
-        return 0;
-      case 'medium':
-        return 1;
-      default:
-        return 2;
-    }
-  }
-
-  static String _normalizeRisk(String? risk) {
-    if (risk == null || risk.trim().isEmpty) return 'low';
-    switch (risk.toLowerCase()) {
-      case 'low':
-        return 'low';
-      case 'medium':
-        return 'medium';
-      case 'high':
-      default:
-        // Unknown metadata fails closed rather than silently becoming low.
-        return 'high';
-    }
   }
 }
