@@ -417,7 +417,8 @@ RESPONSE FORMAT (strict JSON, plan first, at most one action):
       buffer.write(message);
       final fullMessage = buffer.toString();
       final cacheKey = _readOnlyCacheKey(message);
-      final cacheAllowed = imageBytes == null &&
+      final cacheAllowed = !message.contains('[EVENT:') &&
+          imageBytes == null &&
           uiTree == null &&
           memoryContext.trim().isEmpty &&
           cacheKey != null;
