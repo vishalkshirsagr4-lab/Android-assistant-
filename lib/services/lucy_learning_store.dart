@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -135,6 +136,8 @@ class LucyLearningStore {
       return true;
     }).take(12).map((e) => Map<String, dynamic>.from(e)).toList();
     if (safeActions.isEmpty || safeActions.length != actions.length) return;
+    if (safeActions.any((action) => action['type'] == 'type') &&
+        !(commandTemplate?.contains('{query}') ?? false)) return;
     final now = DateTime.now().toIso8601String();
     final existing = _skills[id];
     _skills.remove(id);
@@ -172,10 +175,12 @@ class LucyLearningStore {
       final version = skill['appVersionCode']?.toString() ?? 'unknown';
       if (version != 'unknown' && appVersionCode != 'unknown' && version != appVersionCode) {
         _skills.remove(entry.key);
+        unawaited(_persist());
         continue;
       }
       if (skill['startSignature'] != startSignature) continue;
       skill['lastUsedAt'] = DateTime.now().toIso8601String();
+      unawaited(_persist());
       return <String, dynamic>{...skill, 'parameters': parameters};
     }
     return null;
