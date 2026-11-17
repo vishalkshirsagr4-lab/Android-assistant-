@@ -948,7 +948,12 @@ class ScreenActionService : AccessibilityService() {
 
         val appVersionCode = try {
             if (packageName.isNotBlank() && packageName != "unknown") {
-                packageManager.getPackageInfo(packageName, 0).longVersionCode.toString()
+                val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    packageInfo.longVersionCode.toString()
+                } else {
+                    packageInfo.versionCode.toString()
+                }
             } else {
                 "unknown"
             }
