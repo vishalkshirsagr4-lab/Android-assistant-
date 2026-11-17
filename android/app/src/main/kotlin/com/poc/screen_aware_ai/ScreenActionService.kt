@@ -257,6 +257,16 @@ class ScreenActionService : AccessibilityService() {
         val limit = maxScrolls.coerceIn(1, 120)
         val collected = LinkedHashSet<String>()
         val initial = captureScrollSnapshot(collect)
+        if (initial.signature.isEmpty() && initial.scrollNode == null) {
+            return JSONObject().apply {
+                put("scrolls", 0)
+                put("reachedEnd", false)
+                put("limited", false)
+                put("dispatchFailed", true)
+                put("noAccessibilityTree", true)
+                put("items", JSONArray())
+            }.toString()
+        }
         var current = initial
         if (collect) addCollected(collected, current.texts)
 
@@ -382,14 +392,17 @@ class ScreenActionService : AccessibilityService() {
             if (node.isVisibleToUser) {
                 val text = node.text?.toString()?.trim().orEmpty()
                 val desc = node.contentDescription?.toString()?.trim().orEmpty()
+                val nodeBounds = Rect()
+                node.getBoundsInScreen(nodeBounds)
+                val verticalPosition = "${nodeBounds.top}:${nodeBounds.bottom}"
                 if (text.isNotEmpty()) {
                     val value = text.take(200)
-                    signatureParts.add("t:$value")
+                    signatureParts.add("t:$value@$verticalPosition")
                     if (collect && visibleTexts.size < 400) visibleTexts.add(value)
                 }
                 if (desc.isNotEmpty() && desc != text) {
                     val value = desc.take(200)
-                    signatureParts.add("d:$value")
+                    signatureParts.add("d:$value@$verticalPosition")
                     if (collect && visibleTexts.size < 400) visibleTexts.add(value)
                 }
 
