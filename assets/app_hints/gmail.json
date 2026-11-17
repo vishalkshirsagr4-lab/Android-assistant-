@@ -1,0 +1,17 @@
+{
+  "app": "Gmail",
+  "strategy": [
+    "Use the visible inbox and labels to establish the current mailbox.",
+    "Read sender, subject, timestamp, unread state and preview from accessible rows.",
+    "Use open_each for requested thread inspection; do not claim all mail was read from inbox previews alone.",
+    "Do not send, archive, delete or mark messages unless explicitly requested and locally approved."
+  ],
+  "targets": [
+    "Search",
+    "Compose",
+    "Inbox",
+    "Unread",
+    "Sent",
+    "Back"
+  ]
+}

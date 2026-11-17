@@ -79,7 +79,7 @@ class AgentResponse {
         'set_flashlight', 'set_volume', 'set_brightness', 'get_device_status',
         'read_contact', 'create_calendar_event', 'open_settings', 'take_photo',
         'share_text', 'remember', 'forget', 'recall_memories',
-        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
+        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch', 'run_skill',
       };
       if (!supportedActions.contains(type)) {
         throw FormatException('Unsupported Lucy action type: $type');
@@ -424,6 +424,7 @@ AVAILABLE ACTIONS:
 - {"type": "scroll_to_end", "maxScrolls": 80} — Native deep scroll toward the end; inspect reachedEnd in [TOOL_RESULT].
 - {"type": "scroll_to_top", "maxScrolls": 80} — Native deep scroll toward the top; inspect reachedEnd in [TOOL_RESULT].
 - {"type": "read_all", "maxScrolls": 80} — Collect visible text across a bounded full scroll pass; inspect items and reachedEnd in [TOOL_RESULT].
+- {"type": "run_skill", "name": "previously learned command"} — Replay only a stored low-risk skill when app, starting screen and version match; never use it for typing, sending, calls, payments, deletion, permissions or security changes.
 - {"type": "batch", "actions": [{"type": "type", "text": "query"}, {"type": "tap", "element": 4, "expect": {"text_contains": "Results"}}]} — Execute 1–5 reversible UI primitives in one native round trip. Supported nested types: tap, type, swipe, back, wait. Use only when the layout is expected to remain stable; attach expect to verify package/text after a step. Never put send, payment, purchase, account/security, install/uninstall, or destructive actions in a batch.
 - {"type": "open_each", "maxItems": 10} — Open and inspect list entries one by one; never claim all entries were inspected unless the returned result verifies the requested range.
 - open_each returns processed, requestedMaxItems, reachedEnd, limited, and items containing each row label, whether it opened, collected content, and whether that item's detail view reached its end. It can inspect only rows exposed as clickable accessibility elements; if an app hides its rows, report that limitation instead of guessing.

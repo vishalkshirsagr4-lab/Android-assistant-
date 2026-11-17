@@ -855,6 +855,7 @@ class ScreenActionService : AccessibilityService() {
                 val element = JSONObject().apply {
                     put("id", elementCount)
                     put("type", className)
+                    node.viewIdResourceName?.let { put("resourceId", it) }
                     if (!text.isNullOrBlank()) put("text", text)
                     if (!contentDesc.isNullOrBlank()) put("desc", contentDesc)
                     if (isClickable) put("clickable", true)
@@ -945,8 +946,23 @@ class ScreenActionService : AccessibilityService() {
             packageName = tryGetPackageFromWindows(elements, ::traverse) ?: "unknown"
         }
 
+        val appVersionCode = try {
+            if (packageName.isNotBlank() && packageName != "unknown") {
+                val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    packageInfo.longVersionCode.toString()
+                } else {
+                    packageInfo.versionCode.toString()
+                }
+            } else {
+                "unknown"
+            }
+        } catch (_: Exception) {
+            "unknown"
+        }
         val result = JSONObject().apply {
             put("package", packageName)
+            put("appVersionCode", appVersionCode)
             put("elements", elements)
         }
 

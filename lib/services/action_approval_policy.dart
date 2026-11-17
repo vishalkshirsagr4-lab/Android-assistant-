@@ -71,6 +71,7 @@ class LucyActionApprovalPolicy {
     'open_settings',
     'tap',
     'batch',
+    'run_skill',
   };
 
   /// Computes risk locally. Model-provided risk/confidence cannot turn a

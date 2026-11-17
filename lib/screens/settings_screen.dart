@@ -514,6 +514,18 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             subtitle: 'Allow Lucy to schedule notification-only reminders.',
           ),
           const Divider(height: 28),
+          Text('Learning & skills', style: Theme.of(context).textTheme.titleLarge),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.uiMemory,
+            title: 'Remember app layouts',
+            subtitle: 'Store private screen maps, stable labels, resource IDs and normalized positions on this device.',
+          ),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.learnSkills,
+            title: 'Learn safe workflows',
+            subtitle: 'Save and replay exact-match navigation/reading sequences only. Typing, sending, calls, purchases and destructive actions are never replayed.',
+          ),
+          const Divider(height: 28),
           Text('Screen intelligence', style: Theme.of(context).textTheme.titleLarge),
           _capabilitySwitch(
             keyName: LucySettingsStore.screenWatcher,

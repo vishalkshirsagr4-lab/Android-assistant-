@@ -1,0 +1,13 @@
+{
+  "app": "Telegram",
+  "strategy": [
+    "Distinguish chat list, channel, group and direct chat.",
+    "Use open_each for requested conversation inspection.",
+    "Never send messages or join channels as an automatic learned replay."
+  ],
+  "targets": [
+    "Search",
+    "Chats",
+    "Back"
+  ]
+}

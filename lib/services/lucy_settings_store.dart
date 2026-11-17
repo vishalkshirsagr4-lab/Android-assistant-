@@ -18,6 +18,8 @@ class LucySettingsStore {
   static const screenWatcher = 'lucy_screen_watcher_enabled';
   static const autoSkipAds = 'lucy_auto_skip_ads';
   static const autoDismissPopups = 'lucy_auto_dismiss_popups';
+  static const uiMemory = 'lucy_ui_memory_enabled';
+  static const learnSkills = 'lucy_learn_skills_enabled';
 
   static const Map<String, bool> defaults = <String, bool>{
     voiceInput: true,
@@ -36,6 +38,8 @@ class LucySettingsStore {
     screenWatcher: true,
     autoSkipAds: true,
     autoDismissPopups: true,
+    uiMemory: true,
+    learnSkills: true,
   };
 
   /// These controls are intentionally non-disableable: they protect users

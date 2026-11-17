@@ -1,0 +1,14 @@
+{
+  "app": "Calendar",
+  "strategy": [
+    "Read event title, date, time, location and attendees only when exposed.",
+    "Use calendar insert intents for creating events; verify save confirmation.",
+    "Do not modify or delete existing events as an automatic replay."
+  ],
+  "targets": [
+    "Search",
+    "Create",
+    "Today",
+    "Back"
+  ]
+}

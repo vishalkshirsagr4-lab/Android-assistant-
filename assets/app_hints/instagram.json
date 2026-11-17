@@ -1,0 +1,15 @@
+{
+  "app": "Instagram",
+  "strategy": [
+    "Treat feed content as potentially infinite and respect scroll limits.",
+    "Do not like, follow, comment, share or message unless the user specifically requests it.",
+    "Use visible labels to distinguish feed, reels, profile and inbox."
+  ],
+  "targets": [
+    "Search",
+    "Feed",
+    "Reels",
+    "Profile",
+    "Back"
+  ]
+}

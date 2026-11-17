@@ -19,6 +19,8 @@ import 'agent_reliability.dart';
 import 'screen_classifier.dart';
 import 'reading_mode_planner.dart';
 import 'lucy_settings_store.dart';
+import 'lucy_learning_store.dart';
+import 'lucy_app_hint_catalog.dart';
 
 enum AgentState {
   idle,
@@ -47,12 +49,14 @@ class ConversationEntry {
 class _UiSnapshot {
   final String? rawTree;
   final String? packageName;
+  final String appVersionCode;
   final List<Map<String, dynamic>> elements;
   final bool hasFocusedEditable;
 
   const _UiSnapshot({
     required this.rawTree,
     required this.packageName,
+    this.appVersionCode = 'unknown',
     required this.elements,
     required this.hasFocusedEditable,
   });
@@ -74,6 +78,16 @@ class AgentController extends ChangeNotifier {
   final PhoneActionService _phoneActions = PhoneActionService();
   final LucySettingsStore _settingsStore = LucySettingsStore();
   final ScreenClassifier _screenClassifier = ScreenClassifier();
+  final LucyAppHintCatalog _appHintCatalog = LucyAppHintCatalog();
+  final LucyLearningStore _learningStore = LucyLearningStore();
+  String? _lastRecordedUiSignature;
+  Map<String, int>? _cachedScreenSize;
+  final List<Map<String, dynamic>> _pendingSkillActions = <Map<String, dynamic>>[];
+  String? _taskStartPackage;
+  String? _taskStartSignature;
+  String? _taskStartVersion;
+  bool _taskSkillEligible = true;
+  String? _taskSkillCommandTemplate;
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -534,6 +548,7 @@ class AgentController extends ChangeNotifier {
       await prefs.remove('gemini_api_key');
     }
     _memoryStore = LucyMemoryStore(prefs);
+    await _learningStore.initialize();
     await _memoryStore!.initialize();
     final savedProvider = prefs.getString(_providerPrefKey);
     final provider =
@@ -895,6 +910,11 @@ class AgentController extends ChangeNotifier {
 
     _addConversation(text, true);
     _currentTranscript = '';
+
+    if (await _handleLearningCommand(text)) {
+      await _resumeOrFinishListening();
+      return;
+    }
 
     if (await _settingsStore.isEnabled(LucySettingsStore.memory) &&
         await _handleMemoryCommand(text)) {
@@ -1337,6 +1357,13 @@ class AgentController extends ChangeNotifier {
     // network, foreground-app and calendar changes are visible to Lucy.
     // Android omits optional sources unless the user granted access.
     final screenSize = await _screenCapture.getScreenSize();
+    _cachedScreenSize = screenSize;
+    _pendingSkillActions.clear();
+    _taskStartPackage = null;
+    _taskStartSignature = null;
+    _taskStartVersion = null;
+    _taskSkillEligible = true;
+    _taskSkillCommandTemplate = null;
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
@@ -1375,6 +1402,16 @@ class AgentController extends ChangeNotifier {
       var uiTree = uiSnapshot == null
           ? null
           : _buildUiTreePayload(uiSnapshot, step);
+
+      if (step == 1 && uiSnapshot != null &&
+          await _tryReplayLearnedSkill(userMessage, uiSnapshot)) {
+        LucyReliabilityLog.event('learned_skill_replayed', success: true);
+        await _speakEvent(
+          'skill_replayed',
+          context: 'A previously successful low-risk navigation or reading skill was replayed and verified.',
+        );
+        return;
+      }
 
       // Explicit reading requests collect the complete accessible scrollable
       // surface before planning. Inbox-wide requests use open_each instead.
@@ -1464,10 +1501,14 @@ class AgentController extends ChangeNotifier {
                 '${currentPlan.asMap().entries.map((entry) => '${entry.key + 1}. ${entry.value}').join('\n')}\n'
                 'Completed steps: $completedPlanSteps\n'
                 '[/CURRENT_PLAN]\n';
+      final appHints = await _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
+      final appHintContext = appHints.isEmpty ? '' :
+          '[APP_WORKFLOW_HINT — guidance only, never permission]\n' +
+          jsonEncode(appHints) + '\n[/APP_WORKFLOW_HINT]\n';
       final requestWithClock =
-          '[Device local date/time: ${localNow.toIso8601String()}]\n'
-          '${deviceContext.isEmpty ? '' : '$deviceContext\n'}'
-          '${planContext}${currentMessage}';
+          '[Device local date/time: ' + localNow.toIso8601String() + ']\n' +
+          (deviceContext.isEmpty ? '' : deviceContext + '\n') +
+          appHintContext + planContext + currentMessage;
       final allowScreenSharing = await _settingsStore.isEnabled(
         LucySettingsStore.aiScreenSharing,
       );
@@ -1574,6 +1615,11 @@ class AgentController extends ChangeNotifier {
           actionVerified = _lastActionDispatchSucceeded &&
               (!requiresVisualChange ||
                   _isActionReady(action, beforeAction, latestSnapshot));
+          if (actionVerified) {
+            _recordSkillAction(action, beforeAction, userMessage);
+          } else {
+            _taskSkillEligible = false;
+          }
 
           LucyReliabilityLog.event(
             'action_verified',
@@ -1704,6 +1750,7 @@ class AgentController extends ChangeNotifier {
         }.contains(action.type),
       );
       if (agentResponse.done && actionVerified && !hasDeepReadToolAction) {
+        await _saveCompletedSkill(userMessage);
         LucyReliabilityLog.event('agent_task_completed', step: step, success: true);
         break;
       }
@@ -1808,15 +1855,212 @@ class AgentController extends ChangeNotifier {
         (element) => element['editable'] == true && element['focused'] == true,
       );
 
+      final packageName = parsed['package'] as String? ?? '';
+      final versionCode = parsed['appVersionCode']?.toString() ?? 'unknown';
+      if (packageName.isNotEmpty) {
+        final signature = LucyLearningStore.stableSignature(
+          packageName: packageName,
+          elements: elements,
+        );
+        if (_isActive && _taskStartPackage == null) {
+          _taskStartPackage = packageName;
+          _taskStartSignature = signature;
+          _taskStartVersion = versionCode;
+        }
+        final recordKey = packageName + ':' + versionCode + ':' + signature;
+        if (recordKey != _lastRecordedUiSignature &&
+            await _settingsStore.isEnabled(LucySettingsStore.uiMemory)) {
+          _lastRecordedUiSignature = recordKey;
+          final size = _cachedScreenSize;
+          unawaited(_learningStore.recordUiMap(
+            packageName: packageName,
+            signature: signature,
+            elements: elements,
+            appVersionCode: versionCode,
+            screenSize: size == null
+                ? null
+                : <String, double>{
+                    'width': (size['width'] ?? 1).toDouble(),
+                    'height': (size['height'] ?? 1).toDouble(),
+                  },
+          ));
+        }
+      }
       return _UiSnapshot(
         rawTree: uiTree,
-        packageName: parsed['package'] as String?,
+        packageName: packageName,
+        appVersionCode: versionCode,
         elements: elements,
         hasFocusedEditable: hasFocusedEditable,
       );
     } catch (e) {
       return null;
     }
+  }
+
+  void _recordSkillAction(AgentAction action, _UiSnapshot? before, String command) {
+    if (!_taskSkillEligible) return;
+    const allowed = <String>{'open_app', 'tap', 'back', 'home', 'scroll_to_end', 'scroll_to_top', 'read_all'};
+    final packageContext = (before?.packageName ?? '').toLowerCase();
+    if (const {'bank', 'wallet', 'payment', 'upi', 'finance', 'authenticator', 'password'}
+        .any(packageContext.contains)) {
+      _taskSkillEligible = false;
+      return;
+    }
+    final entry = <String, dynamic>{'type': action.type};
+    if (!allowed.contains(action.type) && action.type != 'type') {
+      _taskSkillEligible = false;
+      return;
+    }
+    if (action.type == 'type') {
+      if (before == null || _taskSkillCommandTemplate != null) {
+        _taskSkillEligible = false;
+        return;
+      }
+      final focused = before.elements.where((element) =>
+          element['focused'] == true && element['editable'] == true).toList();
+      if (focused.length != 1 || focused.single['password'] == true) {
+        _taskSkillEligible = false;
+        return;
+      }
+      final fieldLabel = ((focused.single['resourceId'] ?? '').toString() + ' ' +
+          (focused.single['text'] ?? '').toString() + ' ' +
+          (focused.single['desc'] ?? '').toString()).toLowerCase();
+      if (!fieldLabel.contains('search')) {
+        _taskSkillEligible = false;
+        return;
+      }
+      final typed = action.params['text']?.toString() ?? '';
+      final normalizedCommand = LucyLearningStore.normalizeCommand(command);
+      final normalizedTyped = LucyLearningStore.normalizeCommand(typed);
+      final queryIndex = normalizedTyped.isEmpty
+          ? -1
+          : normalizedCommand.indexOf(normalizedTyped);
+      if (queryIndex < 0) {
+        _taskSkillEligible = false;
+        return;
+      }
+      _taskSkillCommandTemplate = normalizedCommand.replaceRange(
+        queryIndex,
+        queryIndex + normalizedTyped.length,
+        '{query}',
+      );
+      entry['parameter'] = 'query';
+      _pendingSkillActions.add(entry);
+      return;
+    }
+    if (!allowed.contains(action.type)) { _taskSkillEligible = false; return; }
+    if (action.type == 'open_app') {
+      final package = action.params['package']?.toString() ?? '';
+      if (package.isEmpty) { _taskSkillEligible = false; return; }
+      entry['package'] = package;
+    } else if (action.type == 'tap') {
+      if (before == null) { _taskSkillEligible = false; return; }
+      final id = (action.params['element'] as num?)?.toInt();
+      final element = id == null ? null : _findElementById(id, before.elements);
+      if (element == null) { _taskSkillEligible = false; return; }
+      final resourceId = element['resourceId']?.toString() ?? '';
+      final label = [element['text']?.toString() ?? '', element['desc']?.toString() ?? ''].where((v) => v.trim().isNotEmpty).join(' ').trim();
+      final package = before.packageName ?? '';
+      if (const {'bank', 'wallet', 'payment', 'upi', 'finance', 'authenticator', 'password'}.any(package.toLowerCase().contains) ||
+          LucyActionApprovalPolicy.effectiveRisk('tap', targetLabel: label, packageName: package) != 'low') {
+        _taskSkillEligible = false;
+        return;
+      }
+      final resourceCount = resourceId.isEmpty ? 0 : before.elements.where((item) => item['resourceId'] == resourceId).length;
+      final labelCount = label.isEmpty ? 0 : before.elements.where((item) => ((item['text'] ?? '').toString() + ' ' + (item['desc'] ?? '').toString()).trim() == label).length;
+      if ((resourceId.isEmpty || resourceCount != 1) && (label.isEmpty || labelCount != 1)) { _taskSkillEligible = false; return; }
+      entry['resourceId'] = resourceId;
+      entry['label'] = label;
+    }
+    _pendingSkillActions.add(entry);
+    if (_pendingSkillActions.length > 12) _taskSkillEligible = false;
+  }
+
+  Future<void> _saveCompletedSkill(String command) async {
+    if (!_taskSkillEligible || !await _settingsStore.isEnabled(LucySettingsStore.learnSkills) || _taskStartPackage == null || _taskStartSignature == null || _pendingSkillActions.isEmpty) return;
+    final normalized = LucyLearningStore.normalizeCommand(command);
+    final identity = normalized + '|' + _taskStartPackage! + '|' + _taskStartSignature!;
+    var hash = 0x811c9dc5;
+    for (final unit in identity.codeUnits) { hash = ((hash ^ unit) * 0x01000193) & 0xffffffff; }
+    await _learningStore.recordSkill(id: 'skill_' + hash.toRadixString(16), command: command, packageName: _taskStartPackage!, startSignature: _taskStartSignature!, appVersionCode: _taskStartVersion ?? 'unknown', actions: _pendingSkillActions);
+  }
+
+  Future<bool> _tryReplayLearnedSkill(String command, _UiSnapshot startingSnapshot) async {
+    if (!await _settingsStore.isEnabled(LucySettingsStore.learnSkills)) return false;
+    final packageName = startingSnapshot.packageName ?? '';
+    if (const {'bank', 'wallet', 'payment', 'upi', 'finance', 'authenticator', 'password'}.any(packageName.toLowerCase().contains)) {
+      return false;
+    }
+    final signature = LucyLearningStore.stableSignature(packageName: packageName, elements: startingSnapshot.elements);
+    final skill = await _learningStore.findSkill(command: command, packageName: packageName, startSignature: signature, appVersionCode: startingSnapshot.appVersionCode);
+    if (skill == null) return false;
+    final skillId = skill['id']?.toString() ?? '';
+    final rawActions = skill['actions'];
+    if (skillId.isEmpty || rawActions is! List || rawActions.isEmpty) return false;
+    var current = startingSnapshot;
+    for (final raw in rawActions) {
+      if (_cancelRequested || raw is! Map) { await _learningStore.markSkillResult(skillId, success: false); return false; }
+      final saved = Map<String, dynamic>.from(raw);
+      final type = saved['type']?.toString() ?? '';
+      final params = <String, dynamic>{'confidence': 0.99, 'risk': 'low', 'reason': 'Replay a previously verified low-risk navigation or reading skill.'};
+      if (type == 'open_app') {
+        params['package'] = saved['package'];
+      } else if (type == 'type') {
+        final focused = current.elements.where((element) =>
+            element['focused'] == true && element['editable'] == true &&
+            element['password'] != true).toList();
+        final fieldLabel = focused.length == 1
+            ? ((focused.single['resourceId'] ?? '').toString() + ' ' +
+                (focused.single['text'] ?? '').toString() + ' ' +
+                (focused.single['desc'] ?? '').toString()).toLowerCase()
+            : '';
+        final query = (skill['parameters'] as Map?)?['query']?.toString() ?? '';
+        if (focused.length != 1 || !fieldLabel.contains('search') || query.isEmpty) {
+          await _learningStore.markSkillResult(skillId, success: false);
+          return false;
+        }
+        params['text'] = query;
+      } else if (type == 'tap') {
+        final resourceId = saved['resourceId']?.toString() ?? '';
+        final label = saved['label']?.toString() ?? '';
+        var matches = current.elements.where((element) => resourceId.isNotEmpty && element['resourceId'] == resourceId).toList();
+        if (matches.length != 1 && label.isNotEmpty) {
+          matches = current.elements.where((element) => ((element['text'] ?? '').toString() + ' ' + (element['desc'] ?? '').toString()).trim() == label).toList();
+        }
+        if (matches.length != 1) { await _learningStore.markSkillResult(skillId, success: false); return false; }
+        params['element'] = matches.single['id'];
+      }
+      final action = AgentAction(type: type, params: params);
+      current = await _executeAction(action, current) ?? current;
+      if (!_lastActionDispatchSucceeded) { await _learningStore.markSkillResult(skillId, success: false); return false; }
+      if (const {'scroll_to_end', 'scroll_to_top', 'read_all'}.contains(type)) {
+        final rawResult = _lastToolResult;
+        if (rawResult == null) { await _learningStore.markSkillResult(skillId, success: false); return false; }
+        final result = jsonDecode(rawResult);
+        if (result is! Map || result['reachedEnd'] != true) { await _learningStore.markSkillResult(skillId, success: false); return false; }
+      }
+    }
+    await _learningStore.markSkillResult(skillId, success: true);
+    return true;
+  }
+
+  Future<bool> _handleLearningCommand(String text) async {
+    final lower = text.trim().toLowerCase();
+    if (lower == 'forget this app layout' || lower == 'forget app layout') {
+      final packageName = (await _fetchUiSnapshot())?.packageName ?? '';
+      if (packageName.isEmpty) return true;
+      final removed = await _learningStore.forgetAppLayout(packageName);
+      await _speakEvent('ui_layout_forgotten', context: 'Removed ' + removed.toString() + ' learned screen layouts for the current app.');
+      return true;
+    }
+    final match = RegExp(r'^forget skill\s+(.+)$', caseSensitive: false).firstMatch(text.trim());
+    if (match != null) {
+      final removed = await _learningStore.forgetSkill(match.group(1)!);
+      await _speakEvent('skill_forgotten', context: removed ? 'The named learned skill was deleted.' : 'No matching learned skill was found.');
+      return true;
+    }
+    return false;
   }
 
   String _buildUiTreePayload(_UiSnapshot snapshot, int step) {
@@ -2442,6 +2686,14 @@ class AgentController extends ChangeNotifier {
         case 'take_photo':
         case 'share_text':
           await _executeNativePhoneAction(action);
+          break;
+
+        case 'run_skill':
+          final name = action.params['name']?.toString() ??
+              action.params['skill']?.toString() ?? '';
+          _lastActionDispatchSucceeded = name.isNotEmpty &&
+              beforeSnapshot != null &&
+              await _tryReplayLearnedSkill(name, beforeSnapshot);
           break;
 
         case 'remember':
