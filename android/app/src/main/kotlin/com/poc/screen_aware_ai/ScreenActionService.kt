@@ -232,6 +232,202 @@ class ScreenActionService : AccessibilityService() {
         return performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
+    private data class ScrollSnapshot(
+        val signature: String,
+        val texts: List<String>,
+        val scrollNode: AccessibilityNodeInfo?
+    )
+
+    /**
+     * Scrolls the largest visible scroll container until two consecutive
+     * visible-content signatures are unchanged, or maxScrolls is reached.
+     * This method is invoked from a worker thread by MainActivity.
+     */
+    fun scrollScreen(forward: Boolean, maxScrolls: Int = 80, collect: Boolean = false): String {
+        if (isDeviceLocked()) {
+            return JSONObject().apply {
+                put("scrolls", 0)
+                put("reachedEnd", false)
+                put("locked", true)
+                put("limited", false)
+                put("items", JSONArray())
+            }.toString()
+        }
+
+        val limit = maxScrolls.coerceIn(1, 120)
+        val collected = LinkedHashSet<String>()
+        val initial = captureScrollSnapshot(collect)
+        var current = initial
+        if (collect) addCollected(collected, current.texts)
+
+        var scrolls = 0
+        var unchangedChecks = 0
+        var reachedEnd = false
+        var dispatchFailed = false
+        val display = resources.displayMetrics
+        val width = display.widthPixels.toFloat()
+        val height = display.heightPixels.toFloat()
+
+        try {
+            while (scrolls < limit && !isDeviceLocked()) {
+                val target = current.scrollNode
+                var moved = false
+                if (target != null) {
+                    val direction = if (forward) {
+                        AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                    } else {
+                        AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                    }
+                    try {
+                        moved = target.performAction(direction)
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Accessibility scroll action failed; trying gesture fallback", error)
+                    } finally {
+                        target.recycle()
+                    }
+                }
+
+                // WebViews and some custom lists expose no working scroll action.
+                if (!moved) {
+                    val startY = if (forward) height * 0.75f else height * 0.25f
+                    val endY = if (forward) height * 0.25f else height * 0.75f
+                    moved = try {
+                        performSwipe(width * 0.5f, startY, width * 0.5f, endY, 250L)
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Scroll gesture fallback failed", error)
+                        false
+                    }
+                }
+
+                if (!moved) {
+                    dispatchFailed = true
+                    break
+                }
+
+                scrolls++
+                // Accessibility events are not guaranteed for every app. A short
+                // bounded settle period keeps this deterministic without polling.
+                try {
+                    Thread.sleep(300L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+
+                val next = captureScrollSnapshot(collect)
+                if (collect) addCollected(collected, next.texts)
+
+                if (next.signature == current.signature) {
+                    unchangedChecks++
+                } else {
+                    unchangedChecks = 0
+                }
+
+                current = next
+                if (unchangedChecks >= 2) {
+                    reachedEnd = true
+                    break
+                }
+            }
+        } finally {
+            current.scrollNode?.recycle()
+        }
+
+        val items = JSONArray()
+        if (collect) {
+            collected.forEach { items.put(it) }
+        }
+        return JSONObject().apply {
+            put("scrolls", scrolls)
+            put("reachedEnd", reachedEnd)
+            put("limited", !reachedEnd && scrolls >= limit)
+            put("dispatchFailed", dispatchFailed)
+            put("locked", isDeviceLocked())
+            put("forward", forward)
+            put("items", items)
+        }.toString()
+    }
+
+    private fun addCollected(target: LinkedHashSet<String>, values: List<String>) {
+        for (value in values) {
+            if (target.size >= 400) break
+            val normalized = value.trim().replace(Regex("\\s+"), " ").take(200)
+            if (normalized.isNotEmpty()) target.add(normalized)
+        }
+    }
+
+    /**
+     * Captures visible text in traversal order and returns a copy of the
+     * largest visible scrollable node by on-screen bounds area.
+     */
+    private fun captureScrollSnapshot(collect: Boolean): ScrollSnapshot {
+        val root = rootInActiveWindow
+        if (root == null) {
+            return ScrollSnapshot("", emptyList(), null)
+        }
+
+        val visibleTexts = ArrayList<String>()
+        val signatureParts = ArrayList<String>()
+        var largestScrollable: AccessibilityNodeInfo? = null
+        var largestArea = 0L
+        var visited = 0
+        val maxNodes = 400
+        val maxDepth = 28
+
+        fun visit(node: AccessibilityNodeInfo, depth: Int) {
+            if (visited >= maxNodes || depth > maxDepth) return
+            visited++
+
+            if (node.isVisibleToUser) {
+                val text = node.text?.toString()?.trim().orEmpty()
+                val desc = node.contentDescription?.toString()?.trim().orEmpty()
+                if (text.isNotEmpty()) {
+                    val value = text.take(200)
+                    signatureParts.add("t:$value")
+                    if (collect && visibleTexts.size < 400) visibleTexts.add(value)
+                }
+                if (desc.isNotEmpty() && desc != text) {
+                    val value = desc.take(200)
+                    signatureParts.add("d:$value")
+                    if (collect && visibleTexts.size < 400) visibleTexts.add(value)
+                }
+
+                if (node.isScrollable) {
+                    val bounds = Rect()
+                    node.getBoundsInScreen(bounds)
+                    val area = bounds.width().toLong().coerceAtLeast(0L) *
+                        bounds.height().toLong().coerceAtLeast(0L)
+                    if (area > largestArea) {
+                        largestScrollable?.recycle()
+                        largestScrollable = AccessibilityNodeInfo.obtain(node)
+                        largestArea = area
+                    }
+                }
+            }
+
+            for (index in 0 until node.childCount) {
+                if (visited >= maxNodes) break
+                val child = node.getChild(index) ?: continue
+                try {
+                    visit(child, depth + 1)
+                } finally {
+                    child.recycle()
+                }
+            }
+        }
+
+        try {
+            visit(root, 0)
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not fully inspect scroll container", error)
+        } finally {
+            root.recycle()
+        }
+
+        val signature = signatureParts.joinToString("|").hashCode().toString()
+        return ScrollSnapshot(signature, visibleTexts, largestScrollable)
+    }
+
     /**
      * Harvest the accessibility tree of the current foreground app.
      * Returns a compact JSON string containing only useful interactive/text elements.
