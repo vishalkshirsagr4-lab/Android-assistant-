@@ -163,6 +163,16 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<Map<String, dynamic>> get learnedUiMaps => _learningStore.uiMaps;
+  List<Map<String, dynamic>> get learnedSkills => _learningStore.skills;
+
+  Future<void> clearLearningData() async {
+    await _learningStore.clear();
+    _lastRecordedUiSignature = null;
+    _pendingSkillActions.clear();
+    notifyListeners();
+  }
+
   Future<void> _replyToMemoryCommand(
     String context, {
     String event = 'memory_update',
