@@ -1,6 +1,18 @@
 /// Local action-risk policy. Consequential actions require a deliberate
 /// user confirmation. Routine navigation and ordinary phone tasks do not.
 class LucyActionApprovalPolicy {
+  /// Only explicitly requested local memory operations remain available when
+  /// Autopilot is disabled. All phone/UI actions are blocked at the executor,
+  /// not merely discouraged in the model prompt.
+  static const Set<String> _memoryOnlyActions = {
+    'remember',
+    'forget',
+    'recall_memories',
+  };
+
+  static bool allowedWhenAutopilotDisabled(String action) =>
+      _memoryOnlyActions.contains(action);
+
   static const Set<String> _sensitiveTapLabels = {
     'send',
     'send message',
