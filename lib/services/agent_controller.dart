@@ -1119,6 +1119,10 @@ class AgentController extends ChangeNotifier {
       } catch (_) {
         LucyReliabilityLog.event('task_release_wake_lock_failed', success: false);
       }
+      // A resolved number is needed only while this one task is running.
+      // Drop it as soon as the task ends, including failure/cancellation paths.
+      _resolvedContactNumbers.clear();
+      _pendingResolvedContactRef = null;
     }
     final taskStopped = _statusMessage.startsWith('AI unavailable') ||
         _statusMessage.startsWith('Phone locked') ||
