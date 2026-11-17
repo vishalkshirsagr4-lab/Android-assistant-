@@ -65,6 +65,8 @@ class _UiSnapshot {
 }
 
 class AgentController extends ChangeNotifier {
+  // Prevent independent Voice and Chat sessions from controlling the same Android UI concurrently.
+  static bool _globalTaskRunning = false;
   final AiService _aiService = AiService();
   final LucyContextBuilder _contextBuilder = LucyContextBuilder();
   final GrokService _grokService = GrokService();
@@ -1071,8 +1073,28 @@ class AgentController extends ChangeNotifier {
     });
   }
 
-  /// Main handler: user says something → agent loop begins.
+  /// Serialize phone-control work across the independent voice and chat controllers.
   Future<void> _handleUserInput(
+    String text, {
+    List<String> speechAlternatives = const <String>[],
+  }) async {
+    if (_globalTaskRunning) {
+      _addConversation(
+        'Lucy is already completing a task in Voice Mode or Chat Mode. Please wait for it to finish before starting another phone task.',
+        false,
+      );
+      return;
+    }
+    _globalTaskRunning = true;
+    try {
+      await _processUserInput(text, speechAlternatives: speechAlternatives);
+    } finally {
+      _globalTaskRunning = false;
+    }
+  }
+
+  /// Main handler: user says something → agent loop begins.
+  Future<void> _processUserInput(
     String text, {
     List<String> speechAlternatives = const <String>[],
   }) async {
