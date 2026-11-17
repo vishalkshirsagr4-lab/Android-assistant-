@@ -109,6 +109,8 @@ class AgentController extends ChangeNotifier {
   bool get isActive => _isActive;
 
   int _listenRetryCount = 0;
+  String? _lastFinalTranscriptKey;
+  DateTime? _lastFinalTranscriptAt;
   bool _listenRestartScheduled = false;
   Timer? _silenceTimeoutTimer;
   static const Duration _conversationSilenceTimeout = Duration(seconds: 60);
@@ -663,7 +665,7 @@ class AgentController extends ChangeNotifier {
       }
     };
 
-    _voiceService.onResult = (text, isFinal) {
+    _voiceService.onResult = (text, isFinal, alternatives) {
       _currentTranscript = text;
       if (isFinal) {
         final completed = _pushToTalkFinalResult;
@@ -731,7 +733,11 @@ class AgentController extends ChangeNotifier {
           );
         }
       } else if (isFinal && text.isNotEmpty) {
-        _handleUserInput(text);
+        if (_isDuplicateFinalTranscript(text)) {
+          notifyListeners();
+          return;
+        }
+        _handleUserInput(text, speechAlternatives: alternatives);
       }
       notifyListeners();
     };
@@ -958,11 +964,14 @@ class AgentController extends ChangeNotifier {
     });
   }
 
-  Future<void> _startListening() async {
+  Future<void> _startListening({String? statusMessage}) async {
     if (!_isActive) return;
     _setState(AgentState.listening);
-    _statusMessage = '🎤 Listening... Open notifications to stop Lucy.';
-    unawaited(_voiceService.updateNotificationStatus('Listening for your command'));
+    _statusMessage = statusMessage ?? '🎤 Listening... Open notifications to stop Lucy.';
+    final notificationStatus = _statusMessage.startsWith('Task completed')
+        ? 'Ready for your next command'
+        : 'Listening for your command';
+    unawaited(_voiceService.updateNotificationStatus(notificationStatus));
     _currentTranscript = '';
     notifyListeners();
 
@@ -994,13 +1003,30 @@ class AgentController extends ChangeNotifier {
     }
   }
 
-  Future<void> _resumeOrFinishListening() async {
+  Future<void> _resumeOrFinishListening({String? statusMessage}) async {
     if (!_isActive) return;
     if (_pushToTalkMode) {
       await stopAgent();
     } else {
-      await _startListening();
+      await _startListening(statusMessage: statusMessage);
     }
+  }
+
+  bool _isDuplicateFinalTranscript(String text) {
+    final key = text
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[\\s.,!?;:]+'), ' ');
+    if (key.isEmpty) return false;
+    final now = DateTime.now();
+    final isDuplicate = key == _lastFinalTranscriptKey &&
+        _lastFinalTranscriptAt != null &&
+        now.difference(_lastFinalTranscriptAt!) < const Duration(seconds: 3);
+    if (!isDuplicate) {
+      _lastFinalTranscriptKey = key;
+      _lastFinalTranscriptAt = now;
+    }
+    return isDuplicate;
   }
 
   void _resetSilenceTimeout() {
@@ -1015,7 +1041,10 @@ class AgentController extends ChangeNotifier {
   }
 
   /// Main handler: user says something → agent loop begins.
-  Future<void> _handleUserInput(String text) async {
+  Future<void> _handleUserInput(
+    String text, {
+    List<String> speechAlternatives = const <String>[],
+  }) async {
     if (!_isActive || _state != AgentState.listening) return;
 
     _silenceTimeoutTimer?.cancel();
@@ -1027,32 +1056,38 @@ class AgentController extends ChangeNotifier {
     _currentTranscript = '';
 
     if (await _handleLearningCommand(text)) {
-      await _resumeOrFinishListening();
+      await _resumeOrFinishListening(
+        statusMessage: 'Task completed · Ready for your next command',
+      );
       return;
     }
 
     if (await _settingsStore.isEnabled(LucySettingsStore.memory) &&
         await _handleMemoryCommand(text)) {
-      await _resumeOrFinishListening();
+      await _resumeOrFinishListening(
+        statusMessage: 'Task completed · Ready for your next command',
+      );
       return;
     }
 
     if (await _handleOfflineCommand(text)) {
-      await _resumeOrFinishListening();
+      await _resumeOrFinishListening(
+        statusMessage: 'Task completed · Ready for your next command',
+      );
       return;
     }
 
     if (!await _settingsStore.isEnabled(LucySettingsStore.aiRequests)) {
       _statusMessage = 'Cloud AI disabled · Offline commands remain available';
       notifyListeners();
-      await _resumeOrFinishListening();
+      await _resumeOrFinishListening(statusMessage: _statusMessage);
       return;
     }
 
     if (!await _aiService.isProviderReady()) {
       _statusMessage = 'AI provider not configured · Offline commands remain available';
       notifyListeners();
-      await _resumeOrFinishListening();
+      await _resumeOrFinishListening(statusMessage: _statusMessage);
       return;
     }
 
@@ -1060,7 +1095,7 @@ class AgentController extends ChangeNotifier {
     _performanceMonitor.beginTask();
     try {
       await _screenCapture.keepScreenAwake(true);
-      await _runAgentLoop(text);
+      await _runAgentLoop(text, speechAlternatives: speechAlternatives);
     } catch (error) {
       // Never let a plugin/platform exception escape the voice callback and
       // crash the app. Log only the exception type, not user or screen data.
@@ -1084,13 +1119,18 @@ class AgentController extends ChangeNotifier {
         LucyReliabilityLog.event('task_release_wake_lock_failed', success: false);
       }
     }
-    if (!_statusMessage.startsWith('AI unavailable') &&
-        !_statusMessage.startsWith('Phone locked')) {
-      _updateTaskProgress('Task finished · Listening again');
-    }
+    final taskStopped = _statusMessage.startsWith('AI unavailable') ||
+        _statusMessage.startsWith('Phone locked') ||
+        _statusMessage.startsWith('Task failed') ||
+        _statusMessage.startsWith('Task stopped');
+    final nextStatus = taskStopped
+        ? _statusMessage
+        : 'Task completed · Ready for your next command';
+    if (!taskStopped) _updateTaskProgress(nextStatus);
 
-    // Continuous mode resumes; push-to-talk closes after one completed turn.
-    await _resumeOrFinishListening();
+    // Continuous mode remains ready for the next command, but the visible
+    // status now confirms the previous task instead of saying it is listening again.
+    await _resumeOrFinishListening(statusMessage: nextStatus);
   }
 
   Future<void> _speakLocalReply(String reply) async {
@@ -1507,7 +1547,10 @@ class AgentController extends ChangeNotifier {
   }
 
   /// The core agent loop: capture → analyze → act → repeat.
-  Future<void> _runAgentLoop(String userMessage) async {
+  Future<void> _runAgentLoop(
+    String userMessage, {
+    List<String> speechAlternatives = const <String>[],
+  }) async {
     _cancelRequested = false;
     int step = 0;
     final isDeepTask = RegExp(
@@ -1519,7 +1562,15 @@ class AgentController extends ChangeNotifier {
         ? const Duration(minutes: 6)
         : const Duration(minutes: 3);
     final taskStopwatch = Stopwatch()..start();
-    String currentMessage = userMessage;
+    final alternatives = speechAlternatives
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty && value != userMessage.trim())
+        .toSet()
+        .take(3)
+        .toList(growable: false);
+    String currentMessage = alternatives.isEmpty
+        ? userMessage
+        : '$userMessage\\n\\n[ASR_ALTERNATIVES]\\n${jsonEncode(alternatives)}\\n[/ASR_ALTERNATIVES]';
     // Screen dimensions are stable for this command, but device context is
     // refreshed before every model request so new notifications, battery,
     // network, foreground-app and calendar changes are visible to Lucy.
@@ -1828,6 +1879,7 @@ class AgentController extends ChangeNotifier {
           );
           if (const {
             'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
+            'read_contact',
           }.contains(action.type)) {
             toolResultForNextTurn = _lastToolResult;
           }
@@ -3501,6 +3553,32 @@ class AgentController extends ChangeNotifier {
     final resultMap = nativeResult is Map
         ? Map<String, dynamic>.from(nativeResult)
         : <String, dynamic>{};
+    if (action.type == 'read_contact') {
+      if (nativeResult == false) {
+        _lastToolResult = jsonEncode(<String, dynamic>{
+          'found': false,
+          'error': 'contacts_access_not_granted',
+        });
+        _lastActionDispatchSucceeded = true;
+        return;
+      }
+      _lastToolResult = jsonEncode(resultMap);
+      if (resultMap['ambiguous'] == true || resultMap['found'] == false) {
+        // A search result is a successful lookup even when Lucy must ask the
+        // user to choose between candidates or correct the spoken name.
+        _lastActionDispatchSucceeded = true;
+        return;
+      }
+      if (resultMap['found'] == true &&
+          resultMap['phoneNumber']?.toString().isNotEmpty == true) {
+        _lastActionDispatchSucceeded = true;
+        _addConversation(
+          'I found ${resultMap['name'] ?? 'the contact'} in your contacts.',
+          false,
+        );
+        return;
+      }
+    }
     final needsBrightnessAccess = resultMap['requiresSettingsAccess'] == true;
     if (resultMap['requiresUnlock'] == true) {
       _lastActionDispatchSucceeded = false;
@@ -3579,13 +3657,8 @@ class AgentController extends ChangeNotifier {
       _addConversation(message, false);
       await _voiceService.speak(message, lang: _currentLang);
     } else if (action.type == 'read_contact') {
-      final name = resultMap['name']?.toString();
-      final number = resultMap['phoneNumber']?.toString();
-      final message = name == null || number == null
-          ? 'I could not find a matching contact.'
-          : 'I found $name. The saved number is $number.';
-      _addConversation(message, false);
-      await _voiceService.speak(message, lang: _currentLang);
+      final name = resultMap['name']?.toString() ?? 'the requested contact';
+      _addConversation('I found $name in your contacts.', false);
     } else if (action.type == 'set_brightness' &&
         resultMap['success'] == true) {
       final level = resultMap['level'] ?? action.params['level'] ?? '';
