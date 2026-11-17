@@ -242,6 +242,11 @@ void main() {
       signature: 'screen1',
       elements: <Map<String, dynamic>>[],
     );
+    await store.recordUiMap(
+      packageName: 'com.example',
+      signature: 'screen2',
+      elements: <Map<String, dynamic>>[],
+    );
     await store.recordSkill(
       id: 'skill1',
       command: 'read inbox',
@@ -251,6 +256,11 @@ void main() {
         <String, dynamic>{'type': 'read_all'},
       ],
     );
+    expect(
+      await store.forgetUiMap('com.example::screen1'),
+      isTrue,
+    );
+    expect(store.uiMaps, hasLength(1));
     expect(await store.forgetAppLayout('com.example'), 1);
     expect(await store.forgetSkill('read inbox'), isTrue);
     expect(store.uiMaps, isEmpty);
