@@ -36,6 +36,23 @@ void main() {
     expect(await second.isEnabled(LucySettingsStore.memory), isTrue);
   });
 
+  test('autopilot defaults on and mandatory safety controls cannot be disabled', () async {
+    final settings = LucySettingsStore();
+    final values = await settings.readAll();
+
+    expect(values[LucySettingsStore.autopilot], isTrue);
+    expect(values[LucySettingsStore.safetyStop], isTrue);
+    expect(values[LucySettingsStore.askBeforeSending], isTrue);
+    expect(
+      () => settings.setEnabled(LucySettingsStore.safetyStop, false),
+      throwsStateError,
+    );
+    expect(
+      () => settings.setEnabled(LucySettingsStore.askBeforeSending, false),
+      throwsStateError,
+    );
+  });
+
   test('unknown capability keys are rejected', () async {
     expect(
       () => LucySettingsStore().setEnabled('not_a_real_capability', true),
