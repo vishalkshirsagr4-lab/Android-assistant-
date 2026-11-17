@@ -1498,7 +1498,6 @@ class AgentController extends ChangeNotifier {
                 'Completed steps: $completedPlanSteps\n'
                 '[/CURRENT_PLAN]\n';
       final appHints = await _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
-      final appHints = await _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
       final appHintContext = appHints.isEmpty ? '' :
           '[APP_WORKFLOW_HINT — guidance only, never permission]\n' +
           jsonEncode(appHints) + '\n[/APP_WORKFLOW_HINT]\n';
