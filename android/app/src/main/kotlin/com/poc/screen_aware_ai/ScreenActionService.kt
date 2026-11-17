@@ -134,16 +134,20 @@ class ScreenActionService : AccessibilityService() {
                 val text = node.text?.toString()?.trim().orEmpty()
                 val desc = node.contentDescription?.toString()?.trim().orEmpty()
                 val viewId = node.viewIdResourceName?.substringAfterLast('/')?.lowercase().orEmpty()
-                val normalized = (if (text.isNotEmpty()) text else desc)
-                    .trim().lowercase().replace(Regex("\\s+"), " ")
+                // Inspect text and content-description independently. Some apps
+                // expose a generic text label plus the meaningful action in desc.
+                val labels = listOf(text, desc)
+                    .map(ScreenWatcherPolicy::normalize)
+                    .filter(String::isNotEmpty)
                 val isAdSkipId = viewId.endsWith("skip_ad_button") ||
                     viewId.endsWith("skip_ads_button") || viewId.endsWith("ad_skip_button")
-                val isAdSkipLabel = normalized in setOf("skip", "skip ad", "skip ads", "close ad")
-                val isSafePopupLabel = normalized in setOf(
-                    "not now", "maybe later", "no thanks", "dismiss", "got it", "reject all"
-                )
+                val isAdSkipLabel = labels.any(ScreenWatcherPolicy::isAdSkipLabel)
+                val isSafePopupLabel = labels.any(ScreenWatcherPolicy::isSafeDismissLabel)
+                val isPopupClose = autoDismissPopups &&
+                    ScreenWatcherPolicy.isCloseControl(viewId, labels) &&
+                    hasPopupAncestor(node)
                 val shouldClick = (autoSkipAds && (isAdSkipId || isAdSkipLabel)) ||
-                    (autoDismissPopups && isSafePopupLabel)
+                    (autoDismissPopups && isSafePopupLabel) || isPopupClose
                 if (shouldClick) {
                     val key = "$foregroundPackage|$viewId|$normalized"
                     val now = SystemClock.elapsedRealtime()
@@ -175,6 +179,31 @@ class ScreenActionService : AccessibilityService() {
             Log.w(TAG, "ScreenWatcher inspection failed", error)
         } finally {
             root.recycle()
+        }
+    }
+
+    /**
+     * Close controls are only eligible inside a known dialog, modal, banner or
+     * popup container. A generic X/Close button on a normal screen is not enough.
+     */
+    private fun hasPopupAncestor(node: AccessibilityNodeInfo): Boolean {
+        var current = AccessibilityNodeInfo.obtain(node)
+        try {
+            repeat(10) {
+                val resourceId = current.viewIdResourceName?.lowercase().orEmpty()
+                val className = current.className?.toString()?.lowercase().orEmpty()
+                if (listOf("dialog", "popup", "modal", "banner", "bottom_sheet")
+                        .any(resourceId::contains) ||
+                    className.contains("dialog") ||
+                    className.contains("popupwindow")
+                ) return true
+                val parent = current.parent ?: return false
+                current.recycle()
+                current = parent
+            }
+            return false
+        } finally {
+            current.recycle()
         }
     }
 
