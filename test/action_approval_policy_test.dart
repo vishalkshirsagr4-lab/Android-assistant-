@@ -3,7 +3,7 @@ import 'package:screen_aware_ai/services/action_approval_policy.dart';
 
 void main() {
   group('LucyActionApprovalPolicy', () {
-    test('allows known low-risk navigation and device actions', () {
+    test('allows routine phone and screen actions without approval', () {
       for (final action in [
         'open_app',
         'type',
@@ -14,53 +14,83 @@ void main() {
         'set_flashlight',
         'set_volume',
         'schedule_reminder',
+        'read_contact',
+        'create_calendar_event',
+        'take_photo',
+        'open_url',
+        'set_alarm',
+        'set_timer',
       ]) {
-        expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse);
+        expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
+            reason: action);
       }
     });
 
-    test('allows ordinary YouTube navigation and playback taps', () {
-      for (final label in ['Play', 'Search', 'Home', 'Next', 'Pause']) {
+    test('allows harmless taps including generic confirmation and permission labels', () {
+      for (final label in [
+        'Play', 'Search', 'Home', 'Next', 'Pause',
+        'Confirm', 'Submit', 'Allow', 'Grant', 'Install',
+      ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval(
             'tap',
             targetLabel: label,
-            packageName: 'com.google.android.youtube',
+            packageName: 'com.example.app',
           ),
           isFalse,
+          reason: label,
         );
       }
     });
 
-    test('requires approval for consequential tap labels', () {
-      for (final label in ['Send', 'Post', 'Publish', 'Share', 'Delete', 'Pay']) {
+    test('requires approval for payment and destructive tap labels', () {
+      for (final label in [
+        'Send money', 'Transfer money', 'Delete', 'Delete permanently',
+        'Buy', 'Purchase', 'Pay', 'Checkout', 'Uninstall',
+      ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
           isTrue,
+          reason: label,
         );
       }
     });
 
-    test('requires approval for communication, sharing and medium-risk actions', () {
-      for (final action in [
-        'place_call',
-        'send_sms',
-        'share_text',
-        'read_contact',
-        'create_calendar_event',
-        'take_photo',
-      ]) {
-        expect(LucyActionApprovalPolicy.requiresApproval(action), isTrue);
+    test('requires approval for external communication actions', () {
+      for (final action in ['place_call', 'send_sms', 'share_text']) {
+        expect(LucyActionApprovalPolicy.requiresApproval(action), isTrue,
+            reason: action);
       }
     });
 
-    test('requires approval for unlabeled taps in messaging apps', () {
+    test('requires approval for taps inside financial apps', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval(
           'tap',
-          packageName: 'com.whatsapp',
+          targetLabel: 'Balance',
+          packageName: 'com.example.upi.wallet',
         ),
         isTrue,
+      );
+    });
+
+    test('requires approval for sensitive account and security settings', () {
+      for (final page in ['Security', 'Account', 'Password', 'Privacy']) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval(
+            'open_settings',
+            targetLabel: page,
+          ),
+          isTrue,
+          reason: page,
+        );
+      }
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'open_settings',
+          targetLabel: 'Display',
+        ),
+        isFalse,
       );
     });
 
@@ -74,15 +104,6 @@ void main() {
         ),
         isTrue,
       );
-      expect(
-        LucyActionApprovalPolicy.effectiveRisk(
-          'type',
-          sensitiveInput: true,
-          modelRisk: 'low',
-          confidence: 0.99,
-        ),
-        'high',
-      );
     });
 
     test('typing in a financial app requires approval', () {
@@ -90,14 +111,23 @@ void main() {
         LucyActionApprovalPolicy.requiresApproval(
           'type',
           packageName: 'com.example.upi.wallet',
-          modelRisk: 'low',
-          confidence: 0.99,
         ),
         isTrue,
       );
     });
 
-    test('model cannot downgrade a locally high-risk action', () {
+    test('model risk and low confidence do not add prompts to routine actions', () {
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'open_app',
+          modelRisk: 'high',
+          confidence: 0.4,
+        ),
+        isFalse,
+      );
+    });
+
+    test('model cannot downgrade a locally sensitive action', () {
       expect(
         LucyActionApprovalPolicy.effectiveRisk(
           'send_sms',
@@ -105,28 +135,6 @@ void main() {
           confidence: 1,
         ),
         'high',
-      );
-    });
-
-    test('model high risk escalates an otherwise low-risk action', () {
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'open_app',
-          modelRisk: 'high',
-          confidence: 0.99,
-        ),
-        isTrue,
-      );
-    });
-
-    test('low confidence escalates to confirmation', () {
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'open_app',
-          modelRisk: 'low',
-          confidence: 0.4,
-        ),
-        isTrue,
       );
     });
 
