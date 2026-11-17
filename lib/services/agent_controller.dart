@@ -1622,7 +1622,7 @@ class AgentController extends ChangeNotifier {
 
     // Wake on Android accessibility events first, then verify with a fresh
     // tree. Keep a short polling fallback for apps that emit no useful events.
-    final eventWait = timeout.inMilliseconds.clamp(0, 500);
+    final eventWait = timeout.inMilliseconds.clamp(0, 500).toInt();
     if (eventWait > 0) {
       await _screenCapture.waitForUiEvent(
         afterSequence: _lastActionEventSequence,
