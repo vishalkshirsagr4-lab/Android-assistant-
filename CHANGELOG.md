@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🛑 Executor-level Autopilot enforcement across local shortcuts, model actions, learned-skill replay and ScreenWatcher automation; turning Autopilot off stops an active task.
 - 🧭 Safer ScreenWatcher matching for separate text/content descriptions, localized popup choices and context-aware dialog close controls.
 - 🧠 User-controlled routine learning: the same safe workflow must succeed twice and be explicitly approved before replay; approval can be revoked.
-- 🗣️ Localized Hindi and Kannada first-run permission guidance, spoken setup explanations and clearer handling when Android speech-language packs are unavailable.
+- 🗣️ Localized Hindi and Kannada first-run permission guidance, spoken setup explanations and clearer handling when Android speech-language packs are unavailable. TTS setup remains independent of microphone permission.
 - 📊 Bounded performance diagnostics for model/tree/screenshot/execution/TTS timings, p50/p95 latency, task counts, task duration and optional charge-counter deltas.
 - 🧪 Expanded regression tests for safety policy, localized watcher labels, approved skills, concurrent memory writes, Japanese retrieval, voice locales and performance metrics.
 - 📋 Physical-device regression checklist covering permissions, Stop, WhatsApp/Gmail deep reading, YouTube ad skip, multilingual voice, battery and release updates.
