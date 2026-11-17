@@ -14,7 +14,6 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)]()
 
 <a href="https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
 
