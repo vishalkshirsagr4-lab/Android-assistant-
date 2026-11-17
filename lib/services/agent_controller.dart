@@ -2026,7 +2026,7 @@ class AgentController extends ChangeNotifier {
   ) async {
     final requestedLimit = action.params['maxItems'];
     final maxItems = (requestedLimit is num ? requestedLimit.toInt() : 10)
-        .clamp(1, 30)
+        .clamp(1, 100)
         .toInt();
     final requestedScrolls = action.params['detailMaxScrolls'];
     final detailMaxScrolls =
