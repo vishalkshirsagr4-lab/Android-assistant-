@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation]
   pull_request:
-    branches: [main]
+    branches: [main, fix/lucy-main-pr13-integration]
   workflow_dispatch:
 
 concurrency:
