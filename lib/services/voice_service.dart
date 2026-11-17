@@ -107,7 +107,8 @@ class VoiceService {
     if (_isTtsInitialized) return true;
     try {
       await _tts.awaitSpeakCompletion(true);
-      await _setTtsLanguage('en-US');
+      // Defer locale selection until the caller supplies the user's language.
+      // Requiring en-US here would disable an installed Hindi/Kannada voice.
       await _applyTtsSettings();
       _tts.setStartHandler(() {
         _isSpeaking = true;
