@@ -80,6 +80,13 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          if (_controller.state == AgentState.analyzing ||
+              _controller.state == AgentState.executingAction)
+            IconButton(
+              tooltip: 'Cancel current task',
+              onPressed: () => _controller.cancelChatTask(),
+              icon: const Icon(Icons.stop_circle_outlined),
+            ),
           IconButton(
             tooltip: 'Clear chat history',
             onPressed: _controller.conversation.isEmpty
