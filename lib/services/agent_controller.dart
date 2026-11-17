@@ -914,6 +914,8 @@ class AgentController extends ChangeNotifier {
     _isActive = false;
     _pushToTalkMode = false;
     _pushToTalkFinalResult = null;
+    _resolvedContactNumbers.clear();
+    _pendingResolvedContactRef = null;
     _listenRestartScheduled = false;
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
