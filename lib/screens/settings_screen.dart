@@ -354,11 +354,121 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   }
 
 
+  String _setupText(String key) {
+    const copy = <String, Map<String, String>>{
+      'en': {
+        'title': 'Set up Lucy',
+        'intro': _setupText('intro'),
+        'accessibility': _setupText('accessibility'),
+        'open_accessibility': 'Open Accessibility settings',
+        'capture': _setupText('capture'),
+        'set_capture': 'Set up screen capture',
+        'capture_ready': _setupText('capture_ready'),
+        'capture_off': _setupText('capture_off'),
+        'notifications': _setupText('notifications'),
+        'open_notifications': 'Open notification access',
+        'usage': _setupText('usage'),
+        'open_usage': 'Open Usage access',
+        'calendar': _setupText('calendar'),
+        'set_calendar': 'Set up Calendar access',
+        'calendar_ready': _setupText('calendar_ready'),
+        'calendar_off': _setupText('calendar_off'),
+        'mic_contacts': _setupText('mic_contacts'),
+        'finish': 'Finish',
+      },
+      'hi': {
+        'title': 'लूसी सेटअप',
+        'intro': 'केवल वही सुविधाएँ चालू करें जिनकी आपको ज़रूरत है। Android हर अनुमति आपसे पूछता है; लूसी उन्हें चुपचाप चालू नहीं कर सकती।',
+        'accessibility': 'स्क्रीन पढ़ने और चुनी गई स्क्रीन कार्रवाइयों के लिए Accessibility ज़रूरी है।',
+        'open_accessibility': 'Accessibility सेटिंग खोलें',
+        'capture': 'Screen capture वैकल्पिक है। स्क्रीनशॉट की ज़रूरत होने पर Android अपनी अनुमति दिखाएगा।',
+        'set_capture': 'Screen capture सेट करें',
+        'capture_ready': 'Screen capture तैयार है।',
+        'capture_off': 'Screen capture चालू नहीं हुआ।',
+        'notifications': 'Notification access वैकल्पिक है और केवल Notification context चालू होने पर उपयोग होता है।',
+        'open_notifications': 'Notification access खोलें',
+        'usage': 'Usage access वैकल्पिक है और वर्तमान ऐप का नाम जोड़ता है।',
+        'open_usage': 'Usage access खोलें',
+        'calendar': 'Calendar access वैकल्पिक है और केवल Calendar context के लिए माँगा जाता है।',
+        'set_calendar': 'Calendar access सेट करें',
+        'calendar_ready': 'Calendar access तैयार है।',
+        'calendar_off': 'Calendar access नहीं मिला।',
+        'mic_contacts': 'Microphone और Contacts की अनुमति संबंधित सुविधा उपयोग करने पर ही माँगी जाएगी। केवल भरोसेमंद अनुमति दें।',
+        'finish': 'पूरा करें',
+      },
+      'kn': {
+        'title': 'ಲೂಸಿ ಸೆಟಪ್',
+        'intro': 'ನಿಮಗೆ ಬೇಕಾದ ಸೌಲಭ್ಯಗಳನ್ನು ಮಾತ್ರ ಸಕ್ರಿಯಗೊಳಿಸಿ. ಅನುಮತಿಗಳನ್ನು Android ನಿಮ್ಮಿಂದಲೇ ಕೇಳುತ್ತದೆ; ಲೂಸಿ ಅವನ್ನು ಮೌನವಾಗಿ ನೀಡಲು ಸಾಧ್ಯವಿಲ್ಲ.',
+        'accessibility': 'ಪರದೆಯನ್ನು ಓದಲು ಮತ್ತು ಆಯ್ದ UI ಕಾರ್ಯಗಳಿಗೆ Accessibility ಅಗತ್ಯ.',
+        'open_accessibility': 'Accessibility ಸೆಟ್ಟಿಂಗ್ ತೆರೆಯಿರಿ',
+        'capture': 'Screen capture ಐಚ್ಛಿಕ. ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಬೇಕಾದಾಗ Android ತನ್ನದೇ ಅನುಮತಿ ಕೇಳುತ್ತದೆ.',
+        'set_capture': 'Screen capture ಹೊಂದಿಸಿ',
+        'capture_ready': 'Screen capture ಸಿದ್ಧವಾಗಿದೆ.',
+        'capture_off': 'Screen capture ಸಕ್ರಿಯವಾಗಿಲ್ಲ.',
+        'notifications': 'Notification access ಐಚ್ಛಿಕ; Notification context ಸಕ್ರಿಯವಾಗಿದ್ದಾಗ ಮಾತ್ರ ಬಳಸಲಾಗುತ್ತದೆ.',
+        'open_notifications': 'Notification access ತೆರೆಯಿರಿ',
+        'usage': 'Usage access ಐಚ್ಛಿಕ; ಪ್ರಸ್ತುತ ಆಪ್ ಹೆಸರನ್ನು context ಗೆ ಸೇರಿಸುತ್ತದೆ.',
+        'open_usage': 'Usage access ತೆರೆಯಿರಿ',
+        'calendar': 'Calendar access ಐಚ್ಛಿಕ; Calendar context ಗಾಗಿ ಮಾತ್ರ ಕೇಳಲಾಗುತ್ತದೆ.',
+        'set_calendar': 'Calendar access ಹೊಂದಿಸಿ',
+        'calendar_ready': 'Calendar access ಸಿದ್ಧವಾಗಿದೆ.',
+        'calendar_off': 'Calendar access ನೀಡಲಾಗಿಲ್ಲ.',
+        'mic_contacts': 'Microphone ಮತ್ತು Contacts ಅನುಮತಿಗಳನ್ನು ಸಂಬಂಧಿತ ವೈಶಿಷ್ಟ್ಯ ಬಳಸುವಾಗ ಮಾತ್ರ ಕೇಳಲಾಗುತ್ತದೆ. ನಿಮಗೆ ಅಸೌಕರ್ಯವಿರುವ ಅನುಮತಿಯನ್ನು ನೀಡಬೇಡಿ.',
+        'finish': 'ಮುಗಿಸಿ',
+      },
+      'ja': {
+        'title': 'Lucyのセットアップ',
+        'intro': '必要な機能だけを有効にしてください。権限はAndroidが確認し、Lucyが勝手に許可することはありません。',
+        'accessibility': '画面の読み取りとUI操作にはユーザー補助が必要です。',
+        'open_accessibility': 'ユーザー補助設定を開く',
+        'capture': '画面キャプチャは任意です。スクリーンショットが必要なときAndroidが確認します。',
+        'set_capture': '画面キャプチャを設定',
+        'capture_ready': '画面キャプチャを利用できます。',
+        'capture_off': '画面キャプチャは有効になっていません。',
+        'notifications': '通知アクセスは任意で、通知コンテキストを有効にした場合のみ使用します。',
+        'open_notifications': '通知アクセスを開く',
+        'usage': '使用状況へのアクセスは任意で、現在のアプリ名を追加します。',
+        'open_usage': '使用状況へのアクセスを開く',
+        'calendar': 'カレンダーアクセスは任意で、カレンダーコンテキストにのみ使用します。',
+        'set_calendar': 'カレンダーアクセスを設定',
+        'calendar_ready': 'カレンダーにアクセスできます。',
+        'calendar_off': 'カレンダーアクセスは許可されませんでした。',
+        'mic_contacts': 'マイクと連絡先の権限は関連機能を使うときだけ要求されます。不安な権限は有効にしないでください。',
+        'finish': '完了',
+      },
+      'ar': {
+        'title': 'إعداد لوسي',
+        'intro': 'فعّل الميزات التي تحتاجها فقط. أندرويد هو من يطلب الأذونات، ولا تستطيع لوسي منحها سرًا.',
+        'accessibility': 'إمكانية الوصول مطلوبة لقراءة الشاشة وتنفيذ إجراءات الواجهة التي تطلبها.',
+        'open_accessibility': 'فتح إعدادات إمكانية الوصول',
+        'capture': 'التقاط الشاشة اختياري. سيعرض أندرويد طلب الموافقة عند الحاجة إلى لقطة شاشة.',
+        'set_capture': 'إعداد التقاط الشاشة',
+        'capture_ready': 'التقاط الشاشة جاهز.',
+        'capture_off': 'لم يتم تفعيل التقاط الشاشة.',
+        'notifications': 'الوصول إلى الإشعارات اختياري ويستخدم فقط عند تفعيل سياق الإشعارات.',
+        'open_notifications': 'فتح الوصول إلى الإشعارات',
+        'usage': 'الوصول إلى الاستخدام اختياري ويضيف اسم التطبيق الحالي إلى السياق.',
+        'open_usage': 'فتح الوصول إلى الاستخدام',
+        'calendar': 'الوصول إلى التقويم اختياري ويُطلب لسياق التقويم فقط.',
+        'set_calendar': 'إعداد الوصول إلى التقويم',
+        'calendar_ready': 'الوصول إلى التقويم جاهز.',
+        'calendar_off': 'لم يتم منح الوصول إلى التقويم.',
+        'mic_contacts': 'لا يُطلب إذن الميكروفون وجهات الاتصال إلا عند استخدام الميزة المرتبطة. لا تمنح إذنًا لا تشعر بالراحة تجاهه.',
+        'finish': 'إنهاء',
+      },
+    };
+    return copy[widget.controller.currentLang]?[key] ??
+        copy['en']![key] ??
+        key;
+  }
+
   Future<void> _openSetupWizard({bool markSeen = false}) async {
+    await widget.controller.speakSetupGuide();
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Set up Lucy'),
+        title: Text(_setupText('title')),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -376,7 +486,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                   await widget.controller.screenCapture.openAccessibilitySettings();
                 },
                 icon: const Icon(Icons.accessibility_new),
-                label: const Text('Open Accessibility settings'),
+                label: Text(_setupText('open_accessibility')),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -394,7 +504,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                   }
                 },
                 icon: const Icon(Icons.screen_share_outlined),
-                label: const Text('Set up screen capture'),
+                label: Text(_setupText('set_capture')),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -405,7 +515,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                   await _context.openNotificationAccessSettings();
                 },
                 icon: const Icon(Icons.notifications_outlined),
-                label: const Text('Open notification access'),
+                label: Text(_setupText('open_notifications')),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -416,7 +526,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                   await _context.openUsageAccessSettings();
                 },
                 icon: const Icon(Icons.apps_outlined),
-                label: const Text('Open Usage access'),
+                label: Text(_setupText('open_usage')),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -432,7 +542,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                   );
                 },
                 icon: const Icon(Icons.calendar_month_outlined),
-                label: const Text('Set up Calendar access'),
+                label: Text(_setupText('set_calendar')),
               ),
               const SizedBox(height: 12),
               const Text(
@@ -444,7 +554,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Finish'),
+            child: Text(_setupText('finish')),
           ),
         ],
       ),
