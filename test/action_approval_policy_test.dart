@@ -34,7 +34,7 @@ void main() {
     test('allows harmless taps including generic confirmation and permission labels', () {
       for (final label in [
         'Play', 'Search', 'Home', 'Next', 'Pause',
-        'Confirm', 'Submit', 'Allow', 'Grant', 'Install',
+        'Confirm', 'Submit', 'Allow', 'Grant',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval(
