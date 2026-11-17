@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:screen_aware_ai/services/lucy_learning_store.dart';
+import 'package:screen_aware_ai/services/lucy_app_hint_catalog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -147,6 +148,14 @@ void main() {
       ],
     );
     expect(store.skills, isEmpty);
+  });
+
+  test('loads app-specific hints only for a recognized package', () async {
+    final catalog = LucyAppHintCatalog();
+    final gmail = await catalog.loadForPackage('com.google.android.gm');
+    expect(gmail['app'], 'Gmail');
+    expect(gmail['strategy'], isA<List>());
+    expect(await catalog.loadForPackage('com.example.unknown'), isEmpty);
   });
 
   test('forgets a layout and a named skill', () async {
