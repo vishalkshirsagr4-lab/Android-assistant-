@@ -44,7 +44,7 @@ class ScreenActionService : AccessibilityService() {
     /** Keep the display awake during an explicitly started Lucy task. */
     @Synchronized
     fun keepScreenAwake(enabled: Boolean): Boolean {
-        val manager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val manager = getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
         if (!enabled) {
             val existing = keepAwakeView ?: return true
             return try {
@@ -54,6 +54,8 @@ class ScreenActionService : AccessibilityService() {
             } catch (error: Exception) {
                 Log.w(TAG, "Could not release keep-awake overlay", error)
                 false
+            } finally {
+                keepAwakeView = null
             }
         }
         if (isDeviceLocked()) {
