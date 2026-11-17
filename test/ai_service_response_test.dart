@@ -92,6 +92,40 @@ void main() {
       expect(response.actions.single.type, 'remember');
     });
 
+    test('parses explicit learned-skill and app-layout forget actions', () {
+      for (final action in [
+        <String, dynamic>{'type': 'forget_skill', 'name': 'read my inbox'},
+        <String, dynamic>{
+          'type': 'forget_app_layout',
+          'package': 'com.example.mail',
+        },
+      ]) {
+        final response = AgentResponse.fromJson(
+          <String, dynamic>{
+            'route': 'phone',
+            'needs_screen': false,
+            'plan': <String, dynamic>{
+              'goal': 'Remove the requested learned data',
+              'done_when': 'Only the requested item is deleted',
+            },
+            'actions': <dynamic>[
+              <String, dynamic>{
+                ...action,
+                'confidence': 0.99,
+                'risk': 'low',
+                'reason': 'The user explicitly asked to forget this saved item.',
+              },
+            ],
+            'speak': '',
+            'done': true,
+            'lang': 'en',
+          },
+          '{}',
+        );
+        expect(response.actions.single.type, action['type']);
+      }
+    });
+
     test('parses native deep scroll and read actions', () {
       for (final type in [
         'scroll_to_end',
