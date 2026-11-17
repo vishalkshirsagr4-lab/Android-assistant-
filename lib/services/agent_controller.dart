@@ -109,8 +109,6 @@ class AgentController extends ChangeNotifier {
   bool _lastActionDispatchSucceeded = true;
   Completer<bool>? _pendingVoiceApproval;
 
-  bool _isAskingForFurtherHelp = false;
-
   /// Language code of the most recent agent reply ("en" or "ja").
   /// Used to localize hardcoded follow-ups, cancel-word detection, TTS, and STT locale.
   String _currentLang = 'en';
@@ -479,29 +477,6 @@ class AgentController extends ChangeNotifier {
     }
   }
 
-  static const Map<String, String> _followUps = {
-    'en': 'Do you need any further help?',
-    'ja': '他に何かお手伝いできることはありますか？',
-    'ar': 'هل تحتاج إلى أي مساعدة أخرى؟',
-    'hi': 'क्या आपको और किसी मदद की ज़रूरत है?',
-    'kn': 'ನಿಮಗೆ ಇನ್ನೇನಾದರೂ ಸಹಾಯ ಬೇಕೇ?',
-  };
-  // Patterns that mean "no, I'm done" when replying to the follow-up prompt.
-  static final RegExp _negativeEn = RegExp(
-    r'^(no|nope|nah|stop|exit|nothing|not\b.*)$',
-  );
-  // Hiragana/katakana/kanji forms of "no", "stop", "that's enough", "done".
-  static final RegExp _negativeJa = RegExp(
-    r'(いいえ|いえ|けっこう|結構|もういい|もう大丈夫|大丈夫|終了|終わり|やめて|止めて|停止|いらない|不要|ない)',
-  );
-  // Arabic forms: "no", "stop", "enough", "done", "nothing".
-  static final RegExp _negativeHiKn = RegExp(
-    r'(नहीं|रुको|बंद|बस|ಸಾಕು|ಬೇಡ|ನಿಲ್ಲಿಸು)',
-  );
-  static final RegExp _negativeAr = RegExp(
-    r'(لا|كلا|توقف|قف|اوقف|أوقف|اكتفي|يكفي|كفى|انتهى|انتهيت|خلاص|لا شيء|لا شكرا|لا شكرًا)',
-  );
-
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
   double get voiceSpeechRate => _voiceService.speechRate;
@@ -793,7 +768,6 @@ class AgentController extends ChangeNotifier {
         : providerReady
         ? 'Listening… Tap to stop, or hold the microphone for push-to-talk.'
         : 'Offline voice commands ready. Add an AI key for screen tasks.';
-    _isAskingForFurtherHelp = false;
     notifyListeners();
 
     final cloudAiEnabled = await _settingsStore.isEnabled(LucySettingsStore.aiRequests);
@@ -950,25 +924,6 @@ class AgentController extends ChangeNotifier {
       );
       await _resumeOrFinishListening();
       return;
-    }
-
-    if (_isAskingForFurtherHelp) {
-      _isAskingForFurtherHelp = false;
-      final trimmed = text.trim();
-      final textLowerAscii = trimmed.toLowerCase().replaceAll(
-        RegExp(r'[^\w\s]'),
-        '',
-      );
-      final isNegative =
-          _negativeEn.hasMatch(textLowerAscii) ||
-          _negativeJa.hasMatch(trimmed) ||
-          _negativeHiKn.hasMatch(trimmed) ||
-          _negativeAr.hasMatch(trimmed);
-      if (isNegative) {
-        // Stop immediately and silently; do not delay shutdown for a canned phrase.
-        await stopAgent();
-        return;
-      }
     }
 
     _updateTaskProgress('Got it · Planning your request');
@@ -1255,8 +1210,7 @@ class AgentController extends ChangeNotifier {
           );
 
           if (!actionVerified) {
-            _isAskingForFurtherHelp = false;
-            speakText = 'I could not verify that step. I am checking another safe approach.';
+                  speakText = 'I could not verify that step. I am checking another safe approach.';
             final shouldReplan = loopGuard.shouldReplan(
               actionType: action.type,
               packageName: beforeAction?.packageName,
@@ -1292,7 +1246,6 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
 
-      _isAskingForFurtherHelp = false;
 
       if (!actionVerified && agentResponse.done) {
         speakText = 'I could not confirm that the requested step worked. I will not claim it is complete.';
@@ -2156,7 +2109,6 @@ class AgentController extends ChangeNotifier {
   void clearConversation() {
     _conversation.clear();
     _lastScreenshotBytes = null;
-    _isAskingForFurtherHelp = false;
     _aiService.resetChat();
     notifyListeners();
   }
