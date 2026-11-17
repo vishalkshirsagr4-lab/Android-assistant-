@@ -1717,9 +1717,8 @@ class AgentController extends ChangeNotifier {
       confidence: modelConfidence,
       sensitiveInput: sensitiveInput,
     );
-    // Autopilot controls whether routine actions may run automatically, but
-    // the approval policy itself only pauses for locally identified
-    // consequential actions. The model cannot add prompts to routine tasks.
+    // Pause only for locally identified consequential actions. Model risk
+    // metadata cannot add approval prompts to routine tasks.
     if (requiredRisk != 'low') {
       final approved = await _requestVoiceApproval(
         action,
