@@ -390,7 +390,6 @@ class AiService {
     }
   }
 
-;
 
   Future<void> configure(String apiKey) async {
     final normalizedKey = apiKey.trim();
