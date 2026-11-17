@@ -179,6 +179,20 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Approve or revoke one learned skill from the user's settings screen.
+  /// Approval is refused until the same sequence has succeeded twice.
+  Future<bool> setLearnedSkillApproved(
+    String id, {
+    required bool approved,
+  }) async {
+    final changed = await _learningStore.setSkillApproved(
+      id,
+      approved: approved,
+    );
+    notifyListeners();
+    return changed;
+  }
+
   Future<void> _replyToMemoryCommand(
     String context, {
     String event = 'memory_update',
