@@ -115,6 +115,14 @@ class LucyActionApprovalPolicy {
     'dial',
   };
 
+  static const Set<String> _mailPackageMarkers = {
+    'gmail',
+    'com.google.android.gm',
+    'outlook',
+    'com.microsoft.office.outlook',
+    'mail',
+  };
+
   static const Set<String> _sensitivePackageMarkers = {
     'bank',
     'wallet',
@@ -192,6 +200,11 @@ class LucyActionApprovalPolicy {
 
     final package = (packageName ?? '').toLowerCase();
     final sensitivePackage = _sensitivePackageMarkers.any(package.contains);
+    final mailPackage = _mailPackageMarkers.any(package.contains);
+
+    // Horizontal swipes in mail apps can archive or delete a message. Scrolling
+    // uses the dedicated scroll actions, so require approval for a mail swipe.
+    if (action == 'swipe' && mailPackage) return 'high';
 
     if (action == 'place_call' || action == 'send_sms' ||
         action == 'share_text') {
