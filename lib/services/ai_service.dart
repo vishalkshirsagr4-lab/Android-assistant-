@@ -137,6 +137,25 @@ class AgentResponse {
     final needsScreen = json['needs_screen'] is bool
         ? json['needs_screen'] as bool
         : route == 'read';
+
+    // Enforce the semantic route at the parser boundary. This prevents a
+    // malformed "chat" response from dispatching a phone action and prevents
+    // accessibility actions when the model says no screen context is needed.
+    if (route == 'chat' && actionsList.isNotEmpty) {
+      throw const FormatException(
+        'A chat route cannot contain phone or screen actions.',
+      );
+    }
+    const screenDependentActions = <String>{
+      'tap', 'type', 'swipe', 'long_press', 'clear_text',
+    };
+    if (!needsScreen &&
+        actionsList.any((action) => screenDependentActions.contains(action.type))) {
+      throw const FormatException(
+        'A screen-dependent action requires needs_screen=true.',
+      );
+    }
+
     final confidenceValue = json['confidence'];
     final confidence = confidenceValue is num
         ? confidenceValue.toDouble().clamp(0, 1).toDouble()
