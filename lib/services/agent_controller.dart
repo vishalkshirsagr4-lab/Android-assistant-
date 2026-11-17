@@ -2068,9 +2068,14 @@ class AgentController extends ChangeNotifier {
         if (const {
           'search', 'settings', 'more options', 'back', 'chats',
           'updates', 'calls', 'communities', 'inbox', 'compose',
+          'new chat', 'new message', 'new email', 'start new chat',
           'primary', 'social', 'promotions', 'starred', 'all mail',
-          'navigation', 'menu',
-        }.contains(normalized)) {
+          'navigation', 'menu', 'refresh', 'archive', 'delete',
+          'remove', 'mark as read', 'mark as unread', 'report spam',
+          'block', 'unsubscribe', 'select all',
+        }.contains(normalized) ||
+            RegExp(r'^(delete|archive|remove|block|report|unsubscribe)\\b')
+                .hasMatch(normalized)) {
           continue;
         }
         candidates.add(<String, dynamic>{
