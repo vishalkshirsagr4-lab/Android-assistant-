@@ -602,21 +602,21 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
             text = await _hmsService.complete(
               fullMessage,
               systemPrompt: _systemPrompt,
-            );
+            ).timeout(const Duration(seconds: 6));
           } else if (provider == 'groq') {
             if (!await _groqService.isConfigured()) continue;
             text = await _groqService.complete(
               fullMessage,
               systemPrompt: _systemPrompt,
               imageBytes: imageBytes,
-            );
+            ).timeout(const Duration(seconds: 6));
           } else if (provider == 'grok') {
             if (!await _grokService.isConfigured()) continue;
             text = await _grokService.complete(
               fullMessage,
               systemPrompt: _systemPrompt,
               imageBytes: imageBytes,
-            );
+            ).timeout(const Duration(seconds: 6));
           } else {
             if (_chat == null) continue;
             Content content;
@@ -628,7 +628,9 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
             } else {
               content = Content('user', [TextPart(fullMessage)]);
             }
-            final response = await _chat!.sendMessage(content);
+            final response = await _chat!
+                .sendMessage(content)
+                .timeout(const Duration(seconds: 6));
             text = response.text ?? '{}';
           }
           if (text.trim().isEmpty) {
