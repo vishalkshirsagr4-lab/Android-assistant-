@@ -1873,13 +1873,9 @@ class AgentController extends ChangeNotifier {
           break;
 
         case 'open_each':
-          _lastActionDispatchSucceeded = false;
-          _lastToolResult = jsonEncode(<String, dynamic>{
-            'error': 'open_each_not_implemented',
-            'reachedEnd': false,
-            'items': <String>[],
-            'message': 'This build supports deep list text collection, but not opening every list entry yet.',
-          });
+          final result = await _executeOpenEach(action, beforeSnapshot);
+          _lastToolResult = jsonEncode(result);
+          _lastActionDispatchSucceeded = result['error'] == null;
           break;
 
         case 'schedule_reminder':
@@ -2020,6 +2016,203 @@ class AgentController extends ChangeNotifier {
       return _fetchUiSnapshot();
     }
     return _waitForActionReadiness(action, beforeSnapshot);
+  }
+
+  Future<Map<String, dynamic>> _executeOpenEach(
+    AgentAction action,
+    _UiSnapshot? startingSnapshot,
+  ) async {
+    final requestedLimit = action.params['maxItems'];
+    final maxItems = (requestedLimit is num ? requestedLimit.toInt() : 10)
+        .clamp(1, 30);
+    final requestedScrolls = action.params['detailMaxScrolls'];
+    final detailMaxScrolls =
+        (requestedScrolls is num ? requestedScrolls.toInt() : 20).clamp(1, 40);
+    final screenSize = await _screenCapture.getScreenSize();
+    final width = (screenSize?['width'] ?? 1080).toDouble();
+    final height = (screenSize?['height'] ?? 1920).toDouble();
+    final visited = <String>{};
+    final results = <Map<String, dynamic>>[];
+    var current = startingSnapshot ?? await _fetchUiSnapshot();
+    var unchangedPages = 0;
+    var pageScrolls = 0;
+    var reachedEnd = false;
+
+    List<Map<String, dynamic>> listRows(_UiSnapshot? snapshot) {
+      if (snapshot == null) return <Map<String, dynamic>>[];
+      final candidates = <Map<String, dynamic>>[];
+      for (final element in snapshot.elements) {
+        if (element['clickable'] != true) continue;
+        final text = element['text']?.toString().trim() ?? '';
+        final desc = element['desc']?.toString().trim() ?? '';
+        final label = [text, if (desc.isNotEmpty && desc != text) desc]
+            .where((value) => value.isNotEmpty)
+            .join(' · ')
+            .replaceAll(RegExp(r'\\s+'), ' ')
+            .trim();
+        if (label.length < 2) continue;
+        final bounds = element['bounds'];
+        if (bounds is! Map) continue;
+        final y = (bounds['cy'] as num?)?.toDouble();
+        final x = (bounds['cx'] as num?)?.toDouble();
+        if (y == null || x == null || y < height * 0.12 || y > height * 0.94) {
+          continue;
+        }
+        final normalized = label.toLowerCase();
+        if (const {
+          'search', 'settings', 'more options', 'back', 'chats',
+          'updates', 'calls', 'communities', 'inbox', 'compose',
+          'primary', 'social', 'promotions', 'starred', 'all mail',
+          'navigation', 'menu',
+        }.contains(normalized)) {
+          continue;
+        }
+        candidates.add(<String, dynamic>{
+          'id': element['id'],
+          'x': x,
+          'y': y,
+          'label': label,
+          'normalized': normalized,
+        });
+      }
+      candidates.sort(
+        (a, b) => (a['y'] as double).compareTo(b['y'] as double),
+      );
+
+      // Group sender/subject/preview text that belongs to the same visible row.
+      final rows = <Map<String, dynamic>>[];
+      for (final candidate in candidates) {
+        final existing = rows.cast<Map<String, dynamic>?>().firstWhere(
+              (row) => ((row!['y'] as double) - (candidate['y'] as double)).abs() < 34,
+              orElse: () => null,
+            );
+        if (existing == null) {
+          rows.add(<String, dynamic>{
+            'id': candidate['id'],
+            'x': candidate['x'],
+            'y': candidate['y'],
+            'labels': <String>[candidate['label']],
+          });
+        } else {
+          final labels = existing['labels'] as List<String>;
+          if (!labels.contains(candidate['label']) && labels.length < 5) {
+            labels.add(candidate['label'] as String);
+          }
+          if ((candidate['label'] as String).length >
+              (labels.first.length)) {
+            existing['id'] = candidate['id'];
+            existing['x'] = candidate['x'];
+          }
+        }
+      }
+      for (final row in rows) {
+        row['label'] = (row['labels'] as List<String>).join(' | ').take(260);
+      }
+      return rows;
+    }
+
+    while (results.length < maxItems && pageScrolls <= 80) {
+      if (_cancelRequested) break;
+      final rows = listRows(current);
+      Map<String, dynamic>? nextRow;
+      for (final row in rows) {
+        final key = (row['label'] as String)
+            .toLowerCase()
+            .replaceAll(RegExp(r'\\s+'), ' ')
+            .trim();
+        if (visited.add(key)) {
+          nextRow = row;
+          break;
+        }
+      }
+
+      if (nextRow != null) {
+        final id = (nextRow['id'] as num?)?.toInt();
+        final coords = id == null || current == null
+            ? null
+            : _resolveElementCoordinates(id, current.elements);
+        if (coords == null ||
+            !await _screenCapture.performTap(coords['x']!, coords['y']!)) {
+          continue;
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        final detailScroll = await _screenCapture.scrollScreen(
+          forward: true,
+          maxScrolls: detailMaxScrolls,
+          collect: true,
+        );
+        final detailSnapshot = await _fetchUiSnapshot();
+        final content = <String>{};
+        final rawItems = detailScroll?['items'];
+        if (rawItems is List) {
+          for (final value in rawItems) {
+            final text = value.toString().trim();
+            if (text.isNotEmpty) content.add(text);
+            if (content.length >= 400) break;
+          }
+        }
+        for (final element in detailSnapshot?.elements ??
+            const <Map<String, dynamic>>[]) {
+          for (final key in const ['text', 'desc']) {
+            final text = element[key]?.toString().trim() ?? '';
+            if (text.isNotEmpty && content.length < 400) content.add(text);
+          }
+        }
+
+        results.add(<String, dynamic>{
+          'label': nextRow['label'],
+          'content': content.toList(growable: false),
+          'detailReachedEnd': detailScroll?['reachedEnd'] == true,
+          'detailScrolls': detailScroll?['scrolls'] ?? 0,
+        });
+
+        if (!await _screenCapture.pressBack()) {
+          return <String, dynamic>{
+            'error': 'could_not_return_to_list',
+            'reachedEnd': false,
+            'limited': false,
+            'processed': results.length,
+            'items': results,
+          };
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        current = await _fetchUiSnapshot();
+        unchangedPages = 0;
+        continue;
+      }
+
+      if (current == null || pageScrolls >= 80) break;
+      final beforeSignature = current.signature;
+      final moved = await _screenCapture.performSwipe(
+        width * 0.5,
+        height * 0.76,
+        width * 0.5,
+        height * 0.30,
+      );
+      if (!moved) break;
+      pageScrolls++;
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      current = await _fetchUiSnapshot();
+      if (current == null || current.signature == beforeSignature) {
+        unchangedPages++;
+      } else {
+        unchangedPages = 0;
+      }
+      if (unchangedPages >= 2) {
+        reachedEnd = true;
+        break;
+      }
+    }
+
+    return <String, dynamic>{
+      'processed': results.length,
+      'requestedMaxItems': maxItems,
+      'reachedEnd': reachedEnd,
+      'limited': !reachedEnd && results.length >= maxItems,
+      'pageScrolls': pageScrolls,
+      'items': results,
+    };
   }
 
   Future<void> _executeNativePhoneAction(AgentAction action) async {
