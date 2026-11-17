@@ -1454,6 +1454,15 @@ class AgentController extends ChangeNotifier {
   Future<void> _runAgentLoop(String userMessage) async {
     _cancelRequested = false;
     int step = 0;
+    final isDeepTask = RegExp(
+      r'\\b(all|every|entire|inbox|all chats|all emails|all notifications|last \\d+)\\b',
+      caseSensitive: false,
+    ).hasMatch(userMessage);
+    final stepLimit = isDeepTask ? 150 : _maxStepsPerCommand;
+    final taskTimeBudget = isDeepTask
+        ? const Duration(minutes: 6)
+        : const Duration(minutes: 3);
+    final taskStopwatch = Stopwatch()..start();
     String currentMessage = userMessage;
     // Screen dimensions are stable for this command, but device context is
     // refreshed before every model request so new notifications, battery,
@@ -1474,7 +1483,7 @@ class AgentController extends ChangeNotifier {
     _previousModelTreeElements = <int, String>{};
 
     LucyReliabilityLog.event('agent_task_started');
-    while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
+    while (step < stepLimit &&\n        taskStopwatch.elapsed < taskTimeBudget &&\n        _isActive &&\n        !_cancelRequested) {
       if (await _screenCapture.isDeviceLocked()) {
         _statusMessage = 'Phone locked · Unlock to continue';
         notifyListeners();
@@ -1930,9 +1939,9 @@ class AgentController extends ChangeNotifier {
       return;
     }
 
-    if (step >= _maxStepsPerCommand) {
+    if (step >= stepLimit || taskStopwatch.elapsed >= taskTimeBudget) {
       LucyReliabilityLog.event('agent_step_limit_reached', step: step, success: false);
-      _statusMessage = 'Task stopped at the $_maxStepsPerCommand-step safety limit';
+      _statusMessage = step >= stepLimit\n          ? 'Task stopped at the $stepLimit-step safety limit'\n          : 'Task stopped at the time budget to protect battery and stability';
       notifyListeners();
     }
   }
