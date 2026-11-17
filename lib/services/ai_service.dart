@@ -242,7 +242,7 @@ class _JsonSpeakStreamExtractor {
     if (!_started) {
       _prefix.write(delta);
       final prefix = _prefix.toString();
-      final match = RegExp(r'"speak"\\s*:\\s*"').firstMatch(prefix);
+      final match = RegExp(r'"speak"\s*:\s*"').firstMatch(prefix);
       if (match == null) return;
       _started = true;
       final remainder = prefix.substring(match.end);
@@ -264,7 +264,7 @@ class _JsonSpeakStreamExtractor {
       _encodedValue.write(char);
       if (_escaped) {
         _escaped = false;
-      } else if (char == r'\\') {
+      } else if (char == '\\') {
         _escaped = true;
       }
       _emitCompletedSentences();
