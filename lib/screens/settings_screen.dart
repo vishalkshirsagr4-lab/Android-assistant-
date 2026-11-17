@@ -31,6 +31,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   Map<String, dynamic> _contextStatus = <String, dynamic>{};
   bool _calendarEnabled = false;
   bool _foregroundContextEnabled = true;
+  Set<String> _excludedWatcherPackages = <String>{};
   LucyProactiveStatus _proactiveStatus = const LucyProactiveStatus(
     enabled: false,
     quietStartHour: 22,
@@ -55,19 +56,42 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     final calendarEnabled = prefs.getBool('lucy_context_calendar_enabled') ?? false;
     final foregroundEnabled =
         prefs.getBool(LucySettingsStore.foregroundAppContext) ?? true;
+    final excludedPackages = prefs.getStringList('lucy_screen_watcher_excluded_packages')?.toSet() ?? <String>{};
     if (!mounted) return;
     setState(() {
       _values = values;
       _contextStatus = contextStatus;
       _calendarEnabled = calendarEnabled;
       _foregroundContextEnabled = foregroundEnabled;
+      _excludedWatcherPackages = excludedPackages;
       _proactiveStatus = proactive;
       _loading = false;
     });
+    await _applyScreenWatcherSettings(values, excludedPackages);
+  }
+
+  Future<void> _applyScreenWatcherSettings(
+    Map<String, bool> values,
+    Set<String> excludedPackages,
+  ) async {
+    await widget.controller.screenCapture.configureScreenWatcher(
+      enabled: values[LucySettingsStore.screenWatcher] ?? true,
+      skipAds: values[LucySettingsStore.autoSkipAds] ?? true,
+      dismissPopups: values[LucySettingsStore.autoDismissPopups] ?? true,
+      excludedPackages: excludedPackages,
+    );
   }
 
   Future<void> _setCapability(String key, bool enabled) async {
     await _settings.setEnabled(key, enabled);
+    if (const {
+      LucySettingsStore.screenWatcher,
+      LucySettingsStore.autoSkipAds,
+      LucySettingsStore.autoDismissPopups,
+    }.contains(key)) {
+      final nextValues = <String, bool>{..._values, key: enabled};
+      await _applyScreenWatcherSettings(nextValues, _excludedWatcherPackages);
+    }
     if (key == LucySettingsStore.scheduledReminders && !enabled) {
       final routines = await LucyRoutineScheduler.listRoutines();
       for (final routine in routines) {
@@ -212,6 +236,57 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
         cooldownMinutes: _proactiveStatus.cooldownMinutes,
       );
     });
+  }
+
+  Future<void> _editWatcherExclusions() async {
+    final editor = TextEditingController(
+      text: _excludedWatcherPackages.join(String.fromCharCode(10)),
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Exclude apps from popup handling'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: editor,
+            minLines: 4,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              hintText: 'com.example.bank',
+              helperText: 'One Android package name per line. System permission screens and sensitive screens are always excluded.',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) {
+      editor.dispose();
+      return;
+    }
+    final packages = editor.text
+        .split(RegExp(r'\s+'))
+        .map((value) => value.trim().toLowerCase())
+        .where((value) => RegExp(r'^[a-z0-9_]+([.][a-z0-9_]+)+$').hasMatch(value))
+        .toSet();
+    editor.dispose();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'lucy_screen_watcher_excluded_packages',
+      packages.toList()..sort(),
+    );
+    await _applyScreenWatcherSettings(_values, packages);
+    if (mounted) setState(() => _excludedWatcherPackages = packages);
   }
 
   void _message(String value) {
@@ -437,6 +512,36 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             keyName: LucySettingsStore.scheduledReminders,
             title: 'Scheduled reminders',
             subtitle: 'Allow Lucy to schedule notification-only reminders.',
+          ),
+          const Divider(height: 28),
+          Text('Screen intelligence', style: Theme.of(context).textTheme.titleLarge),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.screenWatcher,
+            title: 'ScreenWatcher',
+            subtitle: 'Monitor visible app changes and handle only recognized low-risk overlays.',
+          ),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.autoSkipAds,
+            title: 'Skip exposed ads',
+            subtitle: 'Tap only explicit Skip Ad controls exposed in the accessibility tree.',
+          ),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.autoDismissPopups,
+            title: 'Dismiss safe popups',
+            subtitle: 'Dismiss exact safe labels such as Not now, Maybe later, No thanks and Got it. Permission and sensitive dialogs stay manual.',
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Per-app exclusions'),
+            subtitle: Text(
+              _excludedWatcherPackages.isEmpty
+                  ? 'No additional app exclusions'
+                  : _excludedWatcherPackages.join(', '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: _busy ? null : _editWatcherExclusions,
           ),
           const Divider(height: 28),
           Text('Context sources', style: Theme.of(context).textTheme.titleLarge),

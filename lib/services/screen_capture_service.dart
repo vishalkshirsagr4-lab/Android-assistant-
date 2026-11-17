@@ -159,6 +159,35 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Configure the native ScreenWatcher. Permission dialogs and sensitive
+  /// payment/login surfaces remain excluded in native code even when enabled.
+  Future<bool> configureScreenWatcher({
+    bool enabled = true,
+    bool skipAds = true,
+    bool dismissPopups = true,
+    Set<String> excludedPackages = const {},
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'configureScreenWatcher',
+            <String, dynamic>{
+              'enabled': enabled,
+              'skipAds': skipAds,
+              'dismissPopups': dismissPopups,
+              'excludedPackages': excludedPackages.toList(),
+            },
+          ) ??
+          false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'screen_watcher_config_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return false;
+    }
+  }
+
   /// Current monotonic accessibility-event sequence for the foreground UI.
   Future<int> getUiEventSequence() async {
     try {

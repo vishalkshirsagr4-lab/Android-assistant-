@@ -7,6 +7,9 @@ import android.graphics.Rect
 import android.graphics.PixelFormat
 import android.os.Bundle
 import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.app.KeyguardManager
 import android.util.Log
 import android.view.View
@@ -29,10 +32,23 @@ class ScreenActionService : AccessibilityService() {
 
     private var keepAwakeView: View? = null
     private var screenWakeLock: PowerManager.WakeLock? = null
+    private val watcherHandler = Handler(Looper.getMainLooper())
+    @Volatile private var watcherEnabled = true
+    @Volatile private var autoSkipAds = true
+    @Volatile private var autoDismissPopups = true
+    @Volatile private var excludedWatcherPackages: Set<String> = emptySet()
+    private var lastWatcherClickAt = 0L
+    private var lastWatcherClickKey = ""
+    private val watcherRunnable = Runnable { inspectAndHandleSafeOverlay() }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        val preferences = getSharedPreferences("lucy_screen_watcher", MODE_PRIVATE)
+        watcherEnabled = preferences.getBoolean("enabled", true)
+        autoSkipAds = preferences.getBoolean("skip_ads", true)
+        autoDismissPopups = preferences.getBoolean("dismiss_popups", true)
+        excludedWatcherPackages = preferences.getStringSet("excluded_packages", emptySet())?.toSet() ?: emptySet()
         Log.d(TAG, "Accessibility service connected")
     }
 
@@ -55,8 +71,148 @@ class ScreenActionService : AccessibilityService() {
                 } finally {
                     uiEventLock.unlock()
                 }
+                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                ) {
+                    if (watcherEnabled) {
+                        watcherHandler.removeCallbacks(watcherRunnable)
+                        watcherHandler.postDelayed(watcherRunnable, 650L)
+                    }
+                }
             }
         }
+    }
+
+    /** Conservative watcher: system permission and sensitive screens remain manual. */
+    fun configureScreenWatcher(
+        enabled: Boolean,
+        skipAds: Boolean,
+        dismissPopups: Boolean,
+        excludedPackages: Set<String>
+    ): Boolean {
+        watcherEnabled = enabled
+        autoSkipAds = skipAds
+        autoDismissPopups = dismissPopups
+        excludedWatcherPackages = excludedPackages
+        getSharedPreferences("lucy_screen_watcher", MODE_PRIVATE).edit()
+            .putBoolean("enabled", enabled)
+            .putBoolean("skip_ads", skipAds)
+            .putBoolean("dismiss_popups", dismissPopups)
+            .putStringSet("excluded_packages", excludedPackages)
+            .apply()
+        if (!enabled) watcherHandler.removeCallbacks(watcherRunnable)
+        return true
+    }
+
+    private fun inspectAndHandleSafeOverlay() {
+        if (!watcherEnabled || isDeviceLocked()) return
+        val root = rootInActiveWindow ?: return
+        try {
+            val foregroundPackage = root.packageName?.toString().orEmpty()
+            if (isWatcherExcludedPackage(foregroundPackage) || isSensitiveScreen(root)) return
+            var visited = 0
+            var clicked = false
+            fun visit(node: AccessibilityNodeInfo, depth: Int) {
+                if (clicked || visited >= 400 || depth > 24) return
+                visited++
+                if (!node.isVisibleToUser || node.isPassword) return
+                val text = node.text?.toString()?.trim().orEmpty()
+                val desc = node.contentDescription?.toString()?.trim().orEmpty()
+                val viewId = node.viewIdResourceName?.substringAfterLast('/')?.lowercase().orEmpty()
+                val normalized = (if (text.isNotEmpty()) text else desc)
+                    .trim().lowercase().replace(Regex("\\s+"), " ")
+                val isAdSkipId = viewId.endsWith("skip_ad_button") ||
+                    viewId.endsWith("skip_ads_button") || viewId.endsWith("ad_skip_button")
+                val isAdSkipLabel = normalized in setOf("skip", "skip ad", "skip ads", "close ad")
+                val isSafePopupLabel = normalized in setOf(
+                    "not now", "maybe later", "no thanks", "dismiss", "got it", "reject all"
+                )
+                val shouldClick = (autoSkipAds && (isAdSkipId || isAdSkipLabel)) ||
+                    (autoDismissPopups && isSafePopupLabel)
+                if (shouldClick) {
+                    val key = "$foregroundPackage|$viewId|$normalized"
+                    val now = SystemClock.elapsedRealtime()
+                    if (!(key == lastWatcherClickKey && now - lastWatcherClickAt < 1800L)) {
+                        val target = findClickableAncestor(node)
+                        if (target != null) {
+                            try {
+                                clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                if (clicked) {
+                                    lastWatcherClickKey = key
+                                    lastWatcherClickAt = now
+                                    Log.d(TAG, "ScreenWatcher handled a safe overlay")
+                                }
+                            } finally {
+                                target.recycle()
+                            }
+                        }
+                    }
+                    if (clicked) return
+                }
+                for (index in 0 until node.childCount) {
+                    if (clicked || visited >= 400) break
+                    val child = node.getChild(index) ?: continue
+                    try { visit(child, depth + 1) } finally { child.recycle() }
+                }
+            }
+            visit(root, 0)
+        } catch (error: Exception) {
+            Log.w(TAG, "ScreenWatcher inspection failed", error)
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current = AccessibilityNodeInfo.obtain(node)
+        repeat(12) {
+            if (current.isClickable && current.isEnabled) return current
+            val parent = current.parent ?: run {
+                current.recycle()
+                return null
+            }
+            current.recycle()
+            current = parent
+        }
+        current.recycle()
+        return null
+    }
+
+    private fun isWatcherExcludedPackage(packageName: String): Boolean {
+        val lower = packageName.lowercase()
+        if (lower in excludedWatcherPackages) return true
+        if (lower in setOf(
+            "com.android.permissioncontroller", "com.google.android.permissioncontroller",
+            "com.android.packageinstaller", "com.android.systemui", "com.google.android.packageinstaller"
+        )) return true
+        return listOf(
+            "bank", "wallet", "payment", "paytm", "phonepe", "gpay",
+            "google.android.apps.authenticator", "authenticator", "password", "1password"
+        ).any(lower::contains)
+    }
+
+    private fun isSensitiveScreen(root: AccessibilityNodeInfo): Boolean {
+        val sensitiveTerms = listOf(
+            "payment", "pay now", "upi", "bank account", "transfer money",
+            "enter otp", "verification code", "cvv", "card number",
+            "password", "passcode", "recovery code", "two-factor"
+        )
+        var visited = 0
+        var sensitive = false
+        fun visit(node: AccessibilityNodeInfo, depth: Int) {
+            if (sensitive || visited >= 400 || depth > 24) return
+            visited++
+            if (node.isPassword) { sensitive = true; return }
+            val value = "${node.text ?: ""} ${node.contentDescription ?: ""}".lowercase()
+            if (sensitiveTerms.any(value::contains)) { sensitive = true; return }
+            for (index in 0 until node.childCount) {
+                if (sensitive || visited >= 400) break
+                val child = node.getChild(index) ?: continue
+                try { visit(child, depth + 1) } finally { child.recycle() }
+            }
+        }
+        visit(root, 0)
+        return sensitive
     }
 
     fun getUiEventSequence(): Long = uiEventSequence
@@ -830,6 +986,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        watcherHandler.removeCallbacks(watcherRunnable)
         keepScreenAwake(false)
         super.onDestroy()
         instance = null

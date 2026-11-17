@@ -15,6 +15,9 @@ class LucySettingsStore {
   static const autopilot = 'lucy_autopilot_low_risk';
   static const safetyStop = 'lucy_safety_stop';
   static const askBeforeSending = 'lucy_ask_before_sending';
+  static const screenWatcher = 'lucy_screen_watcher_enabled';
+  static const autoSkipAds = 'lucy_auto_skip_ads';
+  static const autoDismissPopups = 'lucy_auto_dismiss_popups';
 
   static const Map<String, bool> defaults = <String, bool>{
     voiceInput: true,
@@ -30,6 +33,9 @@ class LucySettingsStore {
     autopilot: true,
     safetyStop: true,
     askBeforeSending: true,
+    screenWatcher: true,
+    autoSkipAds: true,
+    autoDismissPopups: true,
   };
 
   /// These controls are intentionally non-disableable: they protect users

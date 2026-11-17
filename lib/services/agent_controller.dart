@@ -16,6 +16,8 @@ import 'routine_scheduler.dart';
 import 'phone_action_service.dart';
 import 'lucy_memory_store.dart';
 import 'agent_reliability.dart';
+import 'screen_classifier.dart';
+import 'reading_mode_planner.dart';
 import 'lucy_settings_store.dart';
 
 enum AgentState {
@@ -71,6 +73,7 @@ class AgentController extends ChangeNotifier {
       LucyPerformanceMonitor.shared;
   final PhoneActionService _phoneActions = PhoneActionService();
   final LucySettingsStore _settingsStore = LucySettingsStore();
+  final ScreenClassifier _screenClassifier = ScreenClassifier();
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -1361,7 +1364,7 @@ class AgentController extends ChangeNotifier {
       _updateTaskProgress('Preparing your screen · Step $step');
 
       final treeStopwatch = Stopwatch()..start();
-      final uiSnapshot = await _fetchUiSnapshot();
+      var uiSnapshot = await _fetchUiSnapshot();
       treeStopwatch.stop();
       LucyReliabilityLog.event(
         'agent_tree_fetch_timing',
@@ -1369,9 +1372,49 @@ class AgentController extends ChangeNotifier {
         elapsedMs: treeStopwatch.elapsedMilliseconds,
         success: uiSnapshot != null,
       );
-      final uiTree = uiSnapshot == null
+      var uiTree = uiSnapshot == null
           ? null
           : _buildUiTreePayload(uiSnapshot, step);
+
+      // Explicit reading requests collect the complete accessible scrollable
+      // surface before planning. Inbox-wide requests use open_each instead.
+      if (step == 1 &&
+          uiSnapshot != null &&
+          ReadingModePlanner.shouldPrecollect(
+            userText: userMessage,
+            classification: _screenClassifier.classify(uiSnapshot.rawTree),
+            elements: uiSnapshot.elements,
+          )) {
+        final readingStopwatch = Stopwatch()..start();
+        final collected = await _screenCapture.scrollScreen(
+          forward: true,
+          maxScrolls: 80,
+          collect: true,
+        );
+        readingStopwatch.stop();
+        if (collected != null) {
+          currentMessage = userMessage + '\n' +
+              '[TOOL_RESULT]\n' + jsonEncode(collected) + '\n[/TOOL_RESULT]\n' +
+              ReadingModePlanner.directive(
+                _screenClassifier.classify(uiSnapshot.rawTree).type,
+              );
+          final refreshed = await _fetchUiSnapshot();
+          if (refreshed != null) {
+            uiSnapshot = refreshed;
+            // The original tree was not sent to the model, so force a full
+            // refreshed tree rather than emitting a diff against unseen data.
+            _previousModelTreePackage = null;
+            _previousModelTreeElements = <int, String>{};
+            uiTree = _buildUiTreePayload(refreshed, step);
+          }
+          LucyReliabilityLog.event(
+            'reading_mode_collection',
+            step: step,
+            elapsedMs: readingStopwatch.elapsedMilliseconds,
+            success: collected['reachedEnd'] == true,
+          );
+        }
+      }
 
       if (_cancelRequested) break;
 
@@ -1784,6 +1827,7 @@ class AgentController extends ChangeNotifier {
     }
 
     final package = snapshot.packageName ?? '';
+    final classification = _screenClassifier.classify(snapshot.rawTree).toJson();
     final forceFull = _previousModelTreePackage != package ||
         _previousModelTreeElements.isEmpty ||
         step == 1 ||
@@ -1795,6 +1839,7 @@ class AgentController extends ChangeNotifier {
       return jsonEncode(<String, dynamic>{
         'package': package,
         'mode': 'full',
+        'screen': classification,
         'elements': snapshot.elements,
       });
     }
@@ -1818,6 +1863,7 @@ class AgentController extends ChangeNotifier {
     return jsonEncode(<String, dynamic>{
       'package': package,
       'mode': 'diff',
+      'screen': classification,
       'baseStep': step - 1,
       'elements': changed,
       'removed': removed,
