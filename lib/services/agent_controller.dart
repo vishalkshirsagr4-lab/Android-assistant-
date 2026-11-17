@@ -273,7 +273,7 @@ class AgentController extends ChangeNotifier {
     }
     if (preferredName == null) {
       final patterns = <RegExp>[
-        RegExp(r'^mujhe\\s+(.+?)\\s+bulao
+        RegExp(r'^mujhe\s+(.+?)\s+bulao$'),
         RegExp(r'^نادني\s+(.+)$'),
         RegExp(r'^मुझे\s+(.+?)\s+बुलाओ$'),
         RegExp(r'^ನನ್ನನ್ನು\s+(.+?)\s+ಎಂದು ಕರೆಯಿರಿ$'),
