@@ -120,7 +120,7 @@ class LucyLearningStore {
     if (normalized.isEmpty || packageName.isEmpty || actions.isEmpty) return;
     const allowed = <String>{
       'open_app', 'tap', 'back', 'home', 'scroll_to_end',
-      'scroll_to_top', 'read_all', 'swipe',
+      'scroll_to_top', 'read_all',
     };
     final safeActions = actions.where((action) {
       final type = action['type']?.toString() ?? '';
@@ -132,7 +132,7 @@ class LucyLearningStore {
       if (type == 'open_app') return (action['package']?.toString().isNotEmpty ?? false);
       return true;
     }).take(12).map((e) => Map<String, dynamic>.from(e)).toList();
-    if (safeActions.isEmpty) return;
+    if (safeActions.isEmpty || safeActions.length != actions.length) return;
     final now = DateTime.now().toIso8601String();
     final existing = _skills[id];
     _skills.remove(id);
