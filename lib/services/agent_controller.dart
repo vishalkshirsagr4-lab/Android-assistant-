@@ -107,6 +107,7 @@ class AgentController extends ChangeNotifier {
 
   bool _cancelRequested = false;
   bool _lastActionDispatchSucceeded = true;
+  String? _lastToolResult;
   Completer<bool>? _pendingVoiceApproval;
 
   /// Language code of the most recent agent reply ("en" or "ja").
@@ -1187,11 +1188,17 @@ class AgentController extends ChangeNotifier {
         _updateTaskProgress('Carrying out your task · Step $step');
 
         var latestSnapshot = uiSnapshot;
+        String? toolResultForNextTurn;
         for (final action in agentResponse.actions) {
           if (_cancelRequested) break;
           final beforeAction = latestSnapshot;
           _lastActionDispatchSucceeded = true;
           latestSnapshot = await _executeAction(action, beforeAction);
+          if (const {
+            'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+          }.contains(action.type)) {
+            toolResultForNextTurn = _lastToolResult;
+          }
           final requiresVisualChange = const {
             'open_app', 'tap', 'type', 'swipe', 'back', 'home',
           }.contains(action.type);
@@ -1283,7 +1290,12 @@ class AgentController extends ChangeNotifier {
       if (_cancelRequested) break;
 
       // 5. Check if done
-      if (agentResponse.done && actionVerified) {
+      final hasDeepReadToolAction = agentResponse.actions.any(
+        (action) => const {
+          'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+        }.contains(action.type),
+      );
+      if (agentResponse.done && actionVerified && !hasDeepReadToolAction) {
         LucyReliabilityLog.event('agent_task_completed', step: step, success: true);
         break;
       }
@@ -1291,8 +1303,9 @@ class AgentController extends ChangeNotifier {
       // Not done, or an action was not verified: inspect the fresh screen and
       // continue from the retained plan rather than assuming success.
       if (actionVerified) {
-        currentMessage =
-            'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.';
+        currentMessage = toolResultForNextTurn == null
+            ? 'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.'
+            : 'The native deep-reading operation has finished. Inspect its measured results and continue the task.\\n[TOOL_RESULT]\\n$toolResultForNextTurn\\n[/TOOL_RESULT]';
       }
       // If screenshot capture might fail next iteration, the AI will still
       // receive the message but without an image. The retry logic in
@@ -1632,7 +1645,11 @@ class AgentController extends ChangeNotifier {
     _UiSnapshot? beforeSnapshot,
   ) async {
     _lastActionDispatchSucceeded = true;
-    const accessibilityActions = {'open_app', 'tap', 'type', 'swipe', 'back', 'home'};
+    _lastToolResult = null;
+    const accessibilityActions = {
+      'open_app', 'tap', 'type', 'swipe', 'back', 'home',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+    };
     const directPhoneActions = {
       'set_alarm', 'set_timer', 'place_call', 'send_sms', 'open_url',
       'start_navigation', 'music_search', 'set_flashlight', 'set_volume',
@@ -1651,7 +1668,10 @@ class AgentController extends ChangeNotifier {
       _addConversation('Direct phone actions are disabled in Privacy & settings.', false);
       return beforeSnapshot;
     }
-    if (const {'tap', 'type', 'swipe', 'back', 'home'}.contains(action.type) &&
+    if (const {
+      'tap', 'type', 'swipe', 'back', 'home',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+    }.contains(action.type) &&
         !await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing)) {
       _lastActionDispatchSucceeded = false;
       _addConversation('Screen actions need AI screen sharing enabled so Lucy can inspect and verify the target. No action was performed.', false);
@@ -1824,6 +1844,44 @@ class AgentController extends ChangeNotifier {
           _lastActionDispatchSucceeded = await _screenCapture.pressHome();
           break;
 
+        case 'scroll_to_end':
+        case 'scroll_to_top':
+        case 'read_all':
+          final isReadAll = action.type == 'read_all';
+          final isForward = action.type != 'scroll_to_top';
+          final rawMaxScrolls = action.params['maxScrolls'];
+          final maxScrolls = rawMaxScrolls is num
+              ? rawMaxScrolls.toInt().clamp(1, 120)
+              : 80;
+          final result = await _screenCapture.scrollScreen(
+            forward: isForward,
+            maxScrolls: maxScrolls,
+            collect: isReadAll,
+          );
+          if (result == null) {
+            _lastActionDispatchSucceeded = false;
+            _lastToolResult = jsonEncode(<String, dynamic>{
+              'error': 'native_scroll_unavailable',
+              'reachedEnd': false,
+              'items': <String>[],
+            });
+          } else {
+            _lastToolResult = jsonEncode(result);
+            _lastActionDispatchSucceeded =
+                result['locked'] != true && result['dispatchFailed'] != true;
+          }
+          break;
+
+        case 'open_each':
+          _lastActionDispatchSucceeded = false;
+          _lastToolResult = jsonEncode(<String, dynamic>{
+            'error': 'open_each_not_implemented',
+            'reachedEnd': false,
+            'items': <String>[],
+            'message': 'This build supports deep list text collection, but not opening every list entry yet.',
+          });
+          break;
+
         case 'schedule_reminder':
           final title = action.params['title']?.toString().trim() ?? '';
           final body = action.params['body']?.toString().trim() ?? title;
@@ -1956,6 +2014,11 @@ class AgentController extends ChangeNotifier {
       );
     }
 
+    if (const {
+      'scroll_to_end', 'scroll_to_top', 'read_all',
+    }.contains(action.type)) {
+      return _fetchUiSnapshot();
+    }
     return _waitForActionReadiness(action, beforeSnapshot);
   }
 
