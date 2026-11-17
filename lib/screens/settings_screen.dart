@@ -514,6 +514,36 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
             subtitle: 'Allow Lucy to schedule notification-only reminders.',
           ),
           const Divider(height: 28),
+          Text('Screen intelligence', style: Theme.of(context).textTheme.titleLarge),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.screenWatcher,
+            title: 'ScreenWatcher',
+            subtitle: 'Monitor visible app changes and handle only recognized low-risk overlays.',
+          ),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.autoSkipAds,
+            title: 'Skip exposed ads',
+            subtitle: 'Tap only explicit Skip Ad controls exposed in the accessibility tree.',
+          ),
+          _capabilitySwitch(
+            keyName: LucySettingsStore.autoDismissPopups,
+            title: 'Dismiss safe popups',
+            subtitle: 'Dismiss exact safe labels such as Not now, Maybe later, No thanks and Got it. Permission and sensitive dialogs stay manual.',
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Per-app exclusions'),
+            subtitle: Text(
+              _excludedWatcherPackages.isEmpty
+                  ? 'No additional app exclusions'
+                  : _excludedWatcherPackages.join(', '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: _busy ? null : _editWatcherExclusions,
+          ),
+          const Divider(height: 28),
           Text('Context sources', style: Theme.of(context).textTheme.titleLarge),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
