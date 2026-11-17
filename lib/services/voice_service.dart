@@ -43,7 +43,7 @@ class VoiceService {
   bool _isPausedForProcessing = false;
   bool _isSpeaking = false;
   bool _disposed = false;
-  String _currentTtsLanguage = 'en-US';
+  String _currentTtsLanguage = '';
 
   double _speechRate = 0.48;
   double _pitch = 1.0;
@@ -238,9 +238,11 @@ class VoiceService {
     }
 
     try {
-      final started = await _native.invokeMethod<bool>('start', {
-        'localeId': localeId ?? 'en_US',
-      });
+      final started = await _native
+          .invokeMethod<bool>('start', {
+            'localeId': localeId ?? 'en_US',
+          })
+          .timeout(const Duration(seconds: 5));
       _isListening = started == true;
       if (!_isListening) {
         onError?.call(
@@ -286,7 +288,7 @@ class VoiceService {
     _isListening = false;
     _isPausedForProcessing = false;
     try {
-      await _native.invokeMethod<bool>('stop');
+      await _native.invokeMethod<bool>('stop').timeout(const Duration(seconds: 2));
     } catch (_) {
       // The service may already have stopped during an Android lifecycle event.
     }
@@ -340,9 +342,11 @@ class VoiceService {
     if (!await _initializeTts()) return;
     if (_isSpeaking) await stopSpeaking();
     final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
-    if (targetLocale != _currentTtsLanguage) {
+    try {
       await _setTtsLanguage(targetLocale);
-      _currentTtsLanguage = targetLocale;
+    } catch (_) {
+      onError?.call('tts_unavailable');
+      return;
     }
     _streamingSpeechGeneration = ++_speechGeneration;
     _streamingSpeechQueue = Future<void>.value();
@@ -397,10 +401,12 @@ class VoiceService {
     if (_isSpeaking) await stopSpeaking();
 
     final generation = ++_speechGeneration;
-    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
-    if (targetLocale != _currentTtsLanguage) {
+    final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
+    try {
       await _setTtsLanguage(targetLocale);
-      _currentTtsLanguage = targetLocale;
+    } catch (_) {
+      onError?.call('tts_unavailable');
+      return;
     }
 
     for (final chunk in splitSpeechChunks(text)) {
@@ -430,18 +436,14 @@ class VoiceService {
       await stopSpeaking();
     }
 
-    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
-    if (targetLocale != _currentTtsLanguage) {
-      await _setTtsLanguage(targetLocale);
-      _currentTtsLanguage = targetLocale;
-    }
-
-    _isSpeaking = true;
+    final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     try {
+      await _setTtsLanguage(targetLocale);
+      _isSpeaking = true;
       await _tts.speak(text);
-    } catch (error) {
+    } catch (_) {
       _isSpeaking = false;
-      onError?.call('Text-to-speech failed: $error');
+      onError?.call('tts_unavailable');
     } finally {
       _isSpeaking = false;
     }
@@ -450,7 +452,7 @@ class VoiceService {
   Future<void> stopSpeaking() async {
     _speechGeneration++;
     try {
-      await _tts.stop();
+      await _tts.stop().timeout(const Duration(seconds: 2));
     } catch (_) {
       // A stop can race with natural TTS completion.
     } finally {

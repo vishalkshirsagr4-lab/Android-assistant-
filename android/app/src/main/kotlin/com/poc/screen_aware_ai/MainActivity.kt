@@ -266,9 +266,15 @@ class MainActivity : FlutterActivity() {
                     } else null
                     val batteryManager = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
                     val battery = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    val chargeCounter = batteryManager.getLongProperty(
+                        android.os.BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER
+                    ).takeIf { it >= 0L }
                     result.success(mapOf(
                         "cpuPercent" to cpuPercent,
-                        "batteryPercent" to if (battery in 0..100) battery else null
+                        "batteryPercent" to if (battery in 0..100) battery else null,
+                        // Android reports remaining charge in microamp-hours.
+                        // Some OEMs return Long.MIN_VALUE when unsupported.
+                        "chargeCounterUah" to chargeCounter
                     ))
                 }
                 "getScreenSize" -> {

@@ -1556,11 +1556,19 @@ class _HomeScreenState extends State<HomeScreen>
               children: [
                 Text('Performance · RAM: ${snapshot.ramLabel}'),
                 Text(
-                  'CPU: ${snapshot.cpuLabel} · Battery: ${snapshot.batteryLabel}',
+                  'Lucy process CPU: ${snapshot.cpuLabel} · Battery level: ${snapshot.batteryLabel}',
+                ),
+                Text('Net battery change during last task: ${snapshot.batteryChangeLabel}'),
+                Text(
+                  'Model latency · last: ${snapshot.lastResponseMs ?? '—'} ms · p50: ${snapshot.responseP50Ms ?? '—'} ms · p95: ${snapshot.responseP95Ms ?? '—'} ms',
                 ),
                 Text(
-                  'Last AI response: ${snapshot.lastResponseMs == null ? 'Not measured yet' : '${snapshot.lastResponseMs} ms'}',
+                  'Last task: ${snapshot.lastTaskDurationMs ?? '—'} ms · ${snapshot.lastTaskSteps} steps · completed: ${snapshot.completedTasks} · failed/stopped: ${snapshot.failedTasks}',
                 ),
+                for (final entry in snapshot.timings.entries)
+                  Text(
+                    '${entry.key}: p50 ${entry.value.medianMs ?? '—'} ms · p95 ${entry.value.p95Ms ?? '—'} ms · samples ${entry.value.samples} · failures ${entry.value.failures}',
+                  ),
                 const Text(
                   'Smart fallback is enabled: if a model is busy or reaches a limit, Lucy tries another configured provider.',
                 ),

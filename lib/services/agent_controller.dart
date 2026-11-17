@@ -231,6 +231,7 @@ class AgentController extends ChangeNotifier {
     String event, {
     String context = '',
   }) async {
+    final speechStopwatch = Stopwatch()..start();
     final response = await _aiService.agentChat(
       '[EVENT: $event]\n'
       'User language: $_currentLang\n'
@@ -245,6 +246,8 @@ class AgentController extends ChangeNotifier {
     _addConversation(response.speak, false);
     _setState(AgentState.speaking);
     await _voiceService.speak(response.speak, lang: _currentLang);
+    speechStopwatch.stop();
+    _performanceMonitor.recordTiming('tts', speechStopwatch.elapsed);
   }
 
 
@@ -914,10 +917,26 @@ class AgentController extends ChangeNotifier {
     _silenceTimeoutTimer = null;
     _cancelRequested = false;
     // Stop a native deep-scroll pass before releasing task resources.
-    await _screenCapture.cancelScreenOperation();
-    await _screenCapture.keepScreenAwake(false);
-    await _voiceService.stopListening();
-    await _voiceService.stopSpeaking();
+    try {
+      await _screenCapture.cancelScreenOperation();
+    } catch (_) {
+      LucyReliabilityLog.event('stop_cancel_screen_failed', success: false);
+    }
+    try {
+      await _screenCapture.keepScreenAwake(false);
+    } catch (_) {
+      LucyReliabilityLog.event('stop_release_wake_lock_failed', success: false);
+    }
+    try {
+      await _voiceService.stopListening();
+    } catch (_) {
+      LucyReliabilityLog.event('stop_voice_service_failed', success: false);
+    }
+    try {
+      await _voiceService.stopSpeaking();
+    } catch (_) {
+      LucyReliabilityLog.event('stop_tts_failed', success: false);
+    }
     // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
     _setState(AgentState.idle);
     _statusMessage = 'Stopped';
@@ -1038,11 +1057,32 @@ class AgentController extends ChangeNotifier {
     }
 
     _updateTaskProgress('Planning your request');
-    await _screenCapture.keepScreenAwake(true);
+    _performanceMonitor.beginTask();
     try {
+      await _screenCapture.keepScreenAwake(true);
       await _runAgentLoop(text);
+    } catch (error) {
+      // Never let a plugin/platform exception escape the voice callback and
+      // crash the app. Log only the exception type, not user or screen data.
+      _statusMessage = 'Task failed safely. Please try again.';
+      _addConversation(_statusMessage, false);
+      LucyReliabilityLog.event(
+        'agent_task_exception',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      notifyListeners();
     } finally {
-      await _screenCapture.keepScreenAwake(false);
+      final taskSucceeded = !_statusMessage.toLowerCase().contains('stopped') &&
+          !_statusMessage.startsWith('AI unavailable') &&
+          !_statusMessage.startsWith('Phone locked') &&
+          !_statusMessage.startsWith('Task failed');
+      await _performanceMonitor.endTask(success: taskSucceeded);
+      try {
+        await _screenCapture.keepScreenAwake(false);
+      } catch (_) {
+        LucyReliabilityLog.event('task_release_wake_lock_failed', success: false);
+      }
     }
     if (!_statusMessage.startsWith('AI unavailable') &&
         !_statusMessage.startsWith('Phone locked')) {
@@ -1470,6 +1510,15 @@ class AgentController extends ChangeNotifier {
   Future<void> _runAgentLoop(String userMessage) async {
     _cancelRequested = false;
     int step = 0;
+    final isDeepTask = RegExp(
+      r'\b(all|every|entire|inbox|all chats|all emails|all notifications|last \d+)\b',
+      caseSensitive: false,
+    ).hasMatch(userMessage);
+    final stepLimit = isDeepTask ? 150 : _maxStepsPerCommand;
+    final taskTimeBudget = isDeepTask
+        ? const Duration(minutes: 6)
+        : const Duration(minutes: 3);
+    final taskStopwatch = Stopwatch()..start();
     String currentMessage = userMessage;
     // Screen dimensions are stable for this command, but device context is
     // refreshed before every model request so new notifications, battery,
@@ -1490,7 +1539,10 @@ class AgentController extends ChangeNotifier {
     _previousModelTreeElements = <int, String>{};
 
     LucyReliabilityLog.event('agent_task_started');
-    while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
+    while (step < stepLimit &&
+        taskStopwatch.elapsed < taskTimeBudget &&
+        _isActive &&
+        !_cancelRequested) {
       if (await _screenCapture.isDeviceLocked()) {
         _statusMessage = 'Phone locked · Unlock to continue';
         notifyListeners();
@@ -1503,6 +1555,7 @@ class AgentController extends ChangeNotifier {
         break;
       }
       step++;
+      _performanceMonitor.recordStep();
 
       // Fetch the cheap accessibility tree first. Rich text-first screens do
       // not need a MediaProjection frame; visual and sparse screens still do.
@@ -1512,6 +1565,11 @@ class AgentController extends ChangeNotifier {
       final treeStopwatch = Stopwatch()..start();
       var uiSnapshot = await _fetchUiSnapshot();
       treeStopwatch.stop();
+      _performanceMonitor.recordTiming(
+        'tree',
+        treeStopwatch.elapsed,
+        success: uiSnapshot != null,
+      );
       LucyReliabilityLog.event(
         'agent_tree_fetch_timing',
         step: step,
@@ -1581,6 +1639,11 @@ class AgentController extends ChangeNotifier {
         final screenshotStopwatch = Stopwatch()..start();
         screenshotBytes = await _captureScreenWithRetry();
         screenshotStopwatch.stop();
+        _performanceMonitor.recordTiming(
+          'screenshot',
+          screenshotStopwatch.elapsed,
+          success: screenshotBytes != null,
+        );
         if (screenshotBytes != null) _lastScreenshotBytes = screenshotBytes;
         LucyReliabilityLog.event(
           'agent_screenshot_timing',
@@ -1663,7 +1726,10 @@ class AgentController extends ChangeNotifier {
       );
       final streamedSpeechCompletion = _voiceService.finishStreamingSpeech();
       aiStopwatch.stop();
-      _performanceMonitor.recordResponse(aiStopwatch.elapsed);
+      _performanceMonitor.recordResponse(
+        aiStopwatch.elapsed,
+        success: !agentResponse.isError && agentResponse.provider != 'none',
+      );
       LucyReliabilityLog.event(
         'agent_model_response',
         provider: agentResponse.provider,
@@ -1752,7 +1818,14 @@ class AgentController extends ChangeNotifier {
           }
           final beforeAction = latestSnapshot;
           _lastActionDispatchSucceeded = true;
+          final executionStopwatch = Stopwatch()..start();
           latestSnapshot = await _executeAction(action, beforeAction);
+          executionStopwatch.stop();
+          _performanceMonitor.recordTiming(
+            'execution',
+            executionStopwatch.elapsed,
+            success: _lastActionDispatchSucceeded,
+          );
           if (const {
             'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
           }.contains(action.type)) {
@@ -1862,6 +1935,7 @@ class AgentController extends ChangeNotifier {
             await Future.delayed(const Duration(milliseconds: 100));
           }
           ttsStopwatch.stop();
+          _performanceMonitor.recordTiming('tts', ttsStopwatch.elapsed);
           LucyReliabilityLog.event(
             'agent_tts_timing',
             step: step,
@@ -1873,6 +1947,7 @@ class AgentController extends ChangeNotifier {
           // only a final answer waits for TTS completion.
           unawaited(speech.then((_) {
             ttsStopwatch.stop();
+            _performanceMonitor.recordTiming('tts', ttsStopwatch.elapsed);
             LucyReliabilityLog.event(
               'agent_tts_timing',
               step: step,
@@ -1881,6 +1956,11 @@ class AgentController extends ChangeNotifier {
             );
           }, onError: (_) {
             ttsStopwatch.stop();
+            _performanceMonitor.recordTiming(
+              'tts',
+              ttsStopwatch.elapsed,
+              success: false,
+            );
             LucyReliabilityLog.event(
               'agent_tts_timing',
               step: step,
@@ -1928,9 +2008,11 @@ class AgentController extends ChangeNotifier {
       return;
     }
 
-    if (step >= _maxStepsPerCommand) {
+    if (step >= stepLimit || taskStopwatch.elapsed >= taskTimeBudget) {
       LucyReliabilityLog.event('agent_step_limit_reached', step: step, success: false);
-      _statusMessage = 'Task stopped at the $_maxStepsPerCommand-step safety limit';
+      _statusMessage = step >= stepLimit
+          ? 'Task stopped at the $stepLimit-step safety limit'
+          : 'Task stopped at the time budget to protect battery and stability';
       notifyListeners();
     }
   }

@@ -362,6 +362,12 @@ Tap the 🌐 **language selector** in the top bar to pick **English**, **हि�
 
 Lucy also **detects the language you actually spoke** and replies in it — the AI tags each response with a language code, and the app switches its TTS voice and follow-up prompts to match. Your choice persists across restarts.
 
+### Performance and battery diagnostics
+
+Open **Lucy tools** to see RAM, Lucy-process CPU, battery level, last-task net charge-counter change (when the device exposes it), task duration/step count, and rolling last/p50/p95 timings for screen-tree capture, screenshots, model responses, action execution and speech output. Samples are bounded in memory and contain no prompt text, screenshots, API keys or notification bodies. Battery change is an estimate from the Android charge counter, not a laboratory power measurement; some devices do not expose that counter.
+
+Ordinary commands have a 50-step / 3-minute safety budget. Explicit whole-list or deep tasks may use up to 150 steps / 6 minutes. Stop remains available throughout.
+
 ### Stopping the agent 🛑
 
 Three ways, in order of urgency:

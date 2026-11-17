@@ -290,9 +290,17 @@ class NativeVoiceService : Service() {
         try { unregisterReceiver(screenStateReceiver) } catch (_: Exception) {}
         handler.removeCallbacksAndMessages(null)
         try { recognizer?.cancel() } catch (_: Exception) {}
-        recognizer?.destroy()
+        try {
+            recognizer?.destroy()
+        } catch (error: Exception) {
+            Log.w(TAG, "Ignoring recognizer cleanup failure", error)
+        }
         recognizer = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (error: Exception) {
+            Log.w(TAG, "Ignoring foreground notification cleanup failure", error)
+        }
         sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName).putExtra("userInitiated", userInitiatedStop))
         super.onDestroy()
     }
