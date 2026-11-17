@@ -4,9 +4,12 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.PixelFormat
 import android.os.Bundle
 import android.app.KeyguardManager
 import android.util.Log
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -22,6 +25,8 @@ class ScreenActionService : AccessibilityService() {
         private const val TAG = "ScreenActionService"
     }
 
+    private var keepAwakeView: View? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -34,6 +39,46 @@ class ScreenActionService : AccessibilityService() {
 
     override fun onInterrupt() {
         // Required override
+    }
+
+    /** Keep the display awake during an explicitly started Lucy task. */
+    @Synchronized
+    fun keepScreenAwake(enabled: Boolean): Boolean {
+        val manager = getSystemService(WINDOW_SERVICE) as WindowManager
+        if (!enabled) {
+            val existing = keepAwakeView ?: return true
+            return try {
+                manager.removeView(existing)
+                keepAwakeView = null
+                true
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not release keep-awake overlay", error)
+                false
+            }
+        }
+        if (isDeviceLocked()) {
+            Log.i(TAG, "Not keeping the display awake while the device is locked")
+            return false
+        }
+        if (keepAwakeView != null) return true
+        return try {
+            val view = View(this)
+            val params = WindowManager.LayoutParams(
+                1,
+                1,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT
+            )
+            manager.addView(view, params)
+            keepAwakeView = view
+            true
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not add keep-awake accessibility overlay", error)
+            false
+        }
     }
 
     /**
@@ -327,6 +372,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        keepScreenAwake(false)
         super.onDestroy()
         instance = null
     }
