@@ -2083,7 +2083,7 @@ class AgentController extends ChangeNotifier {
       final rows = <Map<String, dynamic>>[];
       for (final candidate in candidates) {
         final existing = rows.cast<Map<String, dynamic>?>().firstWhere(
-              (row) => ((row!['y'] as double) - (candidate['y'] as double)).abs() < 34,
+              (row) => ((row!['y'] as double) - (candidate['y'] as double)).abs() < 60,
               orElse: () => null,
             );
         if (existing == null) {
