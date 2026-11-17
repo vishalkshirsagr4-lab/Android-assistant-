@@ -448,7 +448,11 @@ class ScreenActionService : AccessibilityService() {
         val maxElements = 200
         val maxDepth = 20
 
-        fun traverse(node: AccessibilityNodeInfo, depth: Int) {
+        fun traverseInternal(
+            node: AccessibilityNodeInfo,
+            depth: Int,
+            clickableAncestor: Boolean
+        ) {
             if (elementCount >= maxElements || depth > maxDepth) return
 
             val bounds = Rect()
@@ -456,7 +460,7 @@ class ScreenActionService : AccessibilityService() {
 
             val text = node.text?.toString()
             val contentDesc = node.contentDescription?.toString()
-            val isClickable = node.isClickable
+            val isClickable = node.isClickable || clickableAncestor
             val isEditable = node.isEditable
             val isPassword = node.isPassword
             val isCheckable = node.isCheckable
@@ -513,9 +517,13 @@ class ScreenActionService : AccessibilityService() {
             for (i in 0 until node.childCount) {
                 if (elementCount >= maxElements) break
                 val child = node.getChild(i) ?: continue
-                traverse(child, depth + 1)
+                traverseInternal(child, depth + 1, isClickable)
                 child.recycle()
             }
+        }
+
+        fun traverse(node: AccessibilityNodeInfo, depth: Int) {
+            traverseInternal(node, depth, false)
         }
 
         // Try rootInActiveWindow first
