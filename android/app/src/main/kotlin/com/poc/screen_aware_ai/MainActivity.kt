@@ -380,6 +380,9 @@ class MainActivity : FlutterActivity() {
                         ) ?: false
                     )
                 }
+                "cancelScreenOperation" -> {
+                    result.success(ScreenActionService.instance?.cancelScreenOperation() ?: false)
+                }
                 "scrollScreen" -> {
                     val forward = call.argument<Boolean>("forward") ?: true
                     val maxScrolls = call.argument<Int>("maxScrolls") ?: 80
