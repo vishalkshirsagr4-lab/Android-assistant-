@@ -460,7 +460,6 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                 TextButton(
                   onPressed: () async {
                     await widget.controller.clearUserMemories();
-      await widget.controller.clearLearningData();
                     refreshDialog(() {});
                   },
                   child: const Text('Clear all memories'),
@@ -574,6 +573,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
     try {
       await widget.controller.stopAgent();
       await widget.controller.clearUserMemories();
+      await widget.controller.clearLearningData();
       await widget.controller.aiService.clearGeminiKey();
       widget.controller.aiService.resetChat();
       await _grok.clearApiKey();
