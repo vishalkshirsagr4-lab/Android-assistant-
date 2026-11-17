@@ -908,6 +908,11 @@ class AgentController extends ChangeNotifier {
     _addConversation(text, true);
     _currentTranscript = '';
 
+    if (await _handleLearningCommand(text)) {
+      await _resumeOrFinishListening();
+      return;
+    }
+
     if (await _settingsStore.isEnabled(LucySettingsStore.memory) &&
         await _handleMemoryCommand(text)) {
       await _resumeOrFinishListening();
@@ -1886,6 +1891,1426 @@ class AgentController extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  void _recordSkillAction(AgentAction action, _UiSnapshot? before) {
+    if (!_taskSkillEligible) return;
+    const allowed = <String>{'open_app', 'tap', 'back', 'home', 'scroll_to_end', 'scroll_to_top', 'read_all'};
+    if (!allowed.contains(action.type)) { _taskSkillEligible = false; return; }
+    final entry = <String, dynamic>{'type': action.type};
+    if (action.type == 'open_app') {
+      final package = action.params['package']?.toString() ?? '';
+      if (package.isEmpty) { _taskSkillEligible = false; return; }
+      entry['package'] = package;
+    } else if (action.type == 'tap') {
+      if (before == null) { _taskSkillEligible = false; return; }
+      final id = (action.params['element'] as num?)?.toInt();
+      final element = id == null ? null : _findElementById(id, before.elements);
+      if (element == null) { _taskSkillEligible = false; return; }
+      final resourceId = element['resourceId']?.toString() ?? '';
+      final label = [element['text']?.toString() ?? '', element['desc']?.toString() ?? '']
+          .where((value) => value.trim().isNotEmpty).join(' ').trim();
+      final resourceCount = resourceId.isEmpty ? 0 : before.elements.where((item) => item['resourceId'] == resourceId).length;
+      final labelCount = label.isEmpty ? 0 : before.elements.where((item) =>
+          '\${item['text'] ?? ''} \${item['desc'] ?? ''}'.trim() == label).length;
+      if ((resourceId.isEmpty || resourceCount != 1) && (label.isEmpty || labelCount != 1)) {
+        _taskSkillEligible = false;
+        return;
+      }
+      entry['resourceId'] = resourceId;
+      entry['label'] = label;
+    }
+    _pendingSkillActions.add(entry);
+    if (_pendingSkillActions.length > 12) _taskSkillEligible = false;
+  }
+
+  Future<void> _saveCompletedSkill(String command) async {
+    if (!_taskSkillEligible ||
+        !await _settingsStore.isEnabled(LucySettingsStore.learnSkills) ||
+        _taskStartPackage == null || _taskStartSignature == null ||
+        _pendingSkillActions.isEmpty) return;
+    final normalized = LucyLearningStore.normalizeCommand(command);
+    var hash = 0x811c9dc5;
+    for (final unit in normalized.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    await _learningStore.recordSkill(
+      id: 'skill_\${hash.toRadixString(16)}',
+      command: command,
+      packageName: _taskStartPackage!,
+      startSignature: _taskStartSignature!,
+      appVersionCode: _taskStartVersion ?? 'unknown',
+      actions: _pendingSkillActions,
+    );
+  }
+
+  Future<bool> _tryReplayLearnedSkill(String command, _UiSnapshot startingSnapshot) async {
+    if (!await _settingsStore.isEnabled(LucySettingsStore.learnSkills)) return false;
+    final packageName = startingSnapshot.packageName ?? '';
+    final signature = LucyLearningStore.stableSignature(
+      packageName: packageName, elements: startingSnapshot.elements,
+    );
+    final skill = _learningStore.findSkill(
+      command: command, packageName: packageName, startSignature: signature,
+      appVersionCode: 'unknown',
+    );
+    if (skill == null) return false;
+    final skillId = skill['id']?.toString() ?? '';
+    final rawActions = skill['actions'];
+    if (skillId.isEmpty || rawActions is! List || rawActions.isEmpty) return false;
+    var current = startingSnapshot;
+    for (final raw in rawActions) {
+      if (_cancelRequested || raw is! Map) {
+        await _learningStore.markSkillResult(skillId, success: false);
+        return false;
+      }
+      final saved = Map<String, dynamic>.from(raw);
+      final type = saved['type']?.toString() ?? '';
+      final params = <String, dynamic>{
+        'confidence': 0.99, 'risk': 'low',
+        'reason': 'Replay a previously verified low-risk navigation or reading skill.',
+      };
+      if (type == 'open_app') {
+        params['package'] = saved['package'];
+      } else if (type == 'tap') {
+        final resourceId = saved['resourceId']?.toString() ?? '';
+        final label = saved['label']?.toString() ?? '';
+        var matches = current.elements.where((element) =>
+            resourceId.isNotEmpty && element['resourceId'] == resourceId).toList();
+        if (matches.length != 1 && label.isNotEmpty) {
+          matches = current.elements.where((element) =>
+              '\${element['text'] ?? ''} \${element['desc'] ?? ''}'.trim() == label).toList();
+        }
+        if (matches.length != 1) {
+          await _learningStore.markSkillResult(skillId, success: false);
+          return false;
+        }
+        params['element'] = matches.single['id'];
+      }
+      final action = AgentAction(type: type, params: params);
+      current = await _executeAction(action, current) ?? current;
+      if (!_lastActionDispatchSucceeded) {
+        await _learningStore.markSkillResult(skillId, success: false);
+        return false;
+      }
+      if (const {'scroll_to_end', 'scroll_to_top', 'read_all'}.contains(type)) {
+        final rawResult = _lastToolResult;
+        if (rawResult == null) {
+          await _learningStore.markSkillResult(skillId, success: false);
+          return false;
+        }
+        final result = jsonDecode(rawResult);
+        if (result is! Map || result['reachedEnd'] != true) {
+          await _learningStore.markSkillResult(skillId, success: false);
+          return false;
+        }
+      }
+    }
+    await _learningStore.markSkillResult(skillId, success: true);
+    return true;
+  }
+
+  Future<bool> _handleLearningCommand(String text) async {
+    final lower = text.trim().toLowerCase();
+    if (lower == 'forget this app layout' || lower == 'forget app layout') {
+      final packageName = (await _fetchUiSnapshot())?.packageName ?? '';
+      if (packageName.isEmpty) return true;
+      final removed = await _learningStore.forgetAppLayout(packageName);
+      await _speakEvent('ui_layout_forgotten',
+          context: 'Removed $removed learned screen layouts for the current app.');
+      return true;
+    }
+    final match = RegExp(r'^forget skill\s+(.+)
+    final current = <int, String>{};
+    for (final element in snapshot.elements) {
+      final id = (element['id'] as num?)?.toInt();
+      if (id != null) current[id] = jsonEncode(element);
+    }
+
+    final package = snapshot.packageName ?? '';
+    final classification = _screenClassifier.classify(snapshot.rawTree).toJson();
+    final forceFull = _previousModelTreePackage != package ||
+        _previousModelTreeElements.isEmpty ||
+        step == 1 ||
+        step % 5 == 0;
+
+    if (forceFull) {
+      _previousModelTreePackage = package;
+      _previousModelTreeElements = current;
+      return jsonEncode(<String, dynamic>{
+        'package': package,
+        'mode': 'full',
+        'screen': classification,
+        'elements': snapshot.elements,
+      });
+    }
+
+    final changed = <Map<String, dynamic>>[];
+    final removed = <int>[];
+    for (final element in snapshot.elements) {
+      final id = (element['id'] as num?)?.toInt();
+      if (id == null) continue;
+      if (_previousModelTreeElements[id] != current[id]) {
+        changed.add(element);
+      }
+    }
+    for (final oldId in _previousModelTreeElements.keys) {
+      if (!current.containsKey(oldId)) removed.add(oldId);
+    }
+
+    final unchangedCount = current.length - changed.length;
+    _previousModelTreePackage = package;
+    _previousModelTreeElements = current;
+    return jsonEncode(<String, dynamic>{
+      'package': package,
+      'mode': 'diff',
+      'screen': classification,
+      'baseStep': step - 1,
+      'elements': changed,
+      'removed': removed,
+      'unchangedCount': unchangedCount < 0 ? 0 : unchangedCount,
+    });
+  }
+
+  bool _shouldCaptureScreenshot(_UiSnapshot? snapshot) {
+    if (snapshot == null || snapshot.elements.length < 8) return true;
+
+    final types = snapshot.elements
+        .map((element) => (element['type'] ?? '').toString().toLowerCase())
+        .toList(growable: false);
+    final packageName = (snapshot.packageName ?? '').toLowerCase();
+    final visualSurface = types.any((type) =>
+        type.contains('webview') ||
+        type.contains('surfaceview') ||
+        type.contains('textureview') ||
+        type.contains('videoview') ||
+        type.contains('canvas') ||
+        type.contains('glsurface'));
+    if (visualSurface) return true;
+
+    if (packageName.contains('youtube') ||
+        packageName.contains('instagram') ||
+        packageName.contains('tiktok')) {
+      return true;
+    }
+
+    final readable = snapshot.elements
+        .map((element) => ((element['text'] ?? '').toString() +
+            ' ' +
+            (element['desc'] ?? '').toString()).trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    final totalChars = readable.fold<int>(0, (sum, value) => sum + value.length);
+    final imageCount = types.where((type) => type.contains('imageview')).length;
+    if (imageCount >= 3 && (readable.length < 12 || totalChars < 260)) {
+      return true;
+    }
+    return readable.length < 8 || totalChars < 160;
+  }
+
+  bool _isPermissionPrompt(_UiSnapshot? snapshot) {
+    if (snapshot == null) return false;
+    final visibleText = snapshot.elements
+        .map((element) => '${element['text'] ?? ''} ${element['desc'] ?? ''}')
+        .join(' ')
+        .toLowerCase();
+    final permissionContext = visibleText.contains('permission') ||
+        visibleText.contains('while using the app') ||
+        visibleText.contains('only this time') ||
+        visibleText.contains('allow lucy');
+    final permissionChoice = visibleText.contains('allow') ||
+        visibleText.contains("don't allow") ||
+        visibleText.contains('deny');
+    return permissionContext && permissionChoice;
+  }
+
+  bool _didPackageChange(_UiSnapshot? before, _UiSnapshot? after) {
+    if (before?.packageName == null || after?.packageName == null) {
+      return false;
+    }
+    return before!.packageName != after!.packageName;
+  }
+
+  bool _didTreeSignatureChange(_UiSnapshot? before, _UiSnapshot? after) {
+    final beforeSignature = before?.signature;
+    final afterSignature = after?.signature;
+    if (beforeSignature == null || afterSignature == null) {
+      return false;
+    }
+    return beforeSignature != afterSignature;
+  }
+
+  bool _tapTargetsEditableField(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) {
+    final elementId = action.params['element'] as num?;
+    if (elementId == null || beforeSnapshot == null) {
+      return false;
+    }
+
+    final element = _findElementById(
+      elementId.toInt(),
+      beforeSnapshot.elements,
+    );
+    if (element == null) {
+      return false;
+    }
+
+    return element['editable'] == true ||
+        element['focusable'] == true ||
+        (element['type']?.toString().contains('EditText') ?? false);
+  }
+
+  Duration _readinessTimeoutForAction(AgentAction action) {
+    switch (action.type) {
+      case 'open_app':
+        return _openAppReadyTimeout;
+      case 'tap':
+        return _tapReadyTimeout;
+      case 'type':
+        return _typeReadyTimeout;
+      case 'swipe':
+      case 'back':
+      case 'home':
+        return _navigationReadyTimeout;
+      case 'wait':
+        final ms = (action.params['ms'] as num?)?.toInt() ?? 1000;
+        return Duration(milliseconds: ms.clamp(0, 10000));
+      default:
+        return Duration.zero;
+    }
+  }
+
+  bool _isActionReady(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+    _UiSnapshot? currentSnapshot,
+  ) {
+    if (currentSnapshot == null) {
+      return false;
+    }
+
+    if (beforeSnapshot == null) {
+      return true;
+    }
+
+    final packageChanged = _didPackageChange(beforeSnapshot, currentSnapshot);
+    final treeChanged = _didTreeSignatureChange(
+      beforeSnapshot,
+      currentSnapshot,
+    );
+
+    switch (action.type) {
+      case 'open_app':
+        final targetPackage = action.params['package'] as String?;
+        if (targetPackage != null &&
+            targetPackage.isNotEmpty &&
+            currentSnapshot.packageName == targetPackage) {
+          return true;
+        }
+        return packageChanged || treeChanged;
+      case 'tap':
+        final expectsFocusedInput = _tapTargetsEditableField(
+          action,
+          beforeSnapshot,
+        );
+        if (expectsFocusedInput && currentSnapshot.hasFocusedEditable) {
+          return true;
+        }
+        return packageChanged || treeChanged;
+      case 'type':
+      case 'swipe':
+      case 'back':
+      case 'home':
+      case 'wait':
+        return packageChanged || treeChanged;
+      default:
+        return true;
+    }
+  }
+
+  Future<_UiSnapshot?> _waitForActionReadiness(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
+    final timeout = _readinessTimeoutForAction(action);
+    if (timeout == Duration.zero) {
+      return beforeSnapshot;
+    }
+
+    final canObserveUi = await _screenCapture.isAccessibilityEnabled();
+    if (!canObserveUi) {
+      return beforeSnapshot;
+    }
+
+    _UiSnapshot? latestSnapshot = beforeSnapshot;
+    final deadline = DateTime.now().add(timeout);
+
+    // Wake on Android accessibility events first, then verify with a fresh
+    // tree. Keep the short polling fallback for apps that emit no useful event.
+    final eventWait = timeout.inMilliseconds.clamp(0, 500).toInt();
+    if (eventWait > 0) {
+      await _screenCapture.waitForUiEvent(
+        afterSequence: _lastActionEventSequence,
+        timeoutMs: eventWait,
+      );
+      final eventSnapshot = await _fetchUiSnapshot();
+      if (eventSnapshot != null) latestSnapshot = eventSnapshot;
+      if (_isActionReady(action, beforeSnapshot, eventSnapshot)) {
+        return eventSnapshot;
+      }
+    }
+
+    while (!_cancelRequested) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      final currentSnapshot = await _fetchUiSnapshot();
+      if (currentSnapshot != null) latestSnapshot = currentSnapshot;
+      if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
+        return currentSnapshot;
+      }
+      final nextRemaining = deadline.difference(DateTime.now());
+      if (nextRemaining <= Duration.zero) break;
+      await Future.delayed(
+        nextRemaining < _uiPollInterval ? nextRemaining : _uiPollInterval,
+      );
+    }
+    return latestSnapshot;
+  }
+
+  /// Execute a single agent action.
+  Future<bool> _requestVoiceApproval(
+    AgentAction action,
+    String? targetLabel, {
+    required String requiredRisk,
+    bool sensitiveInput = false,
+  }) async {
+    if (!_isActive || _pendingVoiceApproval != null) return false;
+    final details = <String>[
+      action.type.replaceAll('_', ' '),
+      if (targetLabel != null && targetLabel.isNotEmpty) 'target $targetLabel',
+      if (action.params['text'] is String && sensitiveInput)
+        'text: [hidden sensitive input]',
+      if (action.params['text'] is String && !sensitiveInput)
+        'text: ${action.params['text']}',
+      if (action.params['message'] is String)
+        'message: ${action.params['message']}',
+      if (action.params['recipient'] is String)
+        'recipient: ${action.params['recipient']}',
+      'risk: $requiredRisk',
+      if (action.params['reason'] is String)
+        'reason: ${action.params['reason']}',
+    ].join('. ');
+    final prompt = requiredRisk == 'medium'
+        ? 'Lucy wants to $details. Is that okay? Say yes or no.'
+        : 'Lucy wants to $details. This is a high-risk action. Say approve to continue, or cancel to stop.';
+    _setState(AgentState.waitingConfirmation);
+    _statusMessage = 'Waiting for your spoken approval...';
+    _addConversation(prompt, false);
+    await _voiceService.speak(prompt, lang: _currentLang);
+    await Future.delayed(const Duration(milliseconds: 250));
+    while (_voiceService.isSpeaking && _isActive) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    if (!_isActive) return false;
+    final completer = Completer<bool>();
+    _pendingVoiceApproval = completer;
+    _currentTranscript = '';
+    final started = await _voiceService.startListening(
+      localeId: VoiceService.sttLocaleFor(_currentLang),
+    );
+    if (!started) {
+      _pendingVoiceApproval = null;
+      _addConversation(
+        'I could not hear an approval. The action was not performed.',
+        false,
+      );
+      return false;
+    }
+    var approved = false;
+    try {
+      approved = await completer.future.timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      _addConversation(
+        'Approval timed out. The action was not performed.',
+        false,
+      );
+    } finally {
+      _pendingVoiceApproval = null;
+      await _voiceService.stopListening();
+      _currentTranscript = '';
+      if (_isActive) _setState(AgentState.executingAction);
+    }
+    if (approved) {
+      _addConversation('Approval received. Continuing the task.', false);
+    }
+    return approved;
+  }
+
+  Future<_UiSnapshot?> _executeAction(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
+    _lastActionDispatchSucceeded = true;
+    _lastToolResult = null;
+    const accessibilityActions = {
+      'open_app', 'tap', 'type', 'swipe', 'back', 'home',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
+    };
+    const directPhoneActions = {
+      'set_alarm', 'set_timer', 'place_call', 'send_sms', 'open_url',
+      'start_navigation', 'music_search', 'set_flashlight', 'set_volume',
+      'set_brightness', 'get_device_status', 'read_contact',
+      'create_calendar_event', 'open_settings', 'take_photo', 'share_text',
+    };
+    if (accessibilityActions.contains(action.type) &&
+        !await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Screen automation is disabled in Privacy & settings. No screen action was performed.', false);
+      return beforeSnapshot;
+    }
+    if (directPhoneActions.contains(action.type) &&
+        !await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Direct phone actions are disabled in Privacy & settings.', false);
+      return beforeSnapshot;
+    }
+    if (const {
+      'tap', 'type', 'swipe', 'back', 'home',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
+    }.contains(action.type) &&
+        !await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Screen actions need AI screen sharing enabled so Lucy can inspect and verify the target. No action was performed.', false);
+      return beforeSnapshot;
+    }
+    if (action.type == 'schedule_reminder' &&
+        !await _settingsStore.isEnabled(LucySettingsStore.scheduledReminders)) {
+      _lastActionDispatchSucceeded = false;
+      _addConversation('Scheduled reminders are disabled in Privacy & settings.', false);
+      return beforeSnapshot;
+    }
+    // Ordinary navigation is hands-free. Consequential actions pause the
+    // task, ask for spoken approval, and resume the same agent loop on approval.
+    String? targetLabel;
+    if (action.type == 'place_call' || action.type == 'send_sms') {
+      targetLabel = action.params['phoneNumber']?.toString();
+    }
+    if (action.type == 'open_settings') {
+      targetLabel = action.params['page']?.toString();
+    }
+    var sensitiveInput = false;
+    if (beforeSnapshot != null && action.type == 'type') {
+      // Password fields are marked by Android's accessibility tree. Never
+      // type into them without a separate spoken approval.
+      final focusedElement = beforeSnapshot.elements.cast<Map<String, dynamic>?>().firstWhere(
+            (element) =>
+                element != null &&
+                element['focused'] == true &&
+                element['editable'] == true,
+            orElse: () => null,
+          );
+      sensitiveInput = focusedElement?['password'] == true;
+    }
+    if (action.type == 'tap' && beforeSnapshot != null) {
+      final elementId = (action.params['element'] as num?)?.toInt();
+      if (elementId != null &&
+          elementId >= 0 &&
+          elementId < beforeSnapshot.elements.length) {
+        final element = beforeSnapshot.elements[elementId];
+        targetLabel = [
+          element['text']?.toString() ?? '',
+          element['desc']?.toString() ?? '',
+        ].where((value) => value.isNotEmpty).join(' ').trim();
+      }
+    }
+    final rawConfidence = action.params['confidence'];
+    final modelConfidence = rawConfidence is num
+        ? rawConfidence.toDouble().clamp(0.0, 1.0).toDouble()
+        : 0.5;
+    if (modelConfidence < 0.30) {
+      _addConversation(
+        'I am not confident I understood that action correctly. Please repeat or clarify the request.',
+        false,
+      );
+      _cancelRequested = true;
+      return beforeSnapshot;
+    }
+    final requiredRisk = LucyActionApprovalPolicy.effectiveRisk(
+      action.type,
+      targetLabel: targetLabel,
+      packageName: beforeSnapshot?.packageName,
+      modelRisk: action.params['risk']?.toString(),
+      confidence: modelConfidence,
+      sensitiveInput: sensitiveInput,
+    );
+    // Pause only for locally identified consequential actions. Model risk
+    // metadata cannot add approval prompts to routine tasks.
+    if (requiredRisk != 'low') {
+      final approved = await _requestVoiceApproval(
+        action,
+        targetLabel,
+        requiredRisk: requiredRisk,
+        sensitiveInput: sensitiveInput,
+      );
+      if (!approved) {
+        _cancelRequested = true;
+        _addConversation('Action cancelled. I will stop this task.', false);
+        return beforeSnapshot;
+      }
+    }
+
+    // Actions that require the accessibility service
+    if (const {'tap', 'type', 'swipe', 'back', 'home', 'batch'}.contains(action.type)) {
+      final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+      if (!hasAccessibility) {
+        _addConversation(
+          '⚠️ Cannot execute "${action.type}" — accessibility service not enabled. '
+          'Please enable it in Settings → Accessibility → Lucy.',
+          false,
+        );
+        _lastActionDispatchSucceeded = false;
+        return beforeSnapshot;
+      }
+    }
+
+    _lastActionEventSequence = await _screenCapture.getUiEventSequence();
+
+    try {
+      switch (action.type) {
+        case 'open_app':
+          final package = action.params['package'] as String? ?? '';
+          if (package.isNotEmpty) {
+            final success = await _screenCapture.openApp(package);
+            _lastActionDispatchSucceeded = success;
+            LucyReliabilityLog.event(
+              'action_dispatch',
+              action: action.type,
+              success: success,
+            );
+          } else {
+            _lastActionDispatchSucceeded = false;
+          }
+          break;
+
+        case 'tap':
+          // Never guess tap coordinates. A missing/stale UI element must fail
+          // closed rather than tapping an arbitrary location on the user's phone.
+          final elementId = (action.params['element'] as num?)?.toInt();
+          if (elementId == null || beforeSnapshot == null) {
+            _lastActionDispatchSucceeded = false;
+            _addConversation(
+              'I could not verify the screen element to tap, so I did not tap anything.',
+              false,
+            );
+            return beforeSnapshot;
+          }
+          final coords = _resolveElementCoordinates(
+            elementId,
+            beforeSnapshot.elements,
+          );
+          if (coords == null) {
+            _lastActionDispatchSucceeded = false;
+            _addConversation(
+              'That screen element is no longer available. I did not tap anything.',
+              false,
+            );
+            return beforeSnapshot;
+          }
+          _lastActionDispatchSucceeded = await _screenCapture.performTap(
+            coords['x']!,
+            coords['y']!,
+          );
+          break;
+
+        case 'type':
+          final text = action.params['text'] as String? ?? '';
+          if (text.isNotEmpty) {
+            _lastActionDispatchSucceeded = await _screenCapture.performType(text);
+          } else {
+            _lastActionDispatchSucceeded = false;
+          }
+          break;
+
+        case 'swipe':
+          final startX = (action.params['startX'] as num?)?.toDouble() ?? 0;
+          final startY = (action.params['startY'] as num?)?.toDouble() ?? 0;
+          final endX = (action.params['endX'] as num?)?.toDouble() ?? 0;
+          final endY = (action.params['endY'] as num?)?.toDouble() ?? 0;
+          _lastActionDispatchSucceeded = await _screenCapture.performSwipe(
+            startX,
+            startY,
+            endX,
+            endY,
+          );
+          break;
+
+        case 'back':
+          _lastActionDispatchSucceeded = await _screenCapture.pressBack();
+          break;
+
+        case 'home':
+          _lastActionDispatchSucceeded = await _screenCapture.pressHome();
+          break;
+
+        case 'scroll_to_end':
+        case 'scroll_to_top':
+        case 'read_all':
+          final isReadAll = action.type == 'read_all';
+          final isForward = action.type != 'scroll_to_top';
+          final rawMaxScrolls = action.params['maxScrolls'];
+          final maxScrolls = rawMaxScrolls is num
+              ? rawMaxScrolls.toInt().clamp(1, 120).toInt()
+              : 80;
+          final result = await _screenCapture.scrollScreen(
+            forward: isForward,
+            maxScrolls: maxScrolls,
+            collect: isReadAll,
+          );
+          if (result == null) {
+            _lastActionDispatchSucceeded = false;
+            _lastToolResult = jsonEncode(<String, dynamic>{
+              'error': 'native_scroll_unavailable',
+              'reachedEnd': false,
+              'items': <String>[],
+            });
+          } else {
+            _lastToolResult = jsonEncode(result);
+            _lastActionDispatchSucceeded =
+                result['locked'] != true && result['dispatchFailed'] != true;
+          }
+          break;
+
+        case 'open_each':
+          final result = await _executeOpenEach(action, beforeSnapshot);
+          _lastToolResult = jsonEncode(result);
+          _lastActionDispatchSucceeded = result['error'] == null;
+          break;
+
+        case 'batch':
+          final result = await _executeBatchAction(action, beforeSnapshot);
+          _lastToolResult = jsonEncode(result);
+          _lastActionDispatchSucceeded = result['success'] == true;
+          break;
+
+        case 'schedule_reminder':
+          final title = action.params['title']?.toString().trim() ?? '';
+          final body = action.params['body']?.toString().trim() ?? title;
+          final delayMinutes =
+              (action.params['delayMinutes'] as num?)?.toInt() ?? 0;
+          final repeatMinutes =
+              (action.params['repeatIntervalMinutes'] as num?)?.toInt() ?? 0;
+          if (title.isEmpty || delayMinutes < 1) {
+            _lastActionDispatchSucceeded = false;
+            _addConversation(
+              'I need a reminder title and a future time. Please say when you want it.',
+              false,
+            );
+            break;
+          }
+          final reminderId = 'voice_${DateTime.now().millisecondsSinceEpoch}';
+          await LucyRoutineScheduler.scheduleReminder(
+            id: reminderId,
+            title: title,
+            body: body,
+            delayMinutes: delayMinutes,
+            repeatIntervalMinutes: repeatMinutes,
+          );
+          _lastActionDispatchSucceeded = true;
+          _addConversation(
+            repeatMinutes >= 15
+                ? 'Reminder scheduled: $title. It will repeat every $repeatMinutes minutes.'
+                : 'Reminder scheduled: $title.',
+            false,
+          );
+          break;
+
+        case 'set_alarm':
+        case 'set_timer':
+        case 'place_call':
+        case 'send_sms':
+        case 'open_url':
+        case 'start_navigation':
+        case 'music_search':
+        case 'set_flashlight':
+        case 'set_volume':
+        case 'set_brightness':
+        case 'get_device_status':
+        case 'read_contact':
+        case 'create_calendar_event':
+        case 'open_settings':
+        case 'take_photo':
+        case 'share_text':
+          await _executeNativePhoneAction(action);
+          break;
+
+        case 'remember':
+          final memoryText = (action.params['text'] ??
+                  action.params['content'] ??
+                  action.params['memory'])
+              ?.toString()
+              .trim() ?? '';
+          final memoryType =
+              action.params['memory_type']?.toString() ??
+              action.params['category']?.toString() ??
+              'fact';
+          if (memoryText.isEmpty) {
+            _lastActionDispatchSucceeded = false;
+          } else {
+            await rememberUserMemory(memoryText, category: memoryType);
+            _lastActionDispatchSucceeded = true;
+            await _speakEvent(
+              'memory_saved',
+              context: 'A user-requested memory was saved locally.',
+            );
+          }
+          break;
+
+        case 'forget':
+          final query = action.params['query']?.toString().trim() ?? '';
+          if (query.isEmpty) {
+            _lastActionDispatchSucceeded = false;
+          } else if (const {'all', 'everything', 'all memories'}
+              .contains(query.toLowerCase())) {
+            await clearUserMemories();
+            _lastActionDispatchSucceeded = true;
+            await _speakEvent(
+              'memory_cleared',
+              context: 'The user explicitly requested that all saved memories be cleared.',
+            );
+          } else {
+            final removed = await forgetUserMemory(query);
+            _lastActionDispatchSucceeded = removed > 0;
+            await _speakEvent(
+              'memory_forgotten',
+              context: removed > 0
+                  ? 'The requested matching memory was removed.'
+                  : 'No saved memory matched the requested detail.',
+            );
+          }
+          break;
+
+        case 'recall_memories':
+          _lastActionDispatchSucceeded = true;
+          await _replyToMemoryCommand(
+            memorySummary.isEmpty
+                ? 'No saved memories were found.'
+                : 'Summarize these user-approved saved memories in the user’s language: $memorySummary',
+            event: 'memory_recalled',
+          );
+          break;
+
+        case 'wait':
+          final delay = ((action.params['ms'] as num?)?.toInt() ?? 1000)
+              .clamp(0, 10000);
+          await Future<void>.delayed(Duration(milliseconds: delay));
+          _lastActionDispatchSucceeded = true;
+          break;
+
+        default:
+          _lastActionDispatchSucceeded = false;
+          LucyReliabilityLog.event(
+            'unsupported_action',
+            action: action.type,
+            success: false,
+          );
+      }
+    } catch (error) {
+      _lastActionDispatchSucceeded = false;
+      LucyReliabilityLog.event(
+        'action_exception',
+        action: action.type,
+        success: false,
+        errorType: error.runtimeType.toString(),
+      );
+    }
+
+    if (const {
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
+    }.contains(action.type)) {
+      return _fetchUiSnapshot();
+    }
+    return _waitForActionReadiness(action, beforeSnapshot);
+  }
+
+  Future<Map<String, dynamic>> _executeBatchAction(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
+    final rawActions = action.params['actions'];
+    if (rawActions is! List || rawActions.isEmpty || rawActions.length > 5) {
+      return <String, dynamic>{
+        'success': false,
+        'error': 'invalid_batch_size',
+        'completed': 0,
+      };
+    }
+
+    const allowed = {'tap', 'type', 'swipe', 'back', 'wait'};
+    final initialFocused = beforeSnapshot?.elements
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (element) => element != null &&
+              element['focused'] == true &&
+              element['editable'] == true,
+          orElse: () => null,
+        );
+    var inputFocused = initialFocused != null;
+    var focusedInputPassword = initialFocused?['password'] == true;
+    final nativeActions = <Map<String, dynamic>>[];
+    for (final raw in rawActions) {
+      if (raw is! Map) {
+        return <String, dynamic>{
+          'success': false,
+          'error': 'invalid_batch_action',
+          'completed': nativeActions.length,
+        };
+      }
+      final item = Map<String, dynamic>.from(raw);
+      final type = item['type']?.toString() ?? '';
+      if (!allowed.contains(type)) {
+        return <String, dynamic>{
+          'success': false,
+          'error': 'unsupported_batch_action',
+          'completed': nativeActions.length,
+        };
+      }
+
+      String? targetLabel;
+      var sensitiveInput = false;
+      if (type == 'tap') {
+        final elementId = (item['element'] as num?)?.toInt();
+        final element = elementId == null || beforeSnapshot == null
+            ? null
+            : _findElementById(elementId, beforeSnapshot.elements);
+        if (element == null) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_target_not_found',
+            'completed': nativeActions.length,
+          };
+        }
+        targetLabel = [
+          element['text']?.toString() ?? '',
+          element['desc']?.toString() ?? '',
+        ].where((value) => value.isNotEmpty).join(' ').trim();
+        final isEditableTarget = element['editable'] == true ||
+            (element['type']?.toString().contains('EditText') ?? false);
+        inputFocused = isEditableTarget;
+        focusedInputPassword =
+            isEditableTarget && element['password'] == true;
+      } else if (type == 'type') {
+        if (!inputFocused) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_input_not_focused',
+            'completed': nativeActions.length,
+          };
+        }
+        sensitiveInput = focusedInputPassword;
+      }
+
+      final risk = LucyActionApprovalPolicy.effectiveRisk(
+        type,
+        targetLabel: targetLabel,
+        packageName: beforeSnapshot?.packageName,
+        sensitiveInput: sensitiveInput,
+      );
+      if (risk != 'low') {
+        final approved = await _requestVoiceApproval(
+          AgentAction(type: type, params: item),
+          targetLabel,
+          requiredRisk: risk,
+          sensitiveInput: sensitiveInput,
+        );
+        if (!approved) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'approval_denied',
+            'completed': nativeActions.length,
+          };
+        }
+      }
+      nativeActions.add(item);
+    }
+
+    final result = await _screenCapture.performBatch(nativeActions);
+    if (result == null) {
+      return <String, dynamic>{
+        'success': false,
+        'error': 'native_batch_unavailable',
+        'completed': 0,
+      };
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _executeOpenEach(
+    AgentAction action,
+    _UiSnapshot? startingSnapshot,
+  ) async {
+    final requestedLimit = action.params['maxItems'];
+    final maxItems = (requestedLimit is num ? requestedLimit.toInt() : 10)
+        .clamp(1, 100)
+        .toInt();
+    final requestedScrolls = action.params['detailMaxScrolls'];
+    final detailMaxScrolls =
+        (requestedScrolls is num ? requestedScrolls.toInt() : 20)
+            .clamp(1, 40)
+            .toInt();
+    final screenSize = await _screenCapture.getScreenSize();
+    final width = (screenSize?['width'] ?? 1080).toDouble();
+    final height = (screenSize?['height'] ?? 1920).toDouble();
+    final visited = <String>{};
+    final results = <Map<String, dynamic>>[];
+    var totalCollectedChars = 0;
+    var current = startingSnapshot ?? await _fetchUiSnapshot();
+    final currentPackage = current?.packageName?.toLowerCase() ?? '';
+    if (const {'bank', 'wallet', 'payment', 'upi', 'finance'}
+        .any(currentPackage.contains)) {
+      return <String, dynamic>{
+        'error': 'financial_app_not_supported',
+        'reachedEnd': false,
+        'limited': false,
+        'processed': 0,
+        'items': <Map<String, dynamic>>[],
+      };
+    }
+    var unchangedPages = 0;
+    var pageScrolls = 0;
+    var reachedEnd = false;
+
+    List<Map<String, dynamic>> listRows(_UiSnapshot? snapshot) {
+      if (snapshot == null) return <Map<String, dynamic>>[];
+      final candidates = <Map<String, dynamic>>[];
+      for (final element in snapshot.elements) {
+        if (element['clickable'] != true) continue;
+        final text = element['text']?.toString().trim() ?? '';
+        final desc = element['desc']?.toString().trim() ?? '';
+        final label = [text, if (desc.isNotEmpty && desc != text) desc]
+            .where((value) => value.isNotEmpty)
+            .join(' · ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (label.length < 2) continue;
+        final bounds = element['bounds'];
+        if (bounds is! Map) continue;
+        final y = (bounds['cy'] as num?)?.toDouble();
+        final x = (bounds['cx'] as num?)?.toDouble();
+        if (y == null || x == null || y < height * 0.12 || y > height * 0.94) {
+          continue;
+        }
+        final normalized = label.toLowerCase();
+        if (const {
+          'search', 'settings', 'more options', 'back', 'chats',
+          'updates', 'calls', 'communities', 'inbox', 'compose',
+          'new chat', 'new message', 'new email', 'start new chat',
+          'primary', 'social', 'promotions', 'starred', 'all mail',
+          'navigation', 'menu', 'refresh', 'archive', 'delete',
+          'remove', 'mark as read', 'mark as unread', 'report spam',
+          'block', 'unsubscribe', 'select all',
+          'send', 'send message', 'send now', 'post', 'publish',
+          'share', 'pay', 'payment', 'transfer', 'buy', 'purchase',
+          'checkout', 'confirm', 'allow', 'grant', 'install',
+          'uninstall', 'call', 'dial',
+        }.contains(normalized) ||
+            RegExp(r'^(delete|archive|remove|block|report|unsubscribe|send|post|publish|share|pay|transfer|buy|purchase|checkout|confirm|allow|grant|install|uninstall|call|dial)\b')
+                .hasMatch(normalized)) {
+          continue;
+        }
+        candidates.add(<String, dynamic>{
+          'id': element['id'],
+          'x': x,
+          'y': y,
+          'label': label,
+          'normalized': normalized,
+        });
+      }
+      candidates.sort(
+        (a, b) => (a['y'] as double).compareTo(b['y'] as double),
+      );
+
+      // Group sender/subject/preview text that belongs to the same visible row.
+      final rows = <Map<String, dynamic>>[];
+      for (final candidate in candidates) {
+        Map<String, dynamic>? existing;
+        for (final row in rows) {
+          if (((row['y'] as double) - (candidate['y'] as double)).abs() < 60) {
+            existing = row;
+            break;
+          }
+        }
+        if (existing == null) {
+          rows.add(<String, dynamic>{
+            'id': candidate['id'],
+            'x': candidate['x'],
+            'y': candidate['y'],
+            'labels': <String>[candidate['label']],
+          });
+        } else {
+          final labels = existing['labels'] as List<String>;
+          if (!labels.contains(candidate['label']) && labels.length < 5) {
+            labels.add(candidate['label'] as String);
+          }
+          if ((candidate['label'] as String).length >
+              (labels.first.length)) {
+            existing['id'] = candidate['id'];
+            existing['x'] = candidate['x'];
+          }
+        }
+      }
+      for (final row in rows) {
+        final joined = (row['labels'] as List<String>).join(' | ');
+        row['label'] = joined.length > 260 ? joined.substring(0, 260) : joined;
+      }
+      return rows;
+    }
+
+    while (results.length < maxItems && pageScrolls <= 80) {
+      if (_cancelRequested) break;
+      final rows = listRows(current);
+      Map<String, dynamic>? nextRow;
+      for (final row in rows) {
+        final key = (row['label'] as String)
+            .toLowerCase()
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (visited.add(key)) {
+          nextRow = row;
+          break;
+        }
+      }
+
+      if (nextRow != null) {
+        final id = (nextRow['id'] as num?)?.toInt();
+        final coords = id == null || current == null
+            ? null
+            : _resolveElementCoordinates(id, current.elements);
+        if (coords == null ||
+            !await _screenCapture.performTap(coords['x']!, coords['y']!)) {
+          continue;
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        final openedSnapshot = await _fetchUiSnapshot();
+        if (openedSnapshot == null ||
+            (openedSnapshot.packageName == current?.packageName &&
+                openedSnapshot.signature == current?.signature)) {
+          results.add(<String, dynamic>{
+            'label': nextRow['label'],
+            'opened': false,
+            'content': <String>[],
+          });
+          current = openedSnapshot ?? current;
+          continue;
+        }
+        final detailScroll = await _screenCapture.scrollScreen(
+          forward: true,
+          maxScrolls: detailMaxScrolls,
+          collect: true,
+        );
+        final detailSnapshot = await _fetchUiSnapshot();
+        final content = <String>{};
+        final rawItems = detailScroll?['items'];
+        if (rawItems is List) {
+          for (final value in rawItems) {
+            final text = value.toString().trim();
+            if (text.isNotEmpty && content.length < 20 &&
+                totalCollectedChars < 50000) {
+              final clipped = text.length > 200 ? text.substring(0, 200) : text;
+              if (content.add(clipped)) totalCollectedChars += clipped.length;
+            }
+            if (content.length >= 20 || totalCollectedChars >= 50000) break;
+          }
+        }
+        for (final element in detailSnapshot?.elements ??
+            const <Map<String, dynamic>>[]) {
+          for (final key in const ['text', 'desc']) {
+            final text = element[key]?.toString().trim() ?? '';
+            if (text.isNotEmpty && content.length < 20 &&
+                totalCollectedChars < 50000) {
+              final clipped = text.length > 200 ? text.substring(0, 200) : text;
+              if (content.add(clipped)) totalCollectedChars += clipped.length;
+            }
+          }
+        }
+
+        results.add(<String, dynamic>{
+          'label': nextRow['label'],
+          'opened': true,
+          'content': content.toList(growable: false),
+          'detailReachedEnd': detailScroll?['reachedEnd'] == true,
+          'detailScrolls': detailScroll?['scrolls'] ?? 0,
+        });
+
+        if (!await _screenCapture.pressBack()) {
+          return <String, dynamic>{
+            'error': 'could_not_return_to_list',
+            'reachedEnd': false,
+            'limited': false,
+            'processed': results.length,
+            'items': results,
+          };
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        current = await _fetchUiSnapshot();
+        unchangedPages = 0;
+        continue;
+      }
+
+      if (current == null || pageScrolls >= 80) break;
+      final beforeSignature = current.signature;
+      final moved = await _screenCapture.performSwipe(
+        width * 0.5,
+        height * 0.76,
+        width * 0.5,
+        height * 0.30,
+      );
+      if (!moved) break;
+      pageScrolls++;
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      current = await _fetchUiSnapshot();
+      if (current == null || current.signature == beforeSignature) {
+        unchangedPages++;
+      } else {
+        unchangedPages = 0;
+      }
+      if (unchangedPages >= 2) {
+        reachedEnd = true;
+        break;
+      }
+    }
+
+    return <String, dynamic>{
+      'processed': results.length,
+      'requestedMaxItems': maxItems,
+      'reachedEnd': reachedEnd,
+      'limited': !reachedEnd && results.length >= maxItems,
+      'pageScrolls': pageScrolls,
+      'items': results,
+    };
+  }
+
+  Future<void> _executeNativePhoneAction(AgentAction action) async {
+    _lastActionDispatchSucceeded = false;
+    dynamic nativeResult;
+    try {
+      nativeResult = await _phoneActions.execute(action.type, action.params);
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_action_failure',
+        action: action.type,
+        success: false,
+        errorType: error.runtimeType.toString(),
+      );
+      nativeResult = false;
+    }
+
+    final resultMap = nativeResult is Map
+        ? Map<String, dynamic>.from(nativeResult)
+        : <String, dynamic>{};
+    final needsBrightnessAccess = resultMap['requiresSettingsAccess'] == true;
+    if (resultMap['requiresUnlock'] == true) {
+      _lastActionDispatchSucceeded = false;
+      const message =
+          'Your phone is locked. Unlock it first, then say the call command again. I will not bypass your phone lock.';
+      _addConversation(message, false);
+      await _voiceService.speak(message, lang: _currentLang);
+      _cancelRequested = true;
+      return;
+    }
+    final succeeded =
+        nativeResult == true ||
+        resultMap['success'] == true ||
+        resultMap.containsKey('batteryPercent') ||
+        resultMap.containsKey('phoneNumber') ||
+        (action.type == 'set_volume' && resultMap.containsKey('level')) ||
+        (action.type == 'set_brightness' && needsBrightnessAccess);
+
+    if (needsBrightnessAccess) {
+      _lastActionDispatchSucceeded = false;
+      const message =
+          'Android opened special access settings. Review the permission yourself, then repeat your brightness command. Lucy will not change this access automatically.';
+      _addConversation(message, false);
+      _cancelRequested = true;
+      return;
+    }
+
+    if (!succeeded) {
+      const fallbackPackages = <String, String>{
+        'set_alarm': 'com.google.android.deskclock',
+        'set_timer': 'com.google.android.deskclock',
+        'open_url': 'com.android.chrome',
+        'place_call': 'com.google.android.dialer',
+        'send_sms': 'com.google.android.apps.messaging',
+        'start_navigation': 'com.google.android.apps.maps',
+        'music_search': 'com.google.android.youtube',
+        'read_contact': 'com.google.android.contacts',
+        'create_calendar_event': 'com.google.android.calendar',
+        'open_settings': 'com.android.settings',
+        'take_photo': 'com.android.camera2',
+      };
+      final packageName = fallbackPackages[action.type];
+      if (packageName != null) {
+        final opened = await _screenCapture.openApp(packageName);
+        if (opened) {
+          // Opening the fallback app is not proof the requested operation
+          // succeeded. Let the next model turn continue with visible UI control.
+          _lastActionDispatchSucceeded = false;
+          _addConversation(
+            'The direct Android action was unavailable, so I opened the related app for screen-based control.',
+            false,
+          );
+          return;
+        }
+      }
+      _addConversation(
+        'Android could not complete that action, and the related app could not be opened. Nothing was sent or called.',
+        false,
+      );
+      _lastActionDispatchSucceeded = false;
+      return;
+    }
+
+    _lastActionDispatchSucceeded = true;
+    if (action.type == 'get_device_status') {
+      final battery = resultMap['batteryPercent'];
+      final charging = resultMap['charging'] == true;
+      final total = (resultMap['storageTotalBytes'] as num?)?.toDouble() ?? 0;
+      final free = (resultMap['storageFreeBytes'] as num?)?.toDouble() ?? 0;
+      final usedGb = total > 0 ? (total - free) / (1024 * 1024 * 1024) : 0;
+      final totalGb = total / (1024 * 1024 * 1024);
+      final message =
+          'Battery: ${battery ?? 'unknown'} percent, '
+          '${charging ? 'charging' : 'not charging'}. '
+          'Storage used: ${usedGb.toStringAsFixed(1)} of ${totalGb.toStringAsFixed(1)} GB.';
+      _addConversation(message, false);
+      await _voiceService.speak(message, lang: _currentLang);
+    } else if (action.type == 'read_contact') {
+      final name = resultMap['name']?.toString();
+      final number = resultMap['phoneNumber']?.toString();
+      final message = name == null || number == null
+          ? 'I could not find a matching contact.'
+          : 'I found $name. The saved number is $number.';
+      _addConversation(message, false);
+      await _voiceService.speak(message, lang: _currentLang);
+    } else if (action.type == 'set_brightness' &&
+        resultMap['success'] == true) {
+      final level = resultMap['level'] ?? action.params['level'] ?? '';
+      _addConversation('Brightness set to $level percent.', false);
+    } else if (action.type == 'set_flashlight') {
+      final enabled = action.params['enabled'] != false;
+      _addConversation(
+        enabled ? 'Flashlight turned on.' : 'Flashlight turned off.',
+        false,
+      );
+    } else if (action.type == 'place_call') {
+      _addConversation(
+        'I opened the dialer with the requested number. Review it and tap Call when you are ready.',
+        false,
+      );
+    } else if (action.type == 'send_sms') {
+      _addConversation(
+        'I opened your SMS app with the message filled in. Review it and tap Send when you are ready.',
+        false,
+      );
+    } else if (action.type == 'create_calendar_event') {
+      _addConversation(
+        'I opened your calendar with the event details. Review them and save the event.',
+        false,
+      );
+    } else if (action.type == 'take_photo') {
+      _addConversation(
+        'Camera opened. Take the photo when you are ready.',
+        false,
+      );
+    } else if (action.type == 'share_text') {
+      _addConversation(
+        'The Android share sheet is ready. Choose where to share the text.',
+        false,
+      );
+    } else if (action.type == 'set_alarm') {
+      _addConversation('Your alarm details are ready in the Clock app.', false);
+    } else if (action.type == 'set_timer') {
+      _addConversation('Your timer is ready in the Clock app.', false);
+    }
+  }
+
+  String _trimForTts(String text) {
+    // Remove action/emoji markers for cleaner TTS
+    String cleaned = text;
+    cleaned = cleaned.replaceAll(RegExp(r'⚡.*?\n'), '');
+    cleaned = cleaned.trim();
+    if (cleaned.length > 300) {
+      return '${cleaned.substring(0, 297)}...';
+    }
+    return cleaned;
+  }
+
+  void _updateTaskProgress(String message) {
+    _statusMessage = message;
+    unawaited(_voiceService.updateNotificationStatus(message));
+    notifyListeners();
+  }
+
+  void _setState(AgentState newState) {
+    _state = newState;
+    notifyListeners();
+  }
+
+  Future<bool> capturePreview() async {
+    final screenshotBytes = await _captureScreenWithRetry();
+    if (screenshotBytes == null) {
+      return false;
+    }
+
+    _lastScreenshotBytes = screenshotBytes;
+    notifyListeners();
+    return true;
+  }
+
+  void _addConversation(
+    String text,
+    bool isUser, {
+    Uint8List? screenshotBytes,
+  }) {
+    _conversation.add(
+      ConversationEntry(
+        text: text,
+        isUser: isUser,
+        screenshotBytes: screenshotBytes,
+      ),
+    );
+    // Store event metadata only; conversation text can contain private information.
+    unawaited(
+      _activityStore.record(isUser ? 'user_message' : 'assistant_message'),
+    );
+    notifyListeners();
+  }
+
+  void clearConversation() {
+    _conversation.clear();
+    _lastScreenshotBytes = null;
+    _aiService.resetChat();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _silenceTimeoutTimer?.cancel();
+    _voiceService.dispose();
+    super.dispose();
+  }
+}
+, caseSensitive: false).firstMatch(text.trim());
+    if (match != null) {
+      final removed = await _learningStore.forgetSkill(match.group(1)!);
+      await _speakEvent('skill_forgotten',
+          context: removed ? 'The named learned skill was deleted.' : 'No matching learned skill was found.');
+      return true;
+    }
+    return false;
   }
 
   String _buildUiTreePayload(_UiSnapshot snapshot, int step) {
