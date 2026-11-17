@@ -1796,13 +1796,25 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
       if (agentResponse.isError) {
-        _updateTaskProgress('AI unavailable · Check your provider or connection');
+        final detail = agentResponse.rawResponse;
+        final hasConfiguredProvider = await _aiService.isProviderReady();
+        _statusMessage = hasConfiguredProvider
+            ? 'AI temporarily unavailable · Retrying is safe'
+            : 'AI provider not configured · Offline commands remain available';
+        _updateTaskProgress(_statusMessage);
         LucyReliabilityLog.event(
           'agent_provider_unavailable',
           provider: agentResponse.provider,
           step: step,
           success: false,
         );
+        final spoken = hasConfiguredProvider
+            ? 'I could not reach an AI provider just now. Your task is paused and no further screen actions were taken. Check your connection or provider key, then ask me to continue.'
+            : 'Cloud AI is not configured. I can still handle supported offline commands, but I cannot inspect or control Gmail until an AI provider is configured.';
+        await _speakLocalReply(spoken);
+        if (detail.isNotEmpty) {
+          debugPrint('Lucy provider failure: $detail');
+        }
         break;
       }
 
