@@ -28,6 +28,14 @@ class LucyContactMatcherTest {
     }
 
     @Test
+    fun understandsRegionalPapaPronunciation() {
+        assertEquals(
+            listOf(papa),
+            LucyContactMatcher.bestMatches("call my appa", listOf(papa, mom, friend))
+        )
+    }
+
+    @Test
     fun returnsAmbiguousCandidatesInsteadOfGuessing() {
         val secondPapa = LucyContactCandidate("4", "Papa", "+944444444444", "home")
         val matches = LucyContactMatcher.bestMatches("papa", listOf(papa, secondPapa))
