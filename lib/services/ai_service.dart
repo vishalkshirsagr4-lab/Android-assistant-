@@ -318,6 +318,7 @@ AVAILABLE ACTIONS:
 - {"type": "read_all", "maxScrolls": 80} — Collect visible text across a bounded full scroll pass; inspect items and reachedEnd in [TOOL_RESULT].
 - {"type": "open_each", "maxItems": 10} — Open and inspect list entries one by one; never claim all entries were inspected unless the returned result verifies the requested range.
 - open_each returns processed, requestedMaxItems, reachedEnd, limited, and items containing each row label, whether it opened, collected content, and whether that item's detail view reached its end. It can inspect only rows exposed as clickable accessibility elements; if an app hides its rows, report that limitation instead of guessing.
+- Use read_all for the current open screen's text/list content. Use open_each when the user asks to inspect individual inbox threads or chats: open each accessible row, collect its detail view, return to the list, and continue up to maxItems (default 10, hard limit 30). If the user says "all", set maxItems to 30 and report limited=true honestly if more remain.
 
 - {"type": "back"} — Press the back button
 - {"type": "home"} — Press the home button
