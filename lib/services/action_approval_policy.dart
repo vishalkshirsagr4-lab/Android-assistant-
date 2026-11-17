@@ -8,6 +8,8 @@ class LucyActionApprovalPolicy {
     'remember',
     'forget',
     'recall_memories',
+    'forget_skill',
+    'forget_app_layout',
   };
 
   static bool allowedWhenAutopilotDisabled(String action) =>
