@@ -2611,6 +2611,14 @@ class AgentController extends ChangeNotifier {
           await _executeNativePhoneAction(action);
           break;
 
+        case 'run_skill':
+          final name = action.params['name']?.toString() ??
+              action.params['skill']?.toString() ?? '';
+          _lastActionDispatchSucceeded = name.isNotEmpty &&
+              beforeSnapshot != null &&
+              await _tryReplayLearnedSkill(name, beforeSnapshot);
+          break;
+
         case 'remember':
           final memoryText = (action.params['text'] ??
                   action.params['content'] ??
