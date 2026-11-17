@@ -619,7 +619,11 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 
-## 🧪 Release validation\n\nThe final physical-device checks are listed in [docs/DEVICE_REGRESSION.md](docs/DEVICE_REGRESSION.md). CI passing is necessary but does not replace testing permissions, Stop, deep reading, speech packs, battery behavior and signed updates on a real device.\n\n## 📄 License
+## 🧪 Release validation
+
+The final physical-device checks are listed in [docs/DEVICE_REGRESSION.md](docs/DEVICE_REGRESSION.md). CI passing is necessary but does not replace testing permissions, Stop, deep reading, speech packs, battery behavior and signed updates on a real device.
+
+## 📄 License
 
 Released under the [MIT License](LICENSE).
 
