@@ -111,6 +111,40 @@ void main() {
     expect(item.updatedAt, item.createdAt);
   });
 
+  test('stores more than fifty typed memories without truncation', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    for (var index = 0; index < 75; index++) {
+      await store.remember('Approved fact number $index');
+    }
+
+    expect(store.items, hasLength(75));
+    expect(store.items.first.type, 'fact');
+    expect(store.items.first.text, 'Approved fact number 74');
+    expect(store.items.first.source, 'user_approved');
+    expect(store.items.first.lastUsedAt, store.items.first.createdAt);
+  });
+
+  test('matches Unicode memory text for Hindi and Kannada queries', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember(
+      'ನಾನು ಕನ್ನಡದಲ್ಲಿ ಸರಳ ವಿವರಣೆಗಳನ್ನು ಇಷ್ಟಪಡುತ್ತೇನೆ',
+      category: 'preference',
+    );
+    await store.remember(
+      'मुझे हिंदी में आसान उदाहरण पसंद हैं',
+      category: 'preference',
+    );
+
+    expect(store.relevantContext('ಕನ್ನಡ ವಿವರಣೆ'), contains('ಕನ್ನಡದಲ್ಲಿ'));
+    expect(store.relevantContext('हिंदी उदाहरण'), contains('हिंदी में'));
+  });
+
   test('does not store blank or oversized memory values', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = LucyMemoryStore(prefs);
