@@ -15,7 +15,6 @@ class LucyAppHintCatalog {
     'com.google.android.apps.maps': 'maps',
     'com.android.settings': 'settings',
     'com.google.android.calendar': 'calendar',
-    'com.google Keep': 'notes',
     'com.google.android.keep': 'notes',
     'com.google.android.apps.nbu.files': 'files',
   };
