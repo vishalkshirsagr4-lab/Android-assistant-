@@ -108,6 +108,7 @@ class AgentController extends ChangeNotifier {
   bool _cancelRequested = false;
   bool _lastActionDispatchSucceeded = true;
   String? _lastToolResult;
+  int _lastActionEventSequence = 0;
   Completer<bool>? _pendingVoiceApproval;
 
   /// Language code of the most recent agent reply ("en" or "ja").
@@ -1066,23 +1067,44 @@ class AgentController extends ChangeNotifier {
       }
       step++;
 
-      // 1. Capture screenshot (with retries for reliability after app switches)
+      // Fetch the cheap accessibility tree first. Rich text-first screens do
+      // not need a MediaProjection frame; image/video/WebView and sparse screens do.
       _setState(AgentState.capturing);
       _updateTaskProgress('Preparing your screen · Step $step');
 
-      final screenshotFuture = _captureScreenWithRetry();
-      final uiSnapshotFuture = _fetchUiSnapshot();
-
-      final screenshotBytes = await screenshotFuture;
-      if (screenshotBytes != null) {
-        _lastScreenshotBytes = screenshotBytes;
-      }
+      final treeStopwatch = Stopwatch()..start();
+      final uiSnapshot = await _fetchUiSnapshot();
+      treeStopwatch.stop();
+      LucyReliabilityLog.event(
+        'agent_tree_fetch_timing',
+        step: step,
+        elapsedMs: treeStopwatch.elapsedMilliseconds,
+        success: uiSnapshot != null,
+      );
+      final uiTree = uiSnapshot?.rawTree;
 
       if (_cancelRequested) break;
 
-      // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
-      final uiSnapshot = await uiSnapshotFuture;
-      final uiTree = uiSnapshot?.rawTree;
+      Uint8List? screenshotBytes;
+      if (_shouldCaptureScreenshot(uiSnapshot)) {
+        final screenshotStopwatch = Stopwatch()..start();
+        screenshotBytes = await _captureScreenWithRetry();
+        screenshotStopwatch.stop();
+        if (screenshotBytes != null) _lastScreenshotBytes = screenshotBytes;
+        LucyReliabilityLog.event(
+          'agent_screenshot_timing',
+          step: step,
+          elapsedMs: screenshotStopwatch.elapsedMilliseconds,
+          success: screenshotBytes != null,
+        );
+      } else {
+        LucyReliabilityLog.event(
+          'agent_screenshot_skipped',
+          step: step,
+          elapsedMs: 0,
+          success: true,
+        );
+      }
 
       if (_cancelRequested) break;
 
@@ -1411,6 +1433,38 @@ class AgentController extends ChangeNotifier {
     }
   }
 
+  bool _shouldCaptureScreenshot(_UiSnapshot? snapshot) {
+    if (snapshot == null || snapshot.elements.length < 8) return true;
+
+    final types = snapshot.elements
+        .map((element) => (element['type'] ?? '').toString().toLowerCase())
+        .toList(growable: false);
+    final packageName = (snapshot.packageName ?? '').toLowerCase();
+
+    final visualSurface = types.any((type) =>
+        type.contains('webview') ||
+        type.contains('surfaceview') ||
+        type.contains('textureview') ||
+        type.contains('imageview') ||
+        type.contains('videoview') ||
+        type.contains('canvas') ||
+        type.contains('glsurface'));
+    if (visualSurface) return true;
+
+    if (packageName.contains('youtube') ||
+        packageName.contains('instagram') ||
+        packageName.contains('tiktok')) {
+      return true;
+    }
+
+    final readable = snapshot.elements
+        .map((element) => '${element['text'] ?? ''} ${element['desc'] ?? ''}'.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    final totalChars = readable.fold<int>(0, (sum, value) => sum + value.length);
+    return readable.length < 8 || totalChars < 160;
+  }
+
   bool _isPermissionPrompt(_UiSnapshot? snapshot) {
     if (snapshot == null) return false;
     final visibleText = snapshot.elements
@@ -1550,23 +1604,35 @@ class AgentController extends ChangeNotifier {
     _UiSnapshot? latestSnapshot = beforeSnapshot;
     final deadline = DateTime.now().add(timeout);
 
-    while (!_cancelRequested) {
-      final currentSnapshot = await _fetchUiSnapshot();
-      if (currentSnapshot != null) {
-        latestSnapshot = currentSnapshot;
+    // Wake on Android accessibility events first, then verify with a fresh
+    // tree. Keep a short polling fallback for apps that emit no useful events.
+    final eventWait = timeout.inMilliseconds.clamp(0, 500);
+    if (eventWait > 0) {
+      await _screenCapture.waitForUiEvent(
+        afterSequence: _lastActionEventSequence,
+        timeoutMs: eventWait,
+      );
+      final eventSnapshot = await _fetchUiSnapshot();
+      if (eventSnapshot != null) latestSnapshot = eventSnapshot;
+      if (_isActionReady(action, beforeSnapshot, eventSnapshot)) {
+        return eventSnapshot;
       }
+    }
 
+    while (!_cancelRequested) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+
+      final currentSnapshot = await _fetchUiSnapshot();
+      if (currentSnapshot != null) latestSnapshot = currentSnapshot;
       if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
         return currentSnapshot;
       }
 
-      final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) {
-        break;
-      }
-
+      final nextRemaining = deadline.difference(DateTime.now());
+      if (nextRemaining <= Duration.zero) break;
       await Future.delayed(
-        remaining < _uiPollInterval ? remaining : _uiPollInterval,
+        nextRemaining < _uiPollInterval ? nextRemaining : _uiPollInterval,
       );
     }
 
@@ -1768,6 +1834,8 @@ class AgentController extends ChangeNotifier {
         return beforeSnapshot;
       }
     }
+
+    _lastActionEventSequence = await _screenCapture.getUiEventSequence();
 
     try {
       switch (action.type) {
