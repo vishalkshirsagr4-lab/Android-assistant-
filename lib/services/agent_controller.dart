@@ -2031,7 +2031,14 @@ class AgentController extends ChangeNotifier {
           'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
         }.contains(action.type),
       );
-      if (agentResponse.done && actionVerified && !hasDeepReadToolAction) {
+      // A contact lookup is an intermediate resolution step. Always give the
+      // model the local match/ambiguity result before it can finish a call/SMS task.
+      final hasContactLookupAction =
+          agentResponse.actions.any((action) => action.type == 'read_contact');
+      if (agentResponse.done &&
+          actionVerified &&
+          !hasDeepReadToolAction &&
+          !hasContactLookupAction) {
         await _saveCompletedSkill(userMessage);
         LucyReliabilityLog.event('agent_task_completed', step: step, success: true);
         break;
