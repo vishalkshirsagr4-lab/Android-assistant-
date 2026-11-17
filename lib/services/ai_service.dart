@@ -79,7 +79,7 @@ class AgentResponse {
         'set_flashlight', 'set_volume', 'set_brightness', 'get_device_status',
         'read_contact', 'create_calendar_event', 'open_settings', 'take_photo',
         'share_text', 'remember', 'forget', 'recall_memories',
-        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
+        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch', 'run_skill',
       };
       if (!supportedActions.contains(type)) {
         throw FormatException('Unsupported Lucy action type: $type');
