@@ -87,6 +87,7 @@ class AgentController extends ChangeNotifier {
   String? _taskStartSignature;
   String? _taskStartVersion;
   bool _taskSkillEligible = true;
+  String? _taskSkillCommandTemplate;
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -1362,6 +1363,7 @@ class AgentController extends ChangeNotifier {
     _taskStartSignature = null;
     _taskStartVersion = null;
     _taskSkillEligible = true;
+    _taskSkillCommandTemplate = null;
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
@@ -1614,7 +1616,7 @@ class AgentController extends ChangeNotifier {
               (!requiresVisualChange ||
                   _isActionReady(action, beforeAction, latestSnapshot));
           if (actionVerified) {
-            _recordSkillAction(action, beforeAction);
+            _recordSkillAction(action, beforeAction, userMessage);
           } else {
             _taskSkillEligible = false;
           }
@@ -1895,11 +1897,52 @@ class AgentController extends ChangeNotifier {
     }
   }
 
-  void _recordSkillAction(AgentAction action, _UiSnapshot? before) {
+  void _recordSkillAction(AgentAction action, _UiSnapshot? before, String command) {
     if (!_taskSkillEligible) return;
     const allowed = <String>{'open_app', 'tap', 'back', 'home', 'scroll_to_end', 'scroll_to_top', 'read_all'};
-    if (!allowed.contains(action.type)) { _taskSkillEligible = false; return; }
     final entry = <String, dynamic>{'type': action.type};
+    if (!allowed.contains(action.type) && action.type != 'type') {
+      _taskSkillEligible = false;
+      return;
+    }
+    if (action.type == 'type') {
+      if (before == null || _taskSkillCommandTemplate != null) {
+        _taskSkillEligible = false;
+        return;
+      }
+      final focused = before.elements.where((element) =>
+          element['focused'] == true && element['editable'] == true).toList();
+      if (focused.length != 1 || focused.single['password'] == true) {
+        _taskSkillEligible = false;
+        return;
+      }
+      final fieldLabel = ((focused.single['resourceId'] ?? '').toString() + ' ' +
+          (focused.single['text'] ?? '').toString() + ' ' +
+          (focused.single['desc'] ?? '').toString()).toLowerCase();
+      if (!fieldLabel.contains('search')) {
+        _taskSkillEligible = false;
+        return;
+      }
+      final typed = action.params['text']?.toString() ?? '';
+      final normalizedCommand = LucyLearningStore.normalizeCommand(command);
+      final normalizedTyped = LucyLearningStore.normalizeCommand(typed);
+      final queryIndex = normalizedTyped.isEmpty
+          ? -1
+          : normalizedCommand.indexOf(normalizedTyped);
+      if (queryIndex < 0) {
+        _taskSkillEligible = false;
+        return;
+      }
+      _taskSkillCommandTemplate = normalizedCommand.replaceRange(
+        queryIndex,
+        queryIndex + normalizedTyped.length,
+        '{query}',
+      );
+      entry['parameter'] = 'query';
+      _pendingSkillActions.add(entry);
+      return;
+    }
+    if (!allowed.contains(action.type)) { _taskSkillEligible = false; return; }
     if (action.type == 'open_app') {
       final package = action.params['package']?.toString() ?? '';
       if (package.isEmpty) { _taskSkillEligible = false; return; }
@@ -1955,6 +1998,21 @@ class AgentController extends ChangeNotifier {
       final params = <String, dynamic>{'confidence': 0.99, 'risk': 'low', 'reason': 'Replay a previously verified low-risk navigation or reading skill.'};
       if (type == 'open_app') {
         params['package'] = saved['package'];
+      } else if (type == 'type') {
+        final focused = current.elements.where((element) =>
+            element['focused'] == true && element['editable'] == true &&
+            element['password'] != true).toList();
+        final fieldLabel = focused.length == 1
+            ? ((focused.single['resourceId'] ?? '').toString() + ' ' +
+                (focused.single['text'] ?? '').toString() + ' ' +
+                (focused.single['desc'] ?? '').toString()).toLowerCase()
+            : '';
+        final query = (skill['parameters'] as Map?)?['query']?.toString() ?? '';
+        if (focused.length != 1 || !fieldLabel.contains('search') || query.isEmpty) {
+          await _learningStore.markSkillResult(skillId, success: false);
+          return false;
+        }
+        params['text'] = query;
       } else if (type == 'tap') {
         final resourceId = saved['resourceId']?.toString() ?? '';
         final label = saved['label']?.toString() ?? '';
