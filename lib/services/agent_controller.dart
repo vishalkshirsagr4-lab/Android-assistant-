@@ -109,6 +109,9 @@ class AgentController extends ChangeNotifier {
   bool _lastActionDispatchSucceeded = true;
   String? _lastToolResult;
   int _lastActionEventSequence = 0;
+  String? _previousModelTreePackage;
+  Map<int, String> _previousModelTreeElements = <int, String>{};
+  int _treeDiffStep = 0;
   Completer<bool>? _pendingVoiceApproval;
 
   /// Language code of the most recent agent reply ("en" or "ja").
@@ -1049,6 +1052,9 @@ class AgentController extends ChangeNotifier {
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
+    _previousModelTreePackage = null;
+    _previousModelTreeElements = <int, String>{};
+    _treeDiffStep = 0;
 
     LucyReliabilityLog.event('agent_task_started');
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
@@ -1079,7 +1085,9 @@ class AgentController extends ChangeNotifier {
         elapsedMs: treeStopwatch.elapsedMilliseconds,
         success: uiSnapshot != null,
       );
-      final uiTree = uiSnapshot?.rawTree;
+      final uiTree = uiSnapshot == null
+          ? null
+          : _buildUiTreePayload(uiSnapshot, step);
 
       if (_cancelRequested) break;
 
@@ -1444,6 +1452,58 @@ class AgentController extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  String _buildUiTreePayload(_UiSnapshot snapshot, int step) {
+    final current = <int, String>{};
+    for (final element in snapshot.elements) {
+      final id = (element['id'] as num?)?.toInt();
+      if (id != null) current[id] = jsonEncode(element);
+    }
+
+    final package = snapshot.packageName ?? '';
+    final forceFull = _previousModelTreePackage != package ||
+        _previousModelTreeElements.isEmpty ||
+        step == 1 ||
+        step % 5 == 0;
+
+    if (forceFull) {
+      _previousModelTreePackage = package;
+      _previousModelTreeElements = current;
+      _treeDiffStep = step;
+      return jsonEncode(<String, dynamic>{
+        'package': package,
+        'mode': 'full',
+        'elements': snapshot.elements,
+      });
+    }
+
+    final changed = <Map<String, dynamic>>[];
+    final removed = <int>[];
+    for (final element in snapshot.elements) {
+      final id = (element['id'] as num?)?.toInt();
+      if (id == null) continue;
+      final encoded = current[id];
+      if (_previousModelTreeElements[id] != encoded) {
+        changed.add(element);
+      }
+    }
+    for (final oldId in _previousModelTreeElements.keys) {
+      if (!current.containsKey(oldId)) removed.add(oldId);
+    }
+
+    final unchangedCount = current.length - changed.length;
+    _previousModelTreePackage = package;
+    _previousModelTreeElements = current;
+    _treeDiffStep = step;
+    return jsonEncode(<String, dynamic>{
+      'package': package,
+      'mode': 'diff',
+      'baseStep': step - 1,
+      'elements': changed,
+      'removed': removed,
+      'unchangedCount': unchangedCount < 0 ? 0 : unchangedCount,
+    });
   }
 
   bool _shouldCaptureScreenshot(_UiSnapshot? snapshot) {
