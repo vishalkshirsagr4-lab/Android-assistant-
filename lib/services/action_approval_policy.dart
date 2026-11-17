@@ -13,6 +13,45 @@ class LucyActionApprovalPolicy {
   static bool allowedWhenAutopilotDisabled(String action) =>
       _memoryOnlyActions.contains(action);
 
+  /// Recognizes Android runtime permission prompts across the app's supported
+  /// languages. The controller must pause before asking the model to act.
+  static bool isPermissionPromptText(String visibleText) {
+    final text = visibleText.toLowerCase();
+    const permissionContextTerms = <String>[
+      'permission',
+      'while using the app',
+      'only this time',
+      'allow lucy',
+      'अनुमति',
+      'ऐप इस्तेमाल करते समय',
+      'केवल इस बार',
+      'ಅನುಮತಿ',
+      'ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ',
+      'ಈ ಬಾರಿ ಮಾತ್ರ',
+      '権限',
+      'アプリの使用中',
+      '今回のみ',
+      'إذن',
+      'أثناء استخدام التطبيق',
+      'هذه المرة فقط',
+    ];
+    const permissionChoiceTerms = <String>[
+      'allow',
+      "don't allow",
+      'deny',
+      'अनुमति दें',
+      'अनुमति न दें',
+      'ಅನುಮತಿಸಿ',
+      'ಅನುಮತಿಸಬೇಡಿ',
+      '許可',
+      '許可しない',
+      'السماح',
+      'عدم السماح',
+    ];
+    return permissionContextTerms.any(text.contains) &&
+        permissionChoiceTerms.any(text.contains);
+  }
+
   static const Set<String> _sensitiveTapLabels = {
     'send',
     'send message',
