@@ -914,7 +914,8 @@ class AgentController extends ChangeNotifier {
     } finally {
       await _screenCapture.keepScreenAwake(false);
     }
-    if (!_statusMessage.startsWith('AI unavailable')) {
+    if (!_statusMessage.startsWith('AI unavailable') &&
+        !_statusMessage.startsWith('Phone locked')) {
       _updateTaskProgress('Task finished · Listening again');
     }
 
@@ -1044,6 +1045,15 @@ class AgentController extends ChangeNotifier {
 
     LucyReliabilityLog.event('agent_task_started');
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
+      if (await _screenCapture.isDeviceLocked()) {
+        _statusMessage = 'Phone locked · Unlock to continue';
+        notifyListeners();
+        await _speakEvent(
+          'device_locked',
+          context: 'The phone is locked. Tell the user to unlock it before Lucy continues. Do not attempt to interact with the lock screen.',
+        );
+        break;
+      }
       step++;
 
       // 1. Capture screenshot (with retries for reliability after app switches)
