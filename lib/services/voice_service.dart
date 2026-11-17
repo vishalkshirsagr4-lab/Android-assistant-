@@ -257,7 +257,7 @@ class VoiceService {
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.isEmpty) return const <String>[];
     final sentences = normalized
-        .split(RegExp(r'(?<=[.!?。！？؟])\s+'))
+        .split(RegExp(r'(?<=[.!?。！？؟।])\s+'))
         .where((sentence) => sentence.trim().isNotEmpty);
     final chunks = <String>[];
     for (final sentence in sentences) {
