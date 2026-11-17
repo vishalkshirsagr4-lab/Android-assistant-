@@ -2011,7 +2011,7 @@ class AgentController extends ChangeNotifier {
     }
 
     if (const {
-      'scroll_to_end', 'scroll_to_top', 'read_all',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
     }.contains(action.type)) {
       return _fetchUiSnapshot();
     }
@@ -2138,6 +2138,18 @@ class AgentController extends ChangeNotifier {
         }
 
         await Future<void>.delayed(const Duration(milliseconds: 350));
+        final openedSnapshot = await _fetchUiSnapshot();
+        if (openedSnapshot == null ||
+            (openedSnapshot.packageName == current?.packageName &&
+                openedSnapshot.signature == current?.signature)) {
+          results.add(<String, dynamic>{
+            'label': nextRow['label'],
+            'opened': false,
+            'content': <String>[],
+          });
+          current = openedSnapshot ?? current;
+          continue;
+        }
         final detailScroll = await _screenCapture.scrollScreen(
           forward: true,
           maxScrolls: detailMaxScrolls,
@@ -2163,6 +2175,7 @@ class AgentController extends ChangeNotifier {
 
         results.add(<String, dynamic>{
           'label': nextRow['label'],
+          'opened': true,
           'content': content.toList(growable: false),
           'detailReachedEnd': detailScroll?['reachedEnd'] == true,
           'detailScrolls': detailScroll?['scrolls'] ?? 0,
