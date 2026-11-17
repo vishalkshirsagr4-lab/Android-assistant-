@@ -541,10 +541,25 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                     Text('Safe skills · ${skills.length}'),
                     if (skills.isEmpty) const ListTile(title: Text('No saved skills')),
                     for (final skill in skills.take(40))
-                      ListTile(
+                      SwitchListTile(
                         dense: true,
+                        contentPadding: EdgeInsets.zero,
                         title: Text(skill['command']?.toString() ?? 'Unnamed skill'),
-                        subtitle: Text('${skill['package'] ?? 'Unknown app'} · successes: ${skill['successCount'] ?? 0} · failures: ${skill['failureCount'] ?? 0}'),
+                        subtitle: Text(
+                          '${skill['package'] ?? 'Unknown app'} · successes: ${skill['successCount'] ?? 0} · failures: ${skill['failureCount'] ?? 0} · ${skill['approved'] == true ? 'approved' : 'approval required'}',
+                        ),
+                        value: skill['approved'] == true,
+                        onChanged: ((skill['successCount'] as num?) ?? 0) < 2
+                            ? null
+                            : (approved) async {
+                                final id = skill['id']?.toString() ?? '';
+                                if (id.isEmpty) return;
+                                await widget.controller.setLearnedSkillApproved(
+                                  id,
+                                  approved: approved,
+                                );
+                                if (mounted) refreshDialog(() {});
+                              },
                       ),
                   ],
                 ),
