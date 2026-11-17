@@ -1716,8 +1716,7 @@ class AgentController extends ChangeNotifier {
         );
       }
 
-      if (_cancelRequested) break;
-
+      if (_cancelRequested || autopilotBlocked) break;
 
       if (!actionVerified && agentResponse.done && !autopilotBlocked) {
         speakText = 'I could not confirm that the requested step worked. I will not claim it is complete.';
