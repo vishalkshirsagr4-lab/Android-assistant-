@@ -11,6 +11,7 @@ class LucyLearningStore {
   static const int maxElementsPerMap = 120;
 
   File? _file;
+  Future<void> _writeQueue = Future<void>.value();
   final Map<String, Map<String, dynamic>> _uiMaps = <String, Map<String, dynamic>>{};
   final Map<String, Map<String, dynamic>> _skills = <String, Map<String, dynamic>>{};
 
@@ -210,12 +211,9 @@ class LucyLearningStore {
           appVersionCode != 'unknown' &&
           version != appVersionCode) {
         _skills.remove(entry.key);
-        unawaited(_persist());
         continue;
       }
       if (skill['startSignature'] != startSignature) continue;
-      skill['lastUsedAt'] = DateTime.now().toIso8601String();
-      unawaited(_persist());
       return <String, dynamic>{...skill, 'parameters': parameters};
     }
     return null;
@@ -330,17 +328,20 @@ class LucyLearningStore {
     }
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist() {
     final file = _file;
-    if (file == null) return;
-    await file.parent.create(recursive: true);
-    final payload = <String, dynamic>{
-      'version': 1,
-      'uiMaps': _uiMaps.values.toList(),
-      'skills': _skills.values.toList(),
-    };
-    final temp = File(file.path + '.tmp');
-    await temp.writeAsString(jsonEncode(payload), flush: true);
-    await temp.rename(file.path);
+    if (file == null) return Future<void>.value();
+    _writeQueue = _writeQueue.catchError((_) {}).then((_) async {
+      await file.parent.create(recursive: true);
+      final payload = <String, dynamic>{
+        'version': 1,
+        'uiMaps': _uiMaps.values.toList(),
+        'skills': _skills.values.toList(),
+      };
+      final temp = File(file.path + '.tmp');
+      await temp.writeAsString(jsonEncode(payload), flush: true);
+      await temp.rename(file.path);
+    });
+    return _writeQueue;
   }
 }
