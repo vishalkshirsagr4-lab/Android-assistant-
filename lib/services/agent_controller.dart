@@ -2106,7 +2106,8 @@ class AgentController extends ChangeNotifier {
         }
       }
       for (final row in rows) {
-        row['label'] = (row['labels'] as List<String>).join(' | ').take(260);
+        final joined = (row['labels'] as List<String>).join(' | ');
+        row['label'] = joined.length > 260 ? joined.substring(0, 260) : joined;
       }
       return rows;
     }
