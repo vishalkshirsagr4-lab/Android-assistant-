@@ -46,8 +46,11 @@ class MainActivity : FlutterActivity() {
                     methodChannel?.invokeMethod("onForceStop", null)
                 }
                 NativeVoiceService.ACTION_RESULT -> voiceChannel?.invokeMethod("onResult",
-                    mapOf("text" to intent.getStringExtra("text").orEmpty(),
-                          "isFinal" to intent.getBooleanExtra("isFinal", false)))
+                    mapOf(
+                        "text" to intent.getStringExtra("text").orEmpty(),
+                        "alternatives" to (intent.getStringArrayListExtra("alternatives") ?: arrayListOf<String>()),
+                        "isFinal" to intent.getBooleanExtra("isFinal", false)
+                    ))
                 NativeVoiceService.ACTION_ERROR -> voiceChannel?.invokeMethod("onError",
                     mapOf("message" to intent.getStringExtra("message").orEmpty()))
                 NativeVoiceService.ACTION_STOPPED -> voiceChannel?.invokeMethod(
