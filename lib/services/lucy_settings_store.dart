@@ -12,6 +12,9 @@ class LucySettingsStore {
   static const aiRequests = 'lucy_cap_ai_requests';
   static const providerFallback = 'lucy_cap_provider_fallback';
   static const foregroundAppContext = 'lucy_context_foreground_app_enabled';
+  static const autopilot = 'lucy_autopilot_low_risk';
+  static const safetyStop = 'lucy_safety_stop';
+  static const askBeforeSending = 'lucy_ask_before_sending';
 
   static const Map<String, bool> defaults = <String, bool>{
     voiceInput: true,
@@ -24,6 +27,9 @@ class LucySettingsStore {
     aiRequests: true,
     providerFallback: true,
     foregroundAppContext: true,
+    autopilot: true,
+    safetyStop: true,
+    askBeforeSending: true,
   };
 
   Future<bool> isEnabled(String key) async {
