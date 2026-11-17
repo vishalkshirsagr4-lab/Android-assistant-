@@ -49,12 +49,14 @@ class ConversationEntry {
 class _UiSnapshot {
   final String? rawTree;
   final String? packageName;
+  final String appVersionCode;
   final List<Map<String, dynamic>> elements;
   final bool hasFocusedEditable;
 
   const _UiSnapshot({
     required this.rawTree,
     required this.packageName,
+    this.appVersionCode = 'unknown',
     required this.elements,
     required this.hasFocusedEditable,
   });
@@ -1884,6 +1886,7 @@ class AgentController extends ChangeNotifier {
       return _UiSnapshot(
         rawTree: uiTree,
         packageName: packageName,
+        appVersionCode: versionCode,
         elements: elements,
         hasFocusedEditable: hasFocusedEditable,
       );
