@@ -470,7 +470,7 @@ class ScreenActionService : AccessibilityService() {
             root.recycle()
         }
 
-        val signature = signatureParts.joinToString("|").hashCode().toString()
+        val signature = signatureParts.joinToString("|")
         return ScrollSnapshot(signature, visibleTexts, largestScrollable)
     }
 
