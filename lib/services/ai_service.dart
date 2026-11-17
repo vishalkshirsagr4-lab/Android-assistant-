@@ -226,6 +226,84 @@ class AgentResponse {
   }
 }
 
+class _JsonSpeakStreamExtractor {
+  _JsonSpeakStreamExtractor(this.onSentence);
+
+  final void Function(String sentence) onSentence;
+  final StringBuffer _prefix = StringBuffer();
+  final StringBuffer _encodedValue = StringBuffer();
+  bool _started = false;
+  bool _closed = false;
+  bool _escaped = false;
+  int _emittedLength = 0;
+
+  void add(String delta) {
+    if (_closed || delta.isEmpty) return;
+    if (!_started) {
+      _prefix.write(delta);
+      final prefix = _prefix.toString();
+      final match = RegExp(r'"speak"\\s*:\\s*"').firstMatch(prefix);
+      if (match == null) return;
+      _started = true;
+      final remainder = prefix.substring(match.end);
+      _prefix.clear();
+      _consume(remainder);
+      return;
+    }
+    _consume(delta);
+  }
+
+  void _consume(String value) {
+    for (var i = 0; i < value.length; i++) {
+      final char = value[i];
+      if (!_escaped && char == '"') {
+        _closed = true;
+        _emitRemaining();
+        return;
+      }
+      _encodedValue.write(char);
+      if (_escaped) {
+        _escaped = false;
+      } else if (char == r'\\') {
+        _escaped = true;
+      }
+      _emitCompletedSentences();
+    }
+  }
+
+  String? _decodedValue() {
+    try {
+      return jsonDecode('"$_encodedValue"') as String;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _emitCompletedSentences() {
+    final decoded = _decodedValue();
+    if (decoded == null || decoded.length <= _emittedLength) return;
+    final matches = RegExp(r'[.!?。！？؟।]').allMatches(decoded).toList();
+    if (matches.isEmpty) return;
+    final boundary = matches.last.end;
+    if (boundary <= _emittedLength) return;
+    final sentence = decoded.substring(_emittedLength, boundary).trim();
+    _emittedLength = boundary;
+    if (sentence.isNotEmpty) onSentence(sentence);
+  }
+
+  void _emitRemaining() {
+    final decoded = _decodedValue();
+    if (decoded == null || decoded.length <= _emittedLength) return;
+    final remainder = decoded.substring(_emittedLength).trim();
+    _emittedLength = decoded.length;
+    if (remainder.isNotEmpty) onSentence(remainder);
+  }
+
+  void finish() {
+    _emitRemaining();
+  }
+}
+
 class _CachedAgentResponse {
   const _CachedAgentResponse(this.response, this.createdAt);
   final AgentResponse response;
@@ -628,10 +706,29 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
             } else {
               content = Content('user', [TextPart(fullMessage)]);
             }
-            final response = await _chat!
-                .sendMessage(content)
-                .timeout(const Duration(seconds: 6));
-            text = response.text ?? '{}';
+            if (onSpeakChunk != null) {
+              final responseBuffer = StringBuffer();
+              final extractor = _JsonSpeakStreamExtractor((sentence) {
+                streamEmitted = true;
+                onSpeakChunk(sentence);
+              });
+              await for (final response in _chat!
+                  .sendMessageStream(content)
+                  .timeout(const Duration(seconds: 6))) {
+                final delta = response.text ?? '';
+                if (delta.isNotEmpty) {
+                  responseBuffer.write(delta);
+                  extractor.add(delta);
+                }
+              }
+              extractor.finish();
+              text = responseBuffer.toString();
+            } else {
+              final response = await _chat!
+                  .sendMessage(content)
+                  .timeout(const Duration(seconds: 6));
+              text = response.text ?? '{}';
+            }
           }
           if (text.trim().isEmpty) {
             throw const FormatException(
