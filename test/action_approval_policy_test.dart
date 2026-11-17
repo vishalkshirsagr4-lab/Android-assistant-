@@ -76,6 +76,9 @@ void main() {
         'Recovery email',
         'Enable 2FA',
         'Factory reset',
+        'Erase all data',
+        'Subscribe',
+        'Change email',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
