@@ -18,7 +18,7 @@ class LucyLearningStore {
 
   Future<void> initialize() async {
     final directory = await getApplicationDocumentsDirectory();
-    _file = File('\${directory.path}/lucy_learning_v1.json');
+    _file = File('${directory.path}/lucy_learning_v1.json');
     if (!await _file!.exists()) return;
     try {
       final decoded = jsonDecode(await _file!.readAsString());
@@ -77,7 +77,7 @@ class LucyLearningStore {
         'resourceId': element['resourceId']?.toString() ?? '',
         'text': _clip(element['text']),
         'desc': _clip(element['desc']),
-        'class': element['class']?.toString() ?? '',
+        'class': (element['class'] ?? element['type'])?.toString() ?? '',
         'bounds01': normalizedBounds,
         'clickable': element['clickable'] == true,
         'editable': element['editable'] == true,
@@ -94,9 +94,9 @@ class LucyLearningStore {
       'elements': selected,
       'scrollContainers': selected.where((e) => e['scrollable'] == true).toList(),
       'searchBoxes': selected.where((e) => e['editable'] == true ||
-          '\${e['resourceId']} \${e['text']} \${e['desc']}'.toLowerCase().contains('search')).toList(),
+          '${e['resourceId']} ${e['text']} ${e['desc']}'.toLowerCase().contains('search')).toList(),
       'actionTargets': selected.where((e) {
-        final label = '\${e['resourceId']} \${e['text']} \${e['desc']}'.toLowerCase();
+        final label = '${e['resourceId']} ${e['text']} ${e['desc']}'.toLowerCase();
         return label.contains('send') || label.contains('skip') ||
             label.contains('close') || label.contains('search');
       }).toList(),
@@ -221,10 +221,10 @@ class LucyLearningStore {
     final stable = elements.map((element) {
       final id = element['resourceId']?.toString() ?? '';
       final label = (element['text'] ?? element['desc'])?.toString() ?? '';
-      final type = element['class']?.toString() ?? '';
+      final type = (element['class'] ?? element['type'])?.toString() ?? '';
       return '$id|$label|$type';
     }).where((value) => value != '||').take(160).toList()..sort();
-    final input = '$packageName|\${stable.join(';')}';
+    final input = '$packageName|${stable.join(';')}';
     var hash = 0x811c9dc5;
     for (final unit in input.codeUnits) {
       hash ^= unit;
@@ -252,7 +252,7 @@ class LucyLearningStore {
       'uiMaps': _uiMaps.values.toList(),
       'skills': _skills.values.toList(),
     };
-    final temp = File('\${file.path}.tmp');
+    final temp = File('${file.path}.tmp');
     await temp.writeAsString(jsonEncode(payload), flush: true);
     await temp.rename(file.path);
   }
