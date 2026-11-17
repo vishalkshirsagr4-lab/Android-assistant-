@@ -1901,6 +1901,12 @@ class AgentController extends ChangeNotifier {
   void _recordSkillAction(AgentAction action, _UiSnapshot? before, String command) {
     if (!_taskSkillEligible) return;
     const allowed = <String>{'open_app', 'tap', 'back', 'home', 'scroll_to_end', 'scroll_to_top', 'read_all'};
+    final packageContext = (before?.packageName ?? '').toLowerCase();
+    if (const {'bank', 'wallet', 'payment', 'upi', 'finance', 'authenticator', 'password'}
+        .any(packageContext.contains)) {
+      _taskSkillEligible = false;
+      return;
+    }
     final entry = <String, dynamic>{'type': action.type};
     if (!allowed.contains(action.type) && action.type != 'type') {
       _taskSkillEligible = false;
