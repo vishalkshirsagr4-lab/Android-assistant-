@@ -79,7 +79,7 @@ class AgentResponse {
         'send_sms', 'open_url', 'start_navigation', 'music_search',
         'set_flashlight', 'set_volume', 'set_brightness', 'get_device_status',
         'read_contact', 'create_calendar_event', 'open_settings', 'take_photo',
-        'share_text', 'remember', 'forget', 'recall_memories',
+        'share_text', 'remember', 'forget', 'recall_memories', 'forget_skill', 'forget_app_layout',
         'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch', 'run_skill',
       };
       if (!supportedActions.contains(type)) {
