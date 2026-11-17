@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class LucyMemory {
   final String id;
   final String type;
+  final String category;
   final String text;
   final DateTime createdAt;
   final DateTime lastUsedAt;
@@ -14,8 +15,7 @@ class LucyMemory {
   final String source;
   final bool userApproved;
 
-  /// Backwards-compatible aliases used by the existing settings UI.
-  String get category => type;
+  /// Backwards-compatible alias used by older settings and tests.
   String get content => text;
   DateTime get updatedAt => lastUsedAt;
 
@@ -44,6 +44,7 @@ class LucyMemory {
     return LucyMemory(
       id: json['id']?.toString() ?? '',
       type: _normalizeMemoryType(rawType),
+      category: json['category']?.toString() ?? rawType,
       text: rawText,
       createdAt: created,
       lastUsedAt: lastUsed,
@@ -58,6 +59,7 @@ class LucyMemory {
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type,
+    'category': category,
     'text': text,
     'createdAt': createdAt.toIso8601String(),
     'lastUsedAt': lastUsedAt.toIso8601String(),
@@ -127,6 +129,7 @@ class LucyMemoryStore {
           LucyMemory(
             id: 'legacy_${now.microsecondsSinceEpoch}_${_items.length}',
             type: 'fact',
+            category: 'fact',
             text: text,
             createdAt: now,
             lastUsedAt: now,
@@ -164,6 +167,7 @@ class LucyMemoryStore {
         LucyMemory(
           id: old.id,
           type: old.type,
+          category: normalizedType,
           text: cleaned,
           createdAt: old.createdAt,
           lastUsedAt: now,
@@ -178,6 +182,7 @@ class LucyMemoryStore {
         LucyMemory(
           id: 'mem_${now.microsecondsSinceEpoch}',
           type: normalizedType,
+          category: type ?? category,
           text: cleaned,
           createdAt: now,
           lastUsedAt: now,
@@ -253,6 +258,7 @@ class LucyMemoryStore {
         _items[index] = LucyMemory(
           id: item.id,
           type: item.type,
+          category: item.category,
           text: item.text,
           createdAt: item.createdAt,
           lastUsedAt: now,
