@@ -892,10 +892,26 @@ class AgentController extends ChangeNotifier {
     _silenceTimeoutTimer = null;
     _cancelRequested = false;
     // Stop a native deep-scroll pass before releasing task resources.
-    await _screenCapture.cancelScreenOperation();
-    await _screenCapture.keepScreenAwake(false);
-    await _voiceService.stopListening();
-    await _voiceService.stopSpeaking();
+    try {
+      await _screenCapture.cancelScreenOperation();
+    } catch (_) {
+      LucyReliabilityLog.event('stop_cancel_screen_failed', success: false);
+    }
+    try {
+      await _screenCapture.keepScreenAwake(false);
+    } catch (_) {
+      LucyReliabilityLog.event('stop_release_wake_lock_failed', success: false);
+    }
+    try {
+      await _voiceService.stopListening();
+    } catch (_) {
+      LucyReliabilityLog.event('stop_voice_service_failed', success: false);
+    }
+    try {
+      await _voiceService.stopSpeaking();
+    } catch (_) {
+      LucyReliabilityLog.event('stop_tts_failed', success: false);
+    }
     // VoiceService.stopListening() stops NativeVoiceService and removes its notification.
     _setState(AgentState.idle);
     _statusMessage = 'Stopped';
@@ -1019,13 +1035,30 @@ class AgentController extends ChangeNotifier {
     await _screenCapture.keepScreenAwake(true);
     _performanceMonitor.beginTask();
     try {
+      await _screenCapture.keepScreenAwake(true);
       await _runAgentLoop(text);
+    } catch (error) {
+      // Never let a plugin/platform exception escape the voice callback and
+      // crash the app. Log only the exception type, not user or screen data.
+      _statusMessage = 'Task failed safely. Please try again.';
+      _addConversation(_statusMessage, false);
+      LucyReliabilityLog.event(
+        'agent_task_exception',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      notifyListeners();
     } finally {
       final taskSucceeded = !_statusMessage.toLowerCase().contains('stopped') &&
           !_statusMessage.startsWith('AI unavailable') &&
-          !_statusMessage.startsWith('Phone locked');
+          !_statusMessage.startsWith('Phone locked') &&
+          !_statusMessage.startsWith('Task failed');
       await _performanceMonitor.endTask(success: taskSucceeded);
-      await _screenCapture.keepScreenAwake(false);
+      try {
+        await _screenCapture.keepScreenAwake(false);
+      } catch (_) {
+        LucyReliabilityLog.event('task_release_wake_lock_failed', success: false);
+      }
     }
     if (!_statusMessage.startsWith('AI unavailable') &&
         !_statusMessage.startsWith('Phone locked')) {
