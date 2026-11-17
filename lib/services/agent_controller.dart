@@ -1216,12 +1216,12 @@ class AgentController extends ChangeNotifier {
           _lastActionDispatchSucceeded = true;
           latestSnapshot = await _executeAction(action, beforeAction);
           if (const {
-            'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+            'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
           }.contains(action.type)) {
             toolResultForNextTurn = _lastToolResult;
           }
           final requiresVisualChange = const {
-            'open_app', 'tap', 'type', 'swipe', 'back', 'home',
+            'open_app', 'tap', 'type', 'swipe', 'back', 'home', 'batch',
           }.contains(action.type);
           final changed = _didPackageChange(beforeAction, latestSnapshot) ||
               _didTreeSignatureChange(beforeAction, latestSnapshot);
@@ -1838,7 +1838,7 @@ class AgentController extends ChangeNotifier {
     }
 
     // Actions that require the accessibility service
-    if (const {'tap', 'type', 'swipe', 'back', 'home'}.contains(action.type)) {
+    if (const {'tap', 'type', 'swipe', 'back', 'home', 'batch'}.contains(action.type)) {
       final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
