@@ -1609,6 +1609,11 @@ class AgentController extends ChangeNotifier {
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
     var providerRecoveryAttempts = 0;
+    // A bounded, privacy-conscious task trace is carried into every model turn.
+    // It records action metadata and verification outcomes, never screen text,
+    // message bodies, phone numbers, passwords, or notification contents.
+    final taskActionHistory = <Map<String, dynamic>>[];
+    String lastActionResult = 'No action has been executed yet.';
     _previousModelTreePackage = null;
     _previousModelTreeElements = <int, String>{};
 
@@ -1759,6 +1764,16 @@ class AgentController extends ChangeNotifier {
                 '${currentPlan.asMap().entries.map((entry) => '${entry.key + 1}. ${entry.value}').join('\n')}\n'
                 'Completed steps: $completedPlanSteps\n'
                 '[/CURRENT_PLAN]\n';
+      final taskContext = '[TASK_CONTEXT]\n'
+          '${jsonEncode(<String, dynamic>{
+            'original_command': userMessage,
+            'step_number': step,
+            'max_steps': stepLimit,
+            'completed_plan_steps': completedPlanSteps,
+            'action_history': taskActionHistory,
+            'last_action_result': lastActionResult,
+          })}\n'
+          '[/TASK_CONTEXT]\n';
       final appHints = await _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
       final appHintContext = appHints.isEmpty ? '' :
           '[APP_WORKFLOW_HINT — guidance only, never permission]\n' +
@@ -1772,7 +1787,7 @@ class AgentController extends ChangeNotifier {
       final requestWithClock =
           '[Device local date/time: ' + localNow.toIso8601String() + ']\n' +
           (deviceContext.isEmpty ? '' : deviceContext + '\n') +
-          autopilotContext + appHintContext + planContext + currentMessage;
+          autopilotContext + appHintContext + planContext + taskContext + currentMessage;
       final allowScreenSharing = await _settingsStore.isEnabled(
         LucySettingsStore.aiScreenSharing,
       );
@@ -1940,6 +1955,20 @@ class AgentController extends ChangeNotifier {
           actionVerified = _lastActionDispatchSucceeded &&
               (!requiresVisualChange ||
                   _isActionReady(action, beforeAction, latestSnapshot));
+          final actionRecord = <String, dynamic>{
+            'step': step,
+            'action': action.type,
+            'package': beforeAction?.packageName ?? '',
+            'verified': actionVerified,
+            'screen_changed': changed,
+          };
+          taskActionHistory.add(actionRecord);
+          if (taskActionHistory.length > 20) {
+            taskActionHistory.removeAt(0);
+          }
+          lastActionResult = actionVerified
+              ? 'Action ${action.type} was executed and verified.'
+              : 'Action ${action.type} was not verified; choose a different safe approach.';
           if (actionVerified) {
             _recordSkillAction(action, beforeAction, userMessage);
           } else {
