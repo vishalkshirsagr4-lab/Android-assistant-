@@ -319,6 +319,18 @@ class LucyLearningStore {
     return matches.isNotEmpty;
   }
 
+  Future<bool> forgetUiMap(String key) async {
+    if (_uiMaps.remove(key) == null) return false;
+    await _persist();
+    return true;
+  }
+
+  Future<bool> forgetSkill(String id) async {
+    if (_skills.remove(id) == null) return false;
+    await _persist();
+    return true;
+  }
+
   Future<void> clear() async {
     _uiMaps.clear();
     _skills.clear();
