@@ -2221,14 +2221,28 @@ class AgentController extends ChangeNotifier {
           element['text']?.toString() ?? '',
           element['desc']?.toString() ?? '',
         ].where((value) => value.isNotEmpty).join(' ').trim();
-      } else if (type == 'type' && beforeSnapshot != null) {
+      } else if (type == 'type') {
+        if (beforeSnapshot == null) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_input_state_unverified',
+            'completed': nativeActions.length,
+          };
+        }
         final focused = beforeSnapshot.elements.cast<Map<String, dynamic>?>().firstWhere(
           (element) => element != null &&
               element['focused'] == true &&
               element['editable'] == true,
           orElse: () => null,
         );
-        sensitiveInput = focused?['password'] == true;
+        if (focused == null) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_input_not_focused',
+            'completed': nativeActions.length,
+          };
+        }
+        sensitiveInput = focused['password'] == true;
       }
 
       final risk = LucyActionApprovalPolicy.effectiveRisk(
