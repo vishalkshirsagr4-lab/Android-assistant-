@@ -391,6 +391,45 @@ class MainActivity : FlutterActivity() {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
                 }
+                "performBatch" -> {
+                    val actions = call.argument<List<Map<String, Any?>>>("actions") ?: emptyList()
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        Thread {
+                            val payload = try {
+                                service.performBatch(org.json.JSONArray(actions).toString())
+                            } catch (error: Exception) {
+                                Log.e(TAG, "Native batch execution failed", error)
+                                org.json.JSONObject().apply {
+                                    put("success", false)
+                                    put("error", error.javaClass.simpleName)
+                                    put("completed", 0)
+                                    put("results", org.json.JSONArray())
+                                }.toString()
+                            }
+                            runOnUiThread { result.success(payload) }
+                        }.start()
+                    } else {
+                        result.error("NO_SERVICE", "Accessibility service not enabled", null)
+                    }
+                }
+                "getUiEventSequence" -> {
+                    val service = ScreenActionService.instance
+                    result.success(service?.getUiEventSequence() ?: 0L)
+                }
+                "waitForUiEvent" -> {
+                    val afterSequence = call.argument<Number>("afterSequence")?.toLong() ?: 0L
+                    val timeoutMs = call.argument<Int>("timeoutMs") ?: 500
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        Thread {
+                            val sequence = service.waitForUiEvent(afterSequence, timeoutMs.toLong())
+                            runOnUiThread { result.success(sequence) }
+                        }.start()
+                    } else {
+                        result.success(afterSequence)
+                    }
+                }
                 "getUITree" -> {
                     val service = ScreenActionService.instance
                     if (service != null) {

@@ -108,6 +108,9 @@ class AgentController extends ChangeNotifier {
   bool _cancelRequested = false;
   bool _lastActionDispatchSucceeded = true;
   String? _lastToolResult;
+  int _lastActionEventSequence = 0;
+  String? _previousModelTreePackage;
+  Map<int, String> _previousModelTreeElements = <int, String>{};
   Completer<bool>? _pendingVoiceApproval;
 
   /// Language code of the most recent agent reply ("en" or "ja").
@@ -937,6 +940,29 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(reply, lang: _currentLang);
   }
 
+  Future<bool> _runLocalPhoneAction(
+    String action,
+    Map<String, dynamic> params,
+    String successReply,
+  ) async {
+    if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+      return false;
+    }
+    try {
+      final result = await _phoneActions.execute(action, params);
+      final succeeded = result == true ||
+          (result is Map &&
+              (result['success'] == true ||
+                  result['level'] != null ||
+                  result['batteryPercent'] != null));
+      if (!succeeded) return false;
+      await _speakLocalReply(successReply);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> _handleOfflineCommand(String text) async {
     final command = text.toLowerCase().trim();
     final asksTime = RegExp(
@@ -982,20 +1008,23 @@ class AgentController extends ChangeNotifier {
         final percent = data['batteryPercent'];
         final charging = data['charging'] == true;
         final value = percent is num ? percent.round().toString() : null;
-        final reply = value == null
-            ? 'I could not read the battery status on this device.'
-            : switch (_currentLang) {
-                'hi' => 'बैटरी ' + value + ' प्रतिशत है' +
-                    (charging ? ' और फोन चार्ज हो रहा है।' : '।'),
-                'kn' => 'ಬ್ಯಾಟರಿ ' + value + ' ಪ್ರತಿಶತ ಇದೆ' +
-                    (charging ? ' ಮತ್ತು ಫೋನ್ ಚಾರ್ಜ್ ಆಗುತ್ತಿದೆ.' : '.'),
-                'ja' => 'バッテリー残量は ' + value + ' パーセントです' +
-                    (charging ? '。充電中です。' : '。'),
-                'ar' => 'مستوى البطارية ' + value + ' بالمئة' +
-                    (charging ? '، والهاتف قيد الشحن.' : '.'),
-                _ => 'Battery is at ' + value + ' percent' +
-                    (charging ? ' and charging.' : '.'),
-              };
+        String reply;
+        if (value == null) {
+          reply = 'I could not read the battery status on this device.';
+        } else {
+          reply = switch (_currentLang) {
+            'hi' => 'बैटरी ' + value + ' प्रतिशत है' +
+                (charging ? ' और फोन चार्ज हो रहा है।' : '।'),
+            'kn' => 'ಬ್ಯಾಟರಿ ' + value + ' ಪ್ರತಿಶತ ಇದೆ' +
+                (charging ? ' ಮತ್ತು ಫೋನ್ ಚಾರ್ಜ್ ಆಗುತ್ತಿದೆ.' : '.'),
+            'ja' => 'バッテリー残量は ' + value + ' パーセントです' +
+                (charging ? '。充電中です。' : '。'),
+            'ar' => 'مستوى البطارية ' + value + ' بالمئة' +
+                (charging ? '، والهاتف قيد الشحن.' : '.'),
+            _ => 'Battery is at ' + value + ' percent' +
+                (charging ? ' and charging.' : '.'),
+          };
+        }
         await _speakLocalReply(reply);
       } catch (_) {
         await _speakLocalReply('I could not read the battery status right now.');
@@ -1016,15 +1045,19 @@ class AgentController extends ChangeNotifier {
           'set_flashlight',
           <String, dynamic>{'enabled': !turnOff},
         );
-        final reply = changed == true
-            ? switch (_currentLang) {
-                'hi' => turnOff ? 'टॉर्च बंद कर दी।' : 'टॉर्च चालू कर दी।',
-                'kn' => turnOff ? 'ಟಾರ್ಚ್ ಆಫ್ ಮಾಡಿದೆ.' : 'ಟಾರ್ಚ್ ಆನ್ ಮಾಡಿದೆ.',
-                'ja' => turnOff ? 'ライトを消しました。' : 'ライトをつけました。',
-                'ar' => turnOff ? 'أطفأت المصباح.' : 'شغّلت المصباح.',
-                _ => turnOff ? 'Flashlight off.' : 'Flashlight on.',
-              }
-            : 'I could not change the flashlight. Check camera permission and device support.';
+        String reply;
+        if (changed == true) {
+          reply = switch (_currentLang) {
+            'hi' => turnOff ? 'टॉर्च बंद कर दी।' : 'टॉर्च चालू कर दी।',
+            'kn' => turnOff ? 'ಟಾರ್ಚ್ ಆಫ್ ಮಾಡಿದೆ.' : 'ಟಾರ್ಚ್ ಆನ್ ಮಾಡಿದೆ.',
+            'ja' => turnOff ? 'ライトを消しました。' : 'ライトをつけました。',
+            'ar' => turnOff ? 'أطفأت المصباح.' : 'شغّلت المصباح.',
+            _ => turnOff ? 'Flashlight off.' : 'Flashlight on.',
+          };
+        } else {
+          reply =
+              'I could not change the flashlight. Check camera permission and device support.';
+        }
         await _speakLocalReply(reply);
       } catch (_) {
         await _speakLocalReply(
@@ -1032,6 +1065,260 @@ class AgentController extends ChangeNotifier {
         );
       }
       return true;
+    }
+
+    final asksVolumeUp = RegExp(
+      r'(volume up|increase volume|turn volume up|louder|आवाज़ बढ़ाओ|वॉल्यूम बढ़ाओ|ಧ್ವನಿ ಹೆಚ್ಚಿಸು|音量を上げて|ارفع الصوت)',
+    ).hasMatch(command);
+    final asksVolumeDown = RegExp(
+      r'(volume down|decrease volume|turn volume down|quieter|आवाज़ कम करो|वॉल्यूम कम करो|ಧ್ವನಿ ಕಡಿಮೆಮಾಡು|音量を下げて|اخفض الصوت)',
+    ).hasMatch(command);
+    final asksMute = RegExp(
+      r'(mute|volume mute|silence volume|आवाज़ बंद करो|म्यूट|ಧ್ವನಿ ಮ್ಯೂಟ್|音を消して|اكتم الصوت)',
+    ).hasMatch(command);
+    if (asksVolumeUp || asksVolumeDown || asksMute) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+        return false;
+      }
+      final direction = asksMute ? 'mute' : asksVolumeUp ? 'up' : 'down';
+      try {
+        final result = await _phoneActions.execute(
+          'set_volume',
+          <String, dynamic>{'direction': direction, 'stream': 'music'},
+        );
+        final success = result is Map && result['level'] != null;
+        if (success) {
+          final level = (result['level'] as num).toInt();
+          final max = (result['max'] as num?)?.toInt() ?? 100;
+          final percent = max > 0 ? (level * 100 / max).round() : level;
+          final reply = switch (_currentLang) {
+            'hi' => 'वॉल्यूम ' + percent.toString() + ' प्रतिशत है।',
+            'kn' => 'ವಾಲ್ಯೂಮ್ ' + percent.toString() + ' ಪ್ರತಿಶತ ಇದೆ.',
+            'ja' => '音量は ' + percent.toString() + ' パーセントです。',
+            'ar' => 'مستوى الصوت ' + percent.toString() + ' بالمئة.',
+            _ => 'Volume is at ' + percent.toString() + ' percent.',
+          };
+          await _speakLocalReply(reply);
+        }
+      } catch (_) {
+        // Keep the fast path silent if Android rejects the volume request.
+      }
+      return true;
+    }
+
+    const appPackages = <String, String>{
+      'whatsapp': 'com.whatsapp',
+      'व्हाट्सऐप': 'com.whatsapp',
+      'वाट्सऐप': 'com.whatsapp',
+      'ವಾಟ್ಸಾಪ್': 'com.whatsapp',
+      'telegram': 'org.telegram.messenger',
+      'टेलीग्राम': 'org.telegram.messenger',
+      'ಟೆಲಿಗ್ರಾಂ': 'org.telegram.messenger',
+      'youtube': 'com.google.android.youtube',
+      'यूट्यूब': 'com.google.android.youtube',
+      'ಯೂಟ್ಯೂಬ್': 'com.google.android.youtube',
+      'gmail': 'com.google.android.gm',
+      'जीमेल': 'com.google.android.gm',
+      'ಜಿಮೇಲ್': 'com.google.android.gm',
+      'chrome': 'com.android.chrome',
+      'क्रोम': 'com.android.chrome',
+      'क्रोम ब्राउज़र': 'com.android.chrome',
+      'instagram': 'com.instagram.android',
+      'इंस्टाग्राम': 'com.instagram.android',
+      'ಇನ್‌ಸ್ಟಾಗ್ರಾಮ್': 'com.instagram.android',
+      'maps': 'com.google.android.apps.maps',
+      'google maps': 'com.google.android.apps.maps',
+      'मैप्स': 'com.google.android.apps.maps',
+      'ಸೆಟ್ಟಿಂಗ್ಸ್': 'com.android.settings',
+      'settings': 'com.android.settings',
+      'सेटिंग्स': 'com.android.settings',
+    };
+    final openPrefix = RegExp(
+      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$',
+    ).firstMatch(command);
+    final requestedApp = openPrefix?.group(1)?.trim();
+    final packageName = requestedApp == null ? null : appPackages[requestedApp];
+    if (packageName != null) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
+        return false;
+      }
+      final opened = await _screenCapture.openApp(packageName);
+      if (opened) {
+        final reply = switch (_currentLang) {
+          'hi' => 'ऐप खोल दिया।',
+          'kn' => 'ಆ್ಯಪ್ ತೆರೆಯಿತು.',
+          'ja' => 'アプリを開きました。',
+          'ar' => 'تم فتح التطبيق.',
+          _ => 'App opened.',
+        };
+        await _speakLocalReply(reply);
+      }
+      return true;
+    }
+
+    final settingsMatch = RegExp(
+      r'^(?:open|show|go to|खोलो|ತೆರೆ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?$',
+    ).firstMatch(command);
+    if (settingsMatch != null) {
+      final requestedPage = settingsMatch.group(1);
+      final page = switch (requestedPage) {
+        'wifi' || 'wi-fi' => 'wifi',
+        'bluetooth' => 'bluetooth',
+        'display' => 'display',
+        'sound' => 'sound',
+        'apps' => 'apps',
+        'accessibility' => 'accessibility',
+        'location' => 'location',
+        'battery' => 'battery',
+        'wireless' => 'wireless',
+        _ => 'general',
+      };
+      final reply = switch (_currentLang) {
+        'hi' => 'सेटिंग्स खोल दी।',
+        'kn' => 'ಸೆಟ್ಟಿಂಗ್ಸ್ ತೆರೆಯಿತು.',
+        'ja' => '設定を開きました。',
+        'ar' => 'تم فتح الإعدادات.',
+        _ => 'Settings opened.',
+      };
+      if (await _runLocalPhoneAction(
+        'open_settings',
+        <String, dynamic>{'page': page},
+        reply,
+      )) return true;
+    }
+
+    final timerMatch = RegExp(
+      r'^(?:set\s+)?(?:a\s+)?timer(?:\s+for)?\s+(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)$',
+    ).firstMatch(command);
+    if (timerMatch != null) {
+      final amount = int.tryParse(timerMatch.group(1) ?? '') ?? 0;
+      final unit = timerMatch.group(2) ?? '';
+      final multiplier = unit.startsWith('h')
+          ? 3600
+          : unit.startsWith('m')
+              ? 60
+              : 1;
+      final seconds = amount * multiplier;
+      if (seconds >= 1 && seconds <= 86400) {
+        final reply = switch (_currentLang) {
+          'hi' => 'टाइमर शुरू कर दिया।',
+          'kn' => 'ಟೈಮರ್ ಪ್ರಾರಂಭಿಸಿದೆ.',
+          'ja' => 'タイマーを開始しました。',
+          'ar' => 'بدأت المؤقت.',
+          _ => 'Timer started.',
+        };
+        if (await _runLocalPhoneAction(
+          'set_timer',
+          <String, dynamic>{'durationSeconds': seconds},
+          reply,
+        )) return true;
+      }
+    }
+
+    final alarmMatch = RegExp(
+      r'^(?:set\s+)?(?:an?\s+)?alarm(?:\s+(?:for|at))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$',
+    ).firstMatch(command);
+    if (alarmMatch != null) {
+      var hour = int.tryParse(alarmMatch.group(1) ?? '') ?? -1;
+      final minute = int.tryParse(alarmMatch.group(2) ?? '0') ?? -1;
+      final meridiem = alarmMatch.group(3);
+      if (meridiem == 'pm' && hour < 12) hour += 12;
+      if (meridiem == 'am' && hour == 12) hour = 0;
+      if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+        final reply = switch (_currentLang) {
+          'hi' => 'अलार्म सेट करने के लिए क्लॉक ऐप खोल दिया।',
+          'kn' => 'ಅಲಾರಂ ಹೊಂದಿಸಲು ಗಡಿಯಾರ ಆ್ಯಪ್ ತೆರೆಯಿತು.',
+          'ja' => 'アラーム設定画面を開きました。',
+          'ar' => 'فتحت شاشة ضبط المنبه.',
+          _ => 'Opened the clock app to set that alarm.',
+        };
+        if (await _runLocalPhoneAction(
+          'set_alarm',
+          <String, dynamic>{'hour': hour, 'minute': minute},
+          reply,
+        )) return true;
+      }
+    }
+
+    final navigationMatch = RegExp(
+      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
+    ).firstMatch(command);
+    final destination = navigationMatch?.group(1)?.trim();
+    if (destination != null && destination.isNotEmpty) {
+      final reply = switch (_currentLang) {
+        'hi' => 'मैप्स में रास्ता खोल दिया।',
+        'kn' => 'ಮ್ಯಾಪ್ಸ್‌ನಲ್ಲಿ ಮಾರ್ಗ ತೆರೆಯಿತು.',
+        'ja' => 'マップでルートを開きました。',
+        'ar' => 'فتحت المسار في الخرائط.',
+        _ => 'Opened the route in Maps.',
+      };
+      if (await _runLocalPhoneAction(
+        'start_navigation',
+        <String, dynamic>{'destination': destination},
+        reply,
+      )) return true;
+    }
+
+    final urlMatch = RegExp(
+      r'^(?:open|visit)\s+((?:https?://)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?)$',
+    ).firstMatch(command);
+    final requestedUrl = urlMatch?.group(1);
+    if (requestedUrl != null) {
+      final url = requestedUrl.startsWith('http')
+          ? requestedUrl
+          : 'https://$requestedUrl';
+      final reply = switch (_currentLang) {
+        'hi' => 'वेबसाइट खोल दी।',
+        'kn' => 'ವೆಬ್‌ಸೈಟ್ ತೆರೆಯಿತು.',
+        'ja' => 'ウェブサイトを開きました。',
+        'ar' => 'تم فتح الموقع.',
+        _ => 'Opened the website.',
+      };
+      if (await _runLocalPhoneAction(
+        'open_url',
+        <String, dynamic>{'url': url},
+        reply,
+      )) return true;
+    }
+
+    final musicMatch = RegExp(
+      r'^(?:play music|search song|find song|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
+    ).firstMatch(command);
+    final musicQuery = musicMatch?.group(1)?.trim();
+    if (musicQuery != null && musicQuery.isNotEmpty) {
+      final reply = switch (_currentLang) {
+        'hi' => 'म्यूज़िक सर्च खोल दिया।',
+        'kn' => 'ಮ್ಯೂಸಿಕ್ ಹುಡುಕಾಟ ತೆರೆಯಿತು.',
+        'ja' => '音楽検索を開きました。',
+        'ar' => 'فتحت البحث عن الموسيقى.',
+        _ => 'Opened music search.',
+      };
+      if (await _runLocalPhoneAction(
+        'music_search',
+        <String, dynamic>{'query': musicQuery},
+        reply,
+      )) return true;
+    }
+
+    final brightnessMatch = RegExp(
+      r'^(?:set )?brightness(?: to)?\s+(\d{1,3})\s*(?:%|percent)?$',
+    ).firstMatch(command);
+    if (brightnessMatch != null) {
+      final level = int.tryParse(brightnessMatch.group(1) ?? '') ?? 0;
+      if (level >= 1 && level <= 100) {
+        final reply = switch (_currentLang) {
+          'hi' => 'ब्राइटनेस सेट कर दी।',
+          'kn' => 'ಬ್ರೈಟ್‌ನೆಸ್ ಹೊಂದಿಸಿದೆ.',
+          'ja' => '明るさを設定しました。',
+          'ar' => 'تم ضبط السطوع.',
+          _ => 'Brightness updated.',
+        };
+        if (await _runLocalPhoneAction(
+          'set_brightness',
+          <String, dynamic>{'level': level},
+          reply,
+        )) return true;
+      }
     }
 
     return false;
@@ -1050,6 +1337,8 @@ class AgentController extends ChangeNotifier {
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
+    _previousModelTreePackage = null;
+    _previousModelTreeElements = <int, String>{};
 
     LucyReliabilityLog.event('agent_task_started');
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
@@ -1066,23 +1355,46 @@ class AgentController extends ChangeNotifier {
       }
       step++;
 
-      // 1. Capture screenshot (with retries for reliability after app switches)
+      // Fetch the cheap accessibility tree first. Rich text-first screens do
+      // not need a MediaProjection frame; visual and sparse screens still do.
       _setState(AgentState.capturing);
       _updateTaskProgress('Preparing your screen · Step $step');
 
-      final screenshotFuture = _captureScreenWithRetry();
-      final uiSnapshotFuture = _fetchUiSnapshot();
-
-      final screenshotBytes = await screenshotFuture;
-      if (screenshotBytes != null) {
-        _lastScreenshotBytes = screenshotBytes;
-      }
+      final treeStopwatch = Stopwatch()..start();
+      final uiSnapshot = await _fetchUiSnapshot();
+      treeStopwatch.stop();
+      LucyReliabilityLog.event(
+        'agent_tree_fetch_timing',
+        step: step,
+        elapsedMs: treeStopwatch.elapsedMilliseconds,
+        success: uiSnapshot != null,
+      );
+      final uiTree = uiSnapshot == null
+          ? null
+          : _buildUiTreePayload(uiSnapshot, step);
 
       if (_cancelRequested) break;
 
-      // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
-      final uiSnapshot = await uiSnapshotFuture;
-      final uiTree = uiSnapshot?.rawTree;
+      Uint8List? screenshotBytes;
+      if (_shouldCaptureScreenshot(uiSnapshot)) {
+        final screenshotStopwatch = Stopwatch()..start();
+        screenshotBytes = await _captureScreenWithRetry();
+        screenshotStopwatch.stop();
+        if (screenshotBytes != null) _lastScreenshotBytes = screenshotBytes;
+        LucyReliabilityLog.event(
+          'agent_screenshot_timing',
+          step: step,
+          elapsedMs: screenshotStopwatch.elapsedMilliseconds,
+          success: screenshotBytes != null,
+        );
+      } else {
+        LucyReliabilityLog.event(
+          'agent_screenshot_skipped',
+          step: step,
+          elapsedMs: 0,
+          success: true,
+        );
+      }
 
       if (_cancelRequested) break;
 
@@ -1119,6 +1431,8 @@ class AgentController extends ChangeNotifier {
       final allowMemory = await _settingsStore.isEnabled(
         LucySettingsStore.memory,
       );
+      await _voiceService.beginStreamingSpeech(lang: _currentLang);
+      var streamedSpeech = false;
       final agentResponse = await _aiService.agentChat(
         requestWithClock,
         imageBytes: allowScreenSharing ? screenshotBytes : null,
@@ -1127,7 +1441,16 @@ class AgentController extends ChangeNotifier {
         memoryContext: allowMemory
             ? (_memoryStore?.relevantContext(userMessage) ?? '')
             : '',
+        onSpeakChunk: (sentence) {
+          streamedSpeech = true;
+          _voiceService.addStreamingSpeechText(sentence);
+        },
+        onSpeakReset: () {
+          streamedSpeech = false;
+          unawaited(_voiceService.cancelStreamingSpeech());
+        },
       );
+      final streamedSpeechCompletion = _voiceService.finishStreamingSpeech();
       aiStopwatch.stop();
       _performanceMonitor.recordResponse(aiStopwatch.elapsed);
       LucyReliabilityLog.event(
@@ -1183,8 +1506,9 @@ class AgentController extends ChangeNotifier {
       bool actionVerified = true;
       String? toolResultForNextTurn;
 
-      // 3. Execute and verify the single returned action.
+      // 3. Execute and verify the returned action.
       if (agentResponse.actions.isNotEmpty) {
+        final executionStopwatch = Stopwatch()..start();
         _setState(AgentState.executingAction);
         _updateTaskProgress('Carrying out your task · Step $step');
 
@@ -1195,12 +1519,12 @@ class AgentController extends ChangeNotifier {
           _lastActionDispatchSucceeded = true;
           latestSnapshot = await _executeAction(action, beforeAction);
           if (const {
-            'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+            'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
           }.contains(action.type)) {
             toolResultForNextTurn = _lastToolResult;
           }
           final requiresVisualChange = const {
-            'open_app', 'tap', 'type', 'swipe', 'back', 'home',
+            'open_app', 'tap', 'type', 'swipe', 'back', 'home', 'batch',
           }.contains(action.type);
           final changed = _didPackageChange(beforeAction, latestSnapshot) ||
               _didTreeSignatureChange(beforeAction, latestSnapshot);
@@ -1248,6 +1572,13 @@ class AgentController extends ChangeNotifier {
             completedPlanSteps++;
           }
         }
+        executionStopwatch.stop();
+        LucyReliabilityLog.event(
+          'agent_execution_timing',
+          step: step,
+          elapsedMs: executionStopwatch.elapsedMilliseconds,
+          success: actionVerified,
+        );
       }
 
       if (_cancelRequested) break;
@@ -1274,16 +1605,50 @@ class AgentController extends ChangeNotifier {
 
       // 4. Speak the response (only speak if done or has something to say)
       if (speakText.isNotEmpty) {
+        final ttsStopwatch = Stopwatch()..start();
         _setState(AgentState.speaking);
         _updateTaskProgress('Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
-        await _voiceService.speak(ttsText, lang: _currentLang);
-
-        // Wait for TTS to finish
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking && !_cancelRequested) {
-          await Future.delayed(const Duration(milliseconds: 200));
+        final speech = streamedSpeech
+            ? streamedSpeechCompletion
+            : _voiceService.speakProgressively(
+                ttsText,
+                lang: _currentLang,
+              );
+        if (agentResponse.done) {
+          await speech;
+          await Future.delayed(const Duration(milliseconds: 250));
+          while (_voiceService.isSpeaking && !_cancelRequested) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+          ttsStopwatch.stop();
+          LucyReliabilityLog.event(
+            'agent_tts_timing',
+            step: step,
+            elapsedMs: ttsStopwatch.elapsedMilliseconds,
+            success: true,
+          );
+        } else {
+          // Intermediate speech runs alongside the next planning/action turn;
+          // only a final answer waits for TTS completion.
+          unawaited(speech.then((_) {
+            ttsStopwatch.stop();
+            LucyReliabilityLog.event(
+              'agent_tts_timing',
+              step: step,
+              elapsedMs: ttsStopwatch.elapsedMilliseconds,
+              success: true,
+            );
+          }, onError: (_) {
+            ttsStopwatch.stop();
+            LucyReliabilityLog.event(
+              'agent_tts_timing',
+              step: step,
+              elapsedMs: ttsStopwatch.elapsedMilliseconds,
+              success: false,
+            );
+          }));
         }
       }
 
@@ -1304,7 +1669,7 @@ class AgentController extends ChangeNotifier {
       // continue from the retained plan rather than assuming success.
       if (toolResultForNextTurn != null) {
         currentMessage =
-            'The native deep-reading operation has finished. Inspect its measured results and continue the task.\\n[TOOL_RESULT]\\n$toolResultForNextTurn\\n[/TOOL_RESULT]';
+            'The native operation has finished. Inspect its measured results and continue the task.\n[TOOL_RESULT]\n$toolResultForNextTurn\n[/TOOL_RESULT]';
       } else if (actionVerified) {
         currentMessage =
             'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.';
@@ -1409,6 +1774,91 @@ class AgentController extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  String _buildUiTreePayload(_UiSnapshot snapshot, int step) {
+    final current = <int, String>{};
+    for (final element in snapshot.elements) {
+      final id = (element['id'] as num?)?.toInt();
+      if (id != null) current[id] = jsonEncode(element);
+    }
+
+    final package = snapshot.packageName ?? '';
+    final forceFull = _previousModelTreePackage != package ||
+        _previousModelTreeElements.isEmpty ||
+        step == 1 ||
+        step % 5 == 0;
+
+    if (forceFull) {
+      _previousModelTreePackage = package;
+      _previousModelTreeElements = current;
+      return jsonEncode(<String, dynamic>{
+        'package': package,
+        'mode': 'full',
+        'elements': snapshot.elements,
+      });
+    }
+
+    final changed = <Map<String, dynamic>>[];
+    final removed = <int>[];
+    for (final element in snapshot.elements) {
+      final id = (element['id'] as num?)?.toInt();
+      if (id == null) continue;
+      if (_previousModelTreeElements[id] != current[id]) {
+        changed.add(element);
+      }
+    }
+    for (final oldId in _previousModelTreeElements.keys) {
+      if (!current.containsKey(oldId)) removed.add(oldId);
+    }
+
+    final unchangedCount = current.length - changed.length;
+    _previousModelTreePackage = package;
+    _previousModelTreeElements = current;
+    return jsonEncode(<String, dynamic>{
+      'package': package,
+      'mode': 'diff',
+      'baseStep': step - 1,
+      'elements': changed,
+      'removed': removed,
+      'unchangedCount': unchangedCount < 0 ? 0 : unchangedCount,
+    });
+  }
+
+  bool _shouldCaptureScreenshot(_UiSnapshot? snapshot) {
+    if (snapshot == null || snapshot.elements.length < 8) return true;
+
+    final types = snapshot.elements
+        .map((element) => (element['type'] ?? '').toString().toLowerCase())
+        .toList(growable: false);
+    final packageName = (snapshot.packageName ?? '').toLowerCase();
+    final visualSurface = types.any((type) =>
+        type.contains('webview') ||
+        type.contains('surfaceview') ||
+        type.contains('textureview') ||
+        type.contains('videoview') ||
+        type.contains('canvas') ||
+        type.contains('glsurface'));
+    if (visualSurface) return true;
+
+    if (packageName.contains('youtube') ||
+        packageName.contains('instagram') ||
+        packageName.contains('tiktok')) {
+      return true;
+    }
+
+    final readable = snapshot.elements
+        .map((element) => ((element['text'] ?? '').toString() +
+            ' ' +
+            (element['desc'] ?? '').toString()).trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    final totalChars = readable.fold<int>(0, (sum, value) => sum + value.length);
+    final imageCount = types.where((type) => type.contains('imageview')).length;
+    if (imageCount >= 3 && (readable.length < 12 || totalChars < 260)) {
+      return true;
+    }
+    return readable.length < 8 || totalChars < 160;
   }
 
   bool _isPermissionPrompt(_UiSnapshot? snapshot) {
@@ -1550,26 +2000,35 @@ class AgentController extends ChangeNotifier {
     _UiSnapshot? latestSnapshot = beforeSnapshot;
     final deadline = DateTime.now().add(timeout);
 
-    while (!_cancelRequested) {
-      final currentSnapshot = await _fetchUiSnapshot();
-      if (currentSnapshot != null) {
-        latestSnapshot = currentSnapshot;
+    // Wake on Android accessibility events first, then verify with a fresh
+    // tree. Keep the short polling fallback for apps that emit no useful event.
+    final eventWait = timeout.inMilliseconds.clamp(0, 500).toInt();
+    if (eventWait > 0) {
+      await _screenCapture.waitForUiEvent(
+        afterSequence: _lastActionEventSequence,
+        timeoutMs: eventWait,
+      );
+      final eventSnapshot = await _fetchUiSnapshot();
+      if (eventSnapshot != null) latestSnapshot = eventSnapshot;
+      if (_isActionReady(action, beforeSnapshot, eventSnapshot)) {
+        return eventSnapshot;
       }
+    }
 
+    while (!_cancelRequested) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      final currentSnapshot = await _fetchUiSnapshot();
+      if (currentSnapshot != null) latestSnapshot = currentSnapshot;
       if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
         return currentSnapshot;
       }
-
-      final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) {
-        break;
-      }
-
+      final nextRemaining = deadline.difference(DateTime.now());
+      if (nextRemaining <= Duration.zero) break;
       await Future.delayed(
-        remaining < _uiPollInterval ? remaining : _uiPollInterval,
+        nextRemaining < _uiPollInterval ? nextRemaining : _uiPollInterval,
       );
     }
-
     return latestSnapshot;
   }
 
@@ -1650,7 +2109,7 @@ class AgentController extends ChangeNotifier {
     _lastToolResult = null;
     const accessibilityActions = {
       'open_app', 'tap', 'type', 'swipe', 'back', 'home',
-      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
     };
     const directPhoneActions = {
       'set_alarm', 'set_timer', 'place_call', 'send_sms', 'open_url',
@@ -1672,7 +2131,7 @@ class AgentController extends ChangeNotifier {
     }
     if (const {
       'tap', 'type', 'swipe', 'back', 'home',
-      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
     }.contains(action.type) &&
         !await _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing)) {
       _lastActionDispatchSucceeded = false;
@@ -1756,7 +2215,7 @@ class AgentController extends ChangeNotifier {
     }
 
     // Actions that require the accessibility service
-    if (const {'tap', 'type', 'swipe', 'back', 'home'}.contains(action.type)) {
+    if (const {'tap', 'type', 'swipe', 'back', 'home', 'batch'}.contains(action.type)) {
       final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
@@ -1768,6 +2227,8 @@ class AgentController extends ChangeNotifier {
         return beforeSnapshot;
       }
     }
+
+    _lastActionEventSequence = await _screenCapture.getUiEventSequence();
 
     try {
       switch (action.type) {
@@ -1878,6 +2339,12 @@ class AgentController extends ChangeNotifier {
           final result = await _executeOpenEach(action, beforeSnapshot);
           _lastToolResult = jsonEncode(result);
           _lastActionDispatchSucceeded = result['error'] == null;
+          break;
+
+        case 'batch':
+          final result = await _executeBatchAction(action, beforeSnapshot);
+          _lastToolResult = jsonEncode(result);
+          _lastActionDispatchSucceeded = result['success'] == true;
           break;
 
         case 'schedule_reminder':
@@ -2013,11 +2480,123 @@ class AgentController extends ChangeNotifier {
     }
 
     if (const {
-      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+      'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
     }.contains(action.type)) {
       return _fetchUiSnapshot();
     }
     return _waitForActionReadiness(action, beforeSnapshot);
+  }
+
+  Future<Map<String, dynamic>> _executeBatchAction(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
+    final rawActions = action.params['actions'];
+    if (rawActions is! List || rawActions.isEmpty || rawActions.length > 5) {
+      return <String, dynamic>{
+        'success': false,
+        'error': 'invalid_batch_size',
+        'completed': 0,
+      };
+    }
+
+    const allowed = {'tap', 'type', 'swipe', 'back', 'wait'};
+    final initialFocused = beforeSnapshot?.elements
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (element) => element != null &&
+              element['focused'] == true &&
+              element['editable'] == true,
+          orElse: () => null,
+        );
+    var inputFocused = initialFocused != null;
+    var focusedInputPassword = initialFocused?['password'] == true;
+    final nativeActions = <Map<String, dynamic>>[];
+    for (final raw in rawActions) {
+      if (raw is! Map) {
+        return <String, dynamic>{
+          'success': false,
+          'error': 'invalid_batch_action',
+          'completed': nativeActions.length,
+        };
+      }
+      final item = Map<String, dynamic>.from(raw);
+      final type = item['type']?.toString() ?? '';
+      if (!allowed.contains(type)) {
+        return <String, dynamic>{
+          'success': false,
+          'error': 'unsupported_batch_action',
+          'completed': nativeActions.length,
+        };
+      }
+
+      String? targetLabel;
+      var sensitiveInput = false;
+      if (type == 'tap') {
+        final elementId = (item['element'] as num?)?.toInt();
+        final element = elementId == null || beforeSnapshot == null
+            ? null
+            : _findElementById(elementId, beforeSnapshot.elements);
+        if (element == null) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_target_not_found',
+            'completed': nativeActions.length,
+          };
+        }
+        targetLabel = [
+          element['text']?.toString() ?? '',
+          element['desc']?.toString() ?? '',
+        ].where((value) => value.isNotEmpty).join(' ').trim();
+        final isEditableTarget = element['editable'] == true ||
+            (element['type']?.toString().contains('EditText') ?? false);
+        inputFocused = isEditableTarget;
+        focusedInputPassword =
+            isEditableTarget && element['password'] == true;
+      } else if (type == 'type') {
+        if (!inputFocused) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'batch_input_not_focused',
+            'completed': nativeActions.length,
+          };
+        }
+        sensitiveInput = focusedInputPassword;
+      }
+
+      final risk = LucyActionApprovalPolicy.effectiveRisk(
+        type,
+        targetLabel: targetLabel,
+        packageName: beforeSnapshot?.packageName,
+        sensitiveInput: sensitiveInput,
+      );
+      if (risk != 'low') {
+        final approved = await _requestVoiceApproval(
+          AgentAction(type: type, params: item),
+          targetLabel,
+          requiredRisk: risk,
+          sensitiveInput: sensitiveInput,
+        );
+        if (!approved) {
+          return <String, dynamic>{
+            'success': false,
+            'error': 'approval_denied',
+            'completed': nativeActions.length,
+          };
+        }
+      }
+      nativeActions.add(item);
+    }
+
+    final result = await _screenCapture.performBatch(nativeActions);
+    if (result == null) {
+      return <String, dynamic>{
+        'success': false,
+        'error': 'native_batch_unavailable',
+        'completed': 0,
+      };
+    }
+    return result;
   }
 
   Future<Map<String, dynamic>> _executeOpenEach(

@@ -134,6 +134,71 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Execute up to five reversible UI primitives in one native round trip.
+  /// The controller must run its local risk checks before calling this method.
+  Future<Map<String, dynamic>?> performBatch(
+    List<Map<String, dynamic>> actions,
+  ) async {
+    if (actions.isEmpty || actions.length > 5) return null;
+    try {
+      final raw = await _channel.invokeMethod<String>(
+        'performBatch',
+        <String, dynamic>{'actions': actions},
+      );
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_batch_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return null;
+    }
+  }
+
+  /// Current monotonic accessibility-event sequence for the foreground UI.
+  Future<int> getUiEventSequence() async {
+    try {
+      final value = await _channel.invokeMethod<num>('getUiEventSequence');
+      return value?.toInt() ?? 0;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'ui_event_sequence_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return 0;
+    }
+  }
+
+  /// Wait for an accessibility event, with a bounded timeout. A fresh UI tree
+  /// must still be fetched afterwards; an event is only a wake-up signal.
+  Future<int> waitForUiEvent({
+    required int afterSequence,
+    int timeoutMs = 500,
+  }) async {
+    try {
+      final value = await _channel.invokeMethod<num>(
+        'waitForUiEvent',
+        <String, dynamic>{
+          'afterSequence': afterSequence,
+          'timeoutMs': timeoutMs.clamp(0, 2000).toInt(),
+        },
+      );
+      return value?.toInt() ?? afterSequence;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'ui_event_wait_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return afterSequence;
+    }
+  }
+
   /// Get the UI tree of the current foreground app via accessibility service.
   /// Returns a JSON string with package name and element list, or null on error.
   Future<String?> getUITree() async {

@@ -244,5 +244,79 @@ void main() {
         throwsFormatException,
       );
     });
+    test('parses a bounded native batch of reversible UI actions', () {
+      final response = AgentResponse.fromJson(
+        <String, dynamic>{
+          'route': 'phone',
+          'needs_screen': true,
+          'plan': <String, dynamic>{
+            'goal': 'Search within the current app',
+            'done_when': 'The results screen is visible',
+          },
+          'actions': <dynamic>[
+            <String, dynamic>{
+              'type': 'batch',
+              'actions': <dynamic>[
+                <String, dynamic>{'type': 'tap', 'element': 3},
+                <String, dynamic>{
+                  'type': 'type',
+                  'text': 'Lucy',
+                  'expect': <String, dynamic>{'text_contains': 'Lucy'},
+                },
+                <String, dynamic>{'type': 'wait', 'ms': 200},
+              ],
+              'confidence': 0.98,
+              'risk': 'low',
+              'reason': 'These reversible steps keep the same search layout.',
+            },
+          ],
+          'speak': '',
+          'done': false,
+          'lang': 'en',
+        },
+        '{}',
+      );
+
+      expect(response.actions, hasLength(1));
+      expect(response.actions.single.type, 'batch');
+      expect(
+        (response.actions.single.params['actions'] as List),
+        hasLength(3),
+      );
+    });
+
+    test('rejects a native batch containing more than five operations', () {
+      final actions = List<dynamic>.generate(
+        6,
+        (_) => <String, dynamic>{'type': 'wait', 'ms': 100},
+      );
+      expect(
+        () => AgentResponse.fromJson(
+          <String, dynamic>{
+            'route': 'phone',
+            'needs_screen': true,
+            'plan': <String, dynamic>{
+              'goal': 'Run a batch',
+              'done_when': 'The operations finish',
+            },
+            'actions': <dynamic>[
+              <String, dynamic>{
+                'type': 'batch',
+                'actions': actions,
+                'confidence': 0.9,
+                'risk': 'low',
+                'reason': 'Bounded batch test.',
+              },
+            ],
+            'speak': '',
+            'done': false,
+            'lang': 'en',
+          },
+          '{}',
+        ),
+        throwsFormatException,
+      );
+    });
+
   });
 }

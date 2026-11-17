@@ -18,6 +18,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 class ScreenActionService : AccessibilityService() {
 
@@ -35,8 +36,50 @@ class ScreenActionService : AccessibilityService() {
         Log.d(TAG, "Accessibility service connected")
     }
 
+    private val uiEventLock = ReentrantLock()
+    private val uiEventChanged = uiEventLock.newCondition()
+    @Volatile private var uiEventSequence: Long = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // We don't need to process events for this PoC
+        if (event == null) return
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
+                uiEventLock.lock()
+                try {
+                    uiEventSequence += 1L
+                    uiEventChanged.signalAll()
+                } finally {
+                    uiEventLock.unlock()
+                }
+            }
+        }
+    }
+
+    fun getUiEventSequence(): Long = uiEventSequence
+
+    /**
+     * Waits for a real accessibility event instead of repeatedly traversing
+     * the UI tree. The caller still verifies the resulting tree afterwards.
+     */
+    fun waitForUiEvent(afterSequence: Long, timeoutMs: Long): Long {
+        val timeout = timeoutMs.coerceIn(0L, 2_000L)
+        uiEventLock.lock()
+        try {
+            if (uiEventSequence <= afterSequence && timeout > 0L) {
+                try {
+                    uiEventChanged.await(timeout, TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+            return uiEventSequence
+        } finally {
+            uiEventLock.unlock()
+        }
     }
 
     override fun onInterrupt() {
@@ -230,6 +273,128 @@ class ScreenActionService : AccessibilityService() {
     fun pressHome(): Boolean {
         if (isDeviceLocked()) return false
         return performGlobalAction(GLOBAL_ACTION_HOME)
+    }
+
+    /**
+     * Executes a small, ordered batch in one MethodChannel call. Only reversible
+     * UI primitives are accepted; the Flutter controller applies its local
+     * approval policy before dispatching this native batch.
+     */
+    fun performBatch(actionsJson: String): String {
+        val results = JSONArray()
+        val actions = try {
+            JSONArray(actionsJson)
+        } catch (error: Exception) {
+            return JSONObject().put("success", false)
+                .put("error", "invalid_batch").put("results", results).toString()
+        }
+        if (actions.length() !in 1..5) {
+            return JSONObject().put("success", false)
+                .put("error", "batch_size_out_of_range")
+                .put("results", results).toString()
+        }
+        if (isDeviceLocked()) {
+            return JSONObject().put("success", false)
+                .put("locked", true).put("results", results).toString()
+        }
+
+        var batchSuccess = true
+        var stoppedAt = -1
+        for (index in 0 until actions.length()) {
+            if (isDeviceLocked()) {
+                batchSuccess = false
+                stoppedAt = index
+                break
+            }
+            val item = actions.optJSONObject(index)
+            if (item == null) {
+                batchSuccess = false
+                stoppedAt = index
+                results.put(JSONObject().put("success", false).put("error", "invalid_action"))
+                break
+            }
+
+            val type = item.optString("type", "")
+            val eventBaseline = getUiEventSequence()
+            val actionSuccess = try {
+                when (type) {
+                    "tap" -> {
+                        val elementId = item.optInt("element", -1)
+                        val tree = JSONObject(getUITree())
+                        val elements = tree.optJSONArray("elements") ?: JSONArray()
+                        var tapped = false
+                        for (elementIndex in 0 until elements.length()) {
+                            val element = elements.optJSONObject(elementIndex) ?: continue
+                            if (element.optInt("id", -2) == elementId) {
+                                val bounds = element.optJSONObject("bounds")
+                                if (bounds != null) {
+                                    tapped = performTap(
+                                        bounds.optDouble("cx").toFloat(),
+                                        bounds.optDouble("cy").toFloat()
+                                    )
+                                }
+                                break
+                            }
+                        }
+                        tapped
+                    }
+                    "type" -> performType(item.optString("text", ""))
+                    "swipe" -> performSwipe(
+                        item.optDouble("startX").toFloat(),
+                        item.optDouble("startY").toFloat(),
+                        item.optDouble("endX").toFloat(),
+                        item.optDouble("endY").toFloat(),
+                        item.optLong("durationMs", 250L).coerceIn(100L, 800L)
+                    )
+                    "back" -> pressBack()
+                    "wait" -> {
+                        Thread.sleep(item.optLong("ms", 150L).coerceIn(0L, 1000L))
+                        true
+                    }
+                    else -> false
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "Batch action $index failed", error)
+                false
+            }
+
+            val outcome = JSONObject().apply {
+                put("index", index)
+                put("type", type)
+                put("success", actionSuccess)
+            }
+            val expect = item.optJSONObject("expect")
+            var expectationMatched = true
+            if (actionSuccess && expect != null) {
+                waitForUiEvent(eventBaseline, 450L)
+                val treeText = getUITree()
+                val tree = JSONObject(treeText)
+                val expectedPackage = expect.optString("package", "")
+                val expectedText = expect.optString("text_contains", "")
+                if (expectedPackage.isNotEmpty() &&
+                    tree.optString("package") != expectedPackage
+                ) expectationMatched = false
+                if (expectedText.isNotEmpty() &&
+                    !treeText.contains(expectedText, ignoreCase = true)
+                ) expectationMatched = false
+                outcome.put("expectationMatched", expectationMatched)
+            }
+            results.put(outcome)
+
+            if (!actionSuccess || !expectationMatched) {
+                batchSuccess = false
+                stoppedAt = index
+                break
+            }
+        }
+
+        return JSONObject().apply {
+            put("success", batchSuccess)
+            put("stoppedAt", stoppedAt)
+            put("completed", results.length())
+            put("results", results)
+            put("finalTree", getUITree())
+        }.toString()
     }
 
     private data class ScrollSnapshot(
