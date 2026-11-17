@@ -59,7 +59,7 @@ and body, and sends it. Every tap and keystroke is hers.
 - [Privacy & Security](#-privacy--security)
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
-- [Support the Project](#-support-the-project)
+- [Device regression checklist](docs/DEVICE_REGRESSION.md)
 - [License](#-license)
 
 ---
