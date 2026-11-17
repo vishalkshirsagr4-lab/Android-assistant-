@@ -67,12 +67,10 @@ class LucyLearningStore {
                 ? (value.toDouble() / dimension).clamp(0, 1).toDouble()
                 : null;
         normalizedBounds = {
-          'left': ratio(bounds['left'], width),
-          'top': ratio(bounds['top'], height),
-          'right': ratio(bounds['right'], width),
-          'bottom': ratio(bounds['bottom'], height),
           'cx': ratio(bounds['cx'], width),
           'cy': ratio(bounds['cy'], height),
+          'width': ratio(bounds['w'], width),
+          'height': ratio(bounds['h'], height),
         };
       }
       return <String, dynamic>{
