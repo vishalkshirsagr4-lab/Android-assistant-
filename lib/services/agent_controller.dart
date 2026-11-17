@@ -1831,7 +1831,9 @@ class AgentController extends ChangeNotifier {
       final allowMemory = await _settingsStore.isEnabled(
         LucySettingsStore.memory,
       );
-      await _voiceService.beginStreamingSpeech(lang: _currentLang);
+      if (!_textOnlyMode) {
+        await _voiceService.beginStreamingSpeech(lang: _currentLang);
+      }
       var streamedSpeech = false;
       final agentResponse = await _aiService.agentChat(
         requestWithClock,
@@ -1841,16 +1843,18 @@ class AgentController extends ChangeNotifier {
         memoryContext: allowMemory
             ? (_memoryStore?.relevantContext(userMessage) ?? '')
             : '',
-        onSpeakChunk: (sentence) {
+        onSpeakChunk: _textOnlyMode ? null : (sentence) {
           streamedSpeech = true;
           _voiceService.addStreamingSpeechText(sentence);
         },
-        onSpeakReset: () {
+        onSpeakReset: _textOnlyMode ? null : () {
           streamedSpeech = false;
           unawaited(_voiceService.cancelStreamingSpeech());
         },
       );
-      final streamedSpeechCompletion = _voiceService.finishStreamingSpeech();
+      final streamedSpeechCompletion = _textOnlyMode
+          ? Future<void>.value()
+          : _voiceService.finishStreamingSpeech();
       aiStopwatch.stop();
       _performanceMonitor.recordResponse(
         aiStopwatch.elapsed,
