@@ -1193,13 +1193,16 @@ class AgentController extends ChangeNotifier {
       notifyListeners();
     } finally {
       final taskSucceeded =
+          !_cancelRequested &&
           !_statusMessage.toLowerCase().contains('stopped') &&
           !_statusMessage.startsWith('AI unavailable') &&
           !_statusMessage.startsWith('AI temporarily unavailable') &&
           !_statusMessage.startsWith('AI provider not configured') &&
           !_statusMessage.startsWith('Phone locked') &&
           !_statusMessage.startsWith('Task failed') &&
-          !_statusMessage.startsWith('Autopilot is off');
+          !_statusMessage.startsWith('Autopilot is off') &&
+          !_statusMessage.startsWith('Task partially completed') &&
+          !_statusMessage.startsWith('Task failed verification');
       await _performanceMonitor.endTask(success: taskSucceeded);
       try {
         await _screenCapture.keepScreenAwake(false);
@@ -1417,9 +1420,11 @@ class AgentController extends ChangeNotifier {
             _ => 'Volume is at ' + percent.toString() + ' percent.',
           };
           await _speakLocalReply(reply);
+        } else {
+          await _speakLocalReply('I could not change the volume. Android did not confirm the requested change.');
         }
       } catch (_) {
-        // Keep the fast path silent if Android rejects the volume request.
+        await _speakLocalReply('I could not change the volume because Android rejected the request.');
       }
       return true;
     }
@@ -1474,8 +1479,12 @@ class AgentController extends ChangeNotifier {
           _ => 'App opened.',
         };
         await _speakLocalReply(reply);
+        return true;
       }
-      return true;
+      // Do not swallow a failed fast-path dispatch. Let the full agent loop
+      // inspect the current UI and attempt a safe alternative.
+      _addConversation('I could not open $requestedApp directly. I will check whether another safe way is available.', false);
+      return false;
     }
 
     final settingsMatch = RegExp(
