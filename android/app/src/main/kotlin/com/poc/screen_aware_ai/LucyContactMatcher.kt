@@ -74,8 +74,8 @@ internal object LucyContactMatcher {
         value.replace(Regex("([\\p{L}])\\1+"), "$1")
 
     private fun canonicalToken(value: String): String = when (value) {
-        "papa", "pappa", "appa", "dad", "daddy", "father", "baba", "bapu" -> "father"
-        "mom", "mommy", "mother", "mummy", "amma", "mamma" -> "mother"
+        "papa", "pappa", "apa", "appa", "dad", "daddy", "father", "baba", "bapu" -> "father"
+        "mom", "mommy", "mother", "mummy", "ama", "amma", "mamma" -> "mother"
         "bro", "brother", "bhai" -> "brother"
         "sis", "sister", "akka" -> "sister"
         else -> value
