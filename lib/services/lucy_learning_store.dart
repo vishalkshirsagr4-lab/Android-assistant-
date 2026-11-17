@@ -211,7 +211,7 @@ class LucyLearningStore {
   }
 
   static String normalizeCommand(String value) => value.toLowerCase()
-      .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), ' ')
+      .replaceAll(RegExp(r'[^\p{L}\p{M}\p{N}\s]', unicode: true), ' ')
       .replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static String stableSignature({
