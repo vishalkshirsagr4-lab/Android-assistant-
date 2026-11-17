@@ -135,6 +135,7 @@ class LucyPerformanceMonitor {
     }
     _taskStartedAt = null;
     _taskStartChargeUah = null;
+    _taskStartChargeFuture = null;
     _currentTaskSteps = 0;
   }
 
