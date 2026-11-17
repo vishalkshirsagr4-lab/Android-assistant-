@@ -10,6 +10,7 @@ Use a test phone and synthetic/test accounts. Do not test message sending, calls
 - [ ] Launch Lucy; confirm the app opens without a crash.
 - [ ] Select English, Hindi and Kannada in turn; confirm the selection persists after force-stop and relaunch.
 - [ ] Open the first-run setup guide; confirm the spoken and visible explanations match the selected language.
+- [ ] Deny microphone permission, reopen the setup guide, and confirm TTS guidance still works when a device voice is installed; speech recognition should remain unavailable with a clear status, not crash.
 - [ ] Deny optional permissions; confirm Lucy remains usable for features that do not need them.
 - [ ] Grant Accessibility only from Android Settings; confirm Lucy detects the change after returning to the app.
 - [ ] Grant screen capture only through Android's system consent dialog; confirm the system prompt is visible and user-controlled.
