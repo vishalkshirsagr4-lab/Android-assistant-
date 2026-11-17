@@ -28,6 +28,18 @@ void main() {
     expect(tree.failures, 1);
   });
 
+  test('counts failed model provider responses', () async {
+    final monitor = LucyPerformanceMonitor.shared;
+    monitor.recordResponse(
+      const Duration(milliseconds: 450),
+      success: false,
+    );
+
+    final snapshot = await monitor.snapshot();
+    expect(snapshot.lastResponseMs, 450);
+    expect(snapshot.timings['model']!.failures, 1);
+  });
+
   test('tracks task counts, steps and duration without Android metrics', () async {
     final monitor = LucyPerformanceMonitor.shared;
     monitor.beginTask();
