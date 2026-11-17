@@ -1016,7 +1016,7 @@ class AgentController extends ChangeNotifier {
     final key = text
         .toLowerCase()
         .trim()
-        .replaceAll(RegExp(r'[\\s.,!?;:]+'), ' ');
+        .replaceAll(RegExp(r'[\s.,!?;:]+'), ' ');
     if (key.isEmpty) return false;
     final now = DateTime.now();
     final isDuplicate = key == _lastFinalTranscriptKey &&
@@ -1570,7 +1570,7 @@ class AgentController extends ChangeNotifier {
         .toList(growable: false);
     String currentMessage = alternatives.isEmpty
         ? userMessage
-        : '$userMessage\\n\\n[ASR_ALTERNATIVES]\\n${jsonEncode(alternatives)}\\n[/ASR_ALTERNATIVES]';
+        : '$userMessage\n\n[ASR_ALTERNATIVES]\n${jsonEncode(alternatives)}\n[/ASR_ALTERNATIVES]';
     // Screen dimensions are stable for this command, but device context is
     // refreshed before every model request so new notifications, battery,
     // network, foreground-app and calendar changes are visible to Lucy.
