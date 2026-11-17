@@ -92,6 +92,70 @@ void main() {
       expect(response.actions.single.type, 'remember');
     });
 
+    test('parses native deep scroll and read actions', () {
+      for (final type in [
+        'scroll_to_end',
+        'scroll_to_top',
+        'read_all',
+        'open_each',
+      ]) {
+        final response = AgentResponse.fromJson(
+          <String, dynamic>{
+            'route': 'read',
+            'needs_screen': true,
+            'plan': <String, dynamic>{
+              'goal': 'Inspect the full visible list',
+              'done_when': 'The native tool reports the requested coverage',
+            },
+            'actions': <dynamic>[
+              <String, dynamic>{
+                'type': type,
+                'maxScrolls': 80,
+                'maxItems': 10,
+                'confidence': 0.98,
+                'risk': 'low',
+                'reason': 'The user asked Lucy to inspect this screen.',
+              },
+            ],
+            'speak': '',
+            'done': false,
+            'lang': 'en',
+          },
+          '{}',
+        );
+        expect(response.actions.single.type, type);
+        expect(response.needsScreen, isTrue);
+      }
+    });
+
+    test('rejects deep reading actions when needs_screen is false', () {
+      expect(
+        () => AgentResponse.fromJson(
+          <String, dynamic>{
+            'route': 'read',
+            'needs_screen': false,
+            'plan': <String, dynamic>{
+              'goal': 'Read the list',
+              'done_when': 'The list was inspected',
+            },
+            'actions': <dynamic>[
+              <String, dynamic>{
+                'type': 'read_all',
+                'confidence': 0.98,
+                'risk': 'low',
+                'reason': 'The user asked for screen reading.',
+              },
+            ],
+            'speak': '',
+            'done': false,
+            'lang': 'en',
+          },
+          '{}',
+        ),
+        throwsFormatException,
+      );
+    });
+
     test('keeps event responses action-free', () {
       final response = AgentResponse.fromJson(
         <String, dynamic>{
