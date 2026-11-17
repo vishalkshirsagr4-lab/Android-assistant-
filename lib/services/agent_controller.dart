@@ -1460,7 +1460,6 @@ class AgentController extends ChangeNotifier {
         type.contains('webview') ||
         type.contains('surfaceview') ||
         type.contains('textureview') ||
-        type.contains('imageview') ||
         type.contains('videoview') ||
         type.contains('canvas') ||
         type.contains('glsurface'));
@@ -1477,6 +1476,10 @@ class AgentController extends ChangeNotifier {
         .where((value) => value.isNotEmpty)
         .toList(growable: false);
     final totalChars = readable.fold<int>(0, (sum, value) => sum + value.length);
+    final imageCount = types.where((type) => type.contains('imageview')).length;
+    if (imageCount >= 3 && (readable.length < 12 || totalChars < 260)) {
+      return true;
+    }
     return readable.length < 8 || totalChars < 160;
   }
 
