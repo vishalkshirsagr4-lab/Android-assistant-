@@ -143,7 +143,8 @@ class ScreenActionService : AccessibilityService() {
                 val isAdSkipId = viewId.endsWith("skip_ad_button") ||
                     viewId.endsWith("skip_ads_button") || viewId.endsWith("ad_skip_button")
                 val isAdSkipLabel = labels.any(ScreenWatcherPolicy::isAdSkipLabel)
-                val isSafePopupLabel = labels.any(ScreenWatcherPolicy::isSafeDismissLabel) &&\n                    hasPopupAncestor(node)
+                val isSafePopupLabel = labels.any(ScreenWatcherPolicy::isSafeDismissLabel) &&
+                    hasPopupAncestor(node)
                 val isPopupClose = autoDismissPopups &&
                     ScreenWatcherPolicy.isCloseControl(viewId, labels) &&
                     hasPopupAncestor(node)
