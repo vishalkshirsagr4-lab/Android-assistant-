@@ -2003,6 +2003,9 @@ class AgentController extends ChangeNotifier {
         _updateTaskProgress('Carrying out your task · Step $step');
 
         var latestSnapshot = uiSnapshot;
+        // A batch is only as successful as its weakest step. Keep an aggregate
+        // result so a later successful action cannot hide an earlier failure.
+        var allActionsVerified = true;
         for (final action in agentResponse.actions) {
           if (_cancelRequested) break;
           final isMemoryManagementAction = const {
@@ -2052,6 +2055,7 @@ class AgentController extends ChangeNotifier {
           actionVerified = _lastActionDispatchSucceeded &&
               (!requiresVisualChange ||
                   _isActionReady(action, beforeAction, latestSnapshot));
+          allActionsVerified = allActionsVerified && actionVerified;
           final actionRecord = <String, dynamic>{
             'step': step,
             'action': action.type,
@@ -2108,10 +2112,14 @@ class AgentController extends ChangeNotifier {
               currentMessage =
                   'The previous action was not verified. Do not repeat the same action. Inspect the new screen and choose a different safe approach.';
             }
+            // Do not execute dependent actions from this same model response
+            // after a prerequisite failed. Replan from a fresh UI snapshot.
+            break;
           } else if (changed || !requiresVisualChange) {
             completedPlanSteps++;
           }
         }
+        actionVerified = allActionsVerified;
         executionStopwatch.stop();
         LucyReliabilityLog.event(
           'agent_execution_timing',
