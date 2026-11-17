@@ -84,11 +84,16 @@ void main() {
       );
     });
 
-    test('requires approval for external communication actions', () {
-      for (final action in ['place_call', 'send_sms', 'share_text']) {
-        expect(LucyActionApprovalPolicy.requiresApproval(action), isTrue,
+    test('does not add Lucy approval prompts for calls and SMS', () {
+      for (final action in ['place_call', 'send_sms']) {
+        expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
             reason: action);
       }
+      // Sharing arbitrary text remains a separate consequential action.
+      expect(
+        LucyActionApprovalPolicy.requiresApproval('share_text'),
+        isTrue,
+      );
     });
 
     test('requires approval for app installation and account security changes', () {
