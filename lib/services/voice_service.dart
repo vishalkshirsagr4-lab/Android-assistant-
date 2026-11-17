@@ -394,7 +394,9 @@ class VoiceService {
       _ttsCancelledCurrentUtterance = false;
       _isSpeaking = true;
       try {
-        final result = await _tts.speak(text, focus: true);
+        final result = await _tts
+            .speak(text, focus: true)
+            .timeout(const Duration(seconds: 30));
         if (result is num && result < 0) {
           throw StateError('Android TTS rejected the utterance');
         }
@@ -408,6 +410,11 @@ class VoiceService {
         if (attempt >= retries || _disposed || generation != _speechGeneration) {
           return false;
         }
+        // Clear a possibly stalled utterance before retrying after an
+        // interruption or missing completion callback.
+        try {
+          await _tts.stop().timeout(const Duration(seconds: 2));
+        } catch (_) {}
         // Give the notification/audio-focus transition time to settle before
         // retrying the same sentence. Do not restart the microphone here.
         await Future.delayed(const Duration(milliseconds: 650));
