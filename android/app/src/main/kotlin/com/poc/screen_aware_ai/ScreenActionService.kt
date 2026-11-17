@@ -18,6 +18,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 class ScreenActionService : AccessibilityService() {
 
@@ -35,7 +36,8 @@ class ScreenActionService : AccessibilityService() {
         Log.d(TAG, "Accessibility service connected")
     }
 
-    private val uiEventMonitor = Object()
+    private val uiEventLock = ReentrantLock()
+    private val uiEventChanged = uiEventLock.newCondition()
     @Volatile private var uiEventSequence: Long = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -46,17 +48,18 @@ class ScreenActionService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
-                synchronized(uiEventMonitor) {
+                uiEventLock.lock()
+                try {
                     uiEventSequence += 1L
-                    uiEventMonitor.notifyAll()
+                    uiEventChanged.signalAll()
+                } finally {
+                    uiEventLock.unlock()
                 }
             }
         }
     }
 
-    fun getUiEventSequence(): Long = synchronized(uiEventMonitor) {
-        uiEventSequence
-    }
+    fun getUiEventSequence(): Long = uiEventSequence
 
     /**
      * Waits for a real accessibility event instead of repeatedly traversing
@@ -64,15 +67,18 @@ class ScreenActionService : AccessibilityService() {
      */
     fun waitForUiEvent(afterSequence: Long, timeoutMs: Long): Long {
         val timeout = timeoutMs.coerceIn(0L, 2_000L)
-        synchronized(uiEventMonitor) {
+        uiEventLock.lock()
+        try {
             if (uiEventSequence <= afterSequence && timeout > 0L) {
                 try {
-                    uiEventMonitor.wait(timeout)
+                    uiEventChanged.await(timeout, TimeUnit.MILLISECONDS)
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                 }
             }
             return uiEventSequence
+        } finally {
+            uiEventLock.unlock()
         }
     }
 
