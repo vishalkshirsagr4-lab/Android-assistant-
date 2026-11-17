@@ -1205,8 +1205,9 @@ class AgentController extends ChangeNotifier {
       bool actionVerified = true;
       String? toolResultForNextTurn;
 
-      // 3. Execute and verify the single returned action.
+      // 3. Execute and verify the returned action(s).
       if (agentResponse.actions.isNotEmpty) {
+        final executionStopwatch = Stopwatch()..start();
         _setState(AgentState.executingAction);
         _updateTaskProgress('Carrying out your task · Step $step');
 
@@ -1270,6 +1271,13 @@ class AgentController extends ChangeNotifier {
             completedPlanSteps++;
           }
         }
+        executionStopwatch.stop();
+        LucyReliabilityLog.event(
+          'agent_execution_timing',
+          step: step,
+          elapsedMs: executionStopwatch.elapsedMilliseconds,
+          success: actionVerified,
+        );
       }
 
       if (_cancelRequested) break;
@@ -1296,17 +1304,24 @@ class AgentController extends ChangeNotifier {
 
       // 4. Speak the response (only speak if done or has something to say)
       if (speakText.isNotEmpty) {
+        final ttsStopwatch = Stopwatch()..start();
         _setState(AgentState.speaking);
         _updateTaskProgress('Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
         await _voiceService.speak(ttsText, lang: _currentLang);
 
-        // Wait for TTS to finish
         await Future.delayed(const Duration(milliseconds: 500));
         while (_voiceService.isSpeaking && !_cancelRequested) {
           await Future.delayed(const Duration(milliseconds: 200));
         }
+        ttsStopwatch.stop();
+        LucyReliabilityLog.event(
+          'agent_tts_timing',
+          step: step,
+          elapsedMs: ttsStopwatch.elapsedMilliseconds,
+          success: true,
+        );
       }
 
       if (_cancelRequested) break;
