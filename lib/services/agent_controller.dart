@@ -517,6 +517,40 @@ class AgentController extends ChangeNotifier {
     }
   }
 
+  String _voiceLanguageUnavailableMessage() => switch (_currentLang) {
+        'hi' => 'इस डिवाइस के speech engine में हिन्दी उपलब्ध नहीं है। Google Speech Services में हिन्दी डाउनलोड करें या भाषा बदलें।',
+        'kn' => 'ಈ ಸಾಧನದ speech engine ನಲ್ಲಿ ಕನ್ನಡ ಲಭ್ಯವಿಲ್ಲ. Google Speech Services ನಲ್ಲಿ ಕನ್ನಡವನ್ನು ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ ಅಥವಾ ಭಾಷೆ ಬದಲಿಸಿ.',
+        'ja' => 'この端末の音声認識エンジンでは日本語を利用できません。音声サービスの言語データを追加するか、別の言語を選んでください。',
+        'ar' => 'اللغة المحددة غير متاحة في خدمة التعرف على الكلام. نزّل بيانات اللغة أو اختر لغة أخرى.',
+        _ => 'The selected speech language is unavailable. Install its language pack in your speech service or choose another language.',
+      };
+
+  Future<void> _handleVoiceLanguageUnavailable() async {
+    final message = _voiceLanguageUnavailableMessage();
+    _isActive = false;
+    _listenRestartScheduled = false;
+    _silenceTimeoutTimer?.cancel();
+    _silenceTimeoutTimer = null;
+    _statusMessage = message;
+    _currentTranscript = message;
+    await _voiceService.stopListening();
+    _setState(AgentState.idle);
+    notifyListeners();
+    await _voiceService.speak(message, lang: _currentLang);
+  }
+
+  /// Spoken first-run guidance follows the language selected in Lucy's menu.
+  Future<void> speakSetupGuide() async {
+    final message = switch (_currentLang) {
+      'hi' => 'लूसी सेटअप में आपका स्वागत है। स्क्रीन पढ़ने के लिए Accessibility चालू करें। स्क्रीन कैप्चर, नोटिफिकेशन और कैलेंडर की अनुमति वैकल्पिक है। Android हर अनुमति आपसे अलग से पूछेगा।',
+      'kn' => 'ಲೂಸಿ ಸೆಟಪ್‌ಗೆ ಸ್ವಾಗತ. ಪರದೆಯನ್ನು ಓದಲು Accessibility ಆನ್ ಮಾಡಿ. Screen capture, notifications ಮತ್ತು calendar ಅನುಮತಿಗಳು ಐಚ್ಛಿಕ. ಪ್ರತಿಯೊಂದು ಅನುಮತಿಯನ್ನು Android ನಿಮ್ಮಿಂದಲೇ ಕೇಳುತ್ತದೆ.',
+      'ja' => 'Lucyのセットアップです。画面を読むにはユーザー補助を有効にしてください。画面キャプチャ、通知、カレンダーへのアクセスは任意で、Androidが個別に確認します。',
+      'ar' => 'مرحبًا بك في إعداد لوسي. فعّل إمكانية الوصول لقراءة الشاشة. الوصول إلى التقاط الشاشة والإشعارات والتقويم اختياري، وسيطلب أندرويد كل إذن منك.',
+      _ => 'Welcome to Lucy setup. Enable Accessibility to read screens. Screen capture, notifications and calendar access are optional. Android will ask you to approve each permission.',
+    };
+    await _voiceService.speak(message, lang: _currentLang);
+  }
+
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
   double get voiceSpeechRate => _voiceService.speechRate;
@@ -681,14 +715,19 @@ class AgentController extends ChangeNotifier {
     };
 
     _voiceService.onError = (error) {
-      debugPrint('Lucy speech recognition error: $error');
+      debugPrint('Lucy speech recognition status: $error');
       if (!_isActive || _state != AgentState.listening) return;
       final normalized = error.toLowerCase();
-      if (normalized.contains('permission') ||
-          normalized.contains('not_available') ||
-          normalized.contains('recognizer_not_found')) {
-        _statusMessage =
-            'Microphone or speech service unavailable. Check permissions and retry.';
+      if (normalized == 'language_unavailable') {
+        unawaited(_handleVoiceLanguageUnavailable());
+        return;
+      }
+      if (normalized == 'microphone_permission_required' ||
+          normalized == 'speech_recognition_unavailable') {
+        _statusMessage = normalized == 'microphone_permission_required'
+            ? 'Microphone permission is required. Enable it in Android settings.'
+            : 'Speech recognition is unavailable. Check the installed speech service.';
+        _currentTranscript = _statusMessage;
         unawaited(stopAgent());
         return;
       }
