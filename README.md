@@ -6,17 +6,17 @@
 
 **Lucy sees your screen, understands what's on it, and taps, types and swipes for you — all from a voice command.**
 
-[![Latest release](https://img.shields.io/github/v/release/alzin/lucy-screen-agent?label=release&color=3DDC84&logo=android&logoColor=white)](https://github.com/alzin/lucy-screen-agent/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/alzin/lucy-screen-agent/total?label=downloads&color=6C63FF)](https://github.com/alzin/lucy-screen-agent/releases)
-[![CI](https://github.com/alzin/lucy-screen-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alzin/lucy-screen-agent/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/vishalkshirsagr4-lab/Android-assistant-?label=release&color=3DDC84&logo=android&logoColor=white)](https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/vishalkshirsagr4-lab/Android-assistant-/total?label=downloads&color=6C63FF)](https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases)
+[![CI](https://github.com/vishalkshirsagr4-lab/Android-assistant-/actions/workflows/ci.yml/badge.svg)](https://github.com/vishalkshirsagr4-lab/Android-assistant-/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Flutter](https://img.shields.io/badge/Flutter-3.47%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/alzin)
+[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)]()
 
-<a href="https://github.com/alzin/lucy-screen-agent/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
+<a href="https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
 
 [Download](#-download--install) · [Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Contributing](CONTRIBUTING.md) · [Troubleshooting](#-troubleshooting)
 
@@ -108,8 +108,8 @@ That turned out to be one case out of several. The common thread is *your hands 
 | 🗣️ **Voice-driven** | Speech-to-text in, text-to-speech out. No typing required. |
 | 👁️ **Screen-aware** | Combines a JPEG screenshot with a structured accessibility tree, so the model sees *and* reads the screen. |
 | 🎯 **No hallucinated taps** | The model taps elements **by ID**, never by guessed coordinates. Real pixel bounds are resolved on the Dart side from the accessibility tree. |
-| 🌍 **Five languages** | English, Hindi, Kannada, Japanese and Arabic, with matching Android STT/TTS locale requests and language-aware replies. Actual recognition/voice availability depends on installed Android language packs. |
-| 🔄 **Agentic loop** | Observe → decide → act → re-observe, up to 50 steps per command. |
+| 🌍 **Five languages** | English, Hindi, Kannada, Japanese and Arabic, with Android STT/TTS locale requests and localized setup guidance. Actual recognition/voice availability depends on installed Android language packs. |
+| 🔄 **Agentic loop** | Observe → decide → act → re-observe, 50 steps by default and up to 150 for bounded deep-list tasks. |
 | 🛑 **Always interruptible** | A persistent "Stop Lucy" notification cancels the agent instantly, even while she's inside another app. |
 | 🎨 **Live transcript** | Every screenshot, action and reply is shown in a scrollable conversation view. |
 | 🔑 **Bring your own key** | Your Gemini API key stays on your device. No backend, no telemetry, no account. |
@@ -123,13 +123,13 @@ or a computer at all — just your phone.
 
 <div align="center">
 
-<a href="https://github.com/alzin/lucy-screen-agent/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20lucy--latest.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
+<a href="https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20lucy--latest.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
 
 </div>
 
 That link never changes and always serves the **newest stable build**. If you want a
 smaller download or a specific version, pick one from the
-[Releases page](https://github.com/alzin/lucy-screen-agent/releases):
+[Releases page](https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases):
 
 | File | Who it's for |
 |---|---|
@@ -253,7 +253,7 @@ Make sure the **Android toolchain** row has a green check. Everything else (iOS,
 ### Step 2 — Clone the repository
 
 ```bash
-git clone https://github.com/alzin/lucy-screen-agent.git
+git clone https://github.com/vishalkshirsagr4-lab/Android-assistant-.git
 ```
 
 ```bash
@@ -344,17 +344,17 @@ Voice commands are supported in English, Japanese, Arabic, Hindi and Kannada. Ex
 - `Forget my nickname`
 - `Forget everything`
 
-Memory is not learned silently from conversations or repeated app behavior. Lucy saves only details you explicitly ask her to remember or approve. Entries are stored locally with a category, timestamps and confidence value; only relevant entries are included in each AI request. Only a small relevance-ranked subset is attached to an AI request when it helps with that request. You can inspect or delete entries in **Lucy tools → Manage saved memory**.
+Personal facts and preferences are saved only when you explicitly ask Lucy to remember them. Safe navigation/reading workflows can become skill suggestions after the same sequence succeeds twice; they remain disabled until you approve them in **Lucy tools → Manage learning**. You can revoke approval at any time. Entries are stored locally with categories, timestamps and confidence; only a relevance-ranked subset is included in each AI request. You can inspect or delete memories in **Lucy tools → Manage saved memory**.
 
 ### Proactive suggestions and action approval
 
 Lucy can optionally check local device signals and post a small number of suggestions. Enable this in **Lucy tools → Proactive suggestions**. You can configure quiet hours, a daily limit and a cooldown, and ask **Why did Lucy suggest that?** to see the stored reason, confidence and risk.
 
-The checks are local-only: low battery, a calendar event starting soon, or a recent notification. For a known messaging app Lucy may offer to help draft a reply, but it does not read the notification body in the background, draft or send a message automatically, or call an AI provider from WorkManager. If you choose to ask Lucy to draft a reply, the normal on-demand context and provider privacy rules apply.
+The checks are local-only: low battery, a calendar event starting soon, or a recent notification. When you explicitly enable notification context and grant Android notification access, Lucy stores a short, bounded, locally redacted notification summary (including title and text) for later on-demand context; notification contents are not logged. WorkManager does not call an AI provider or send replies in the background. If you ask Lucy to draft a reply, the normal on-demand context and provider privacy rules apply.
 
 Android WorkManager periodic jobs have a 15-minute minimum interval and may run later under Doze or OEM battery restrictions. This is not an exact timer. Lucy's existing foreground services are used only during active, user-started voice or screen-control sessions; there is no always-on polling foreground service.
 
-Every AI action carries `confidence`, `risk` and `reason` metadata. A local policy can raise the model's risk but cannot lower it. Low-risk actions can proceed; medium-risk actions ask for a yes/no answer; high-risk actions require an explicit approval. Password-field typing and text entry in financial apps are treated as high risk, and Lucy does not repeat sensitive text in the approval prompt.
+Every AI action carries `confidence`, `risk` and `reason` metadata. A local policy can raise the model's risk but cannot lower it. The emergency Stop control is always available. Sending/calling, payments, purchases, app installation/uninstallation, permanent deletion and account-security changes require user review. Password-field typing and text entry in financial apps are treated as high risk, and Lucy does not repeat sensitive text in the approval prompt.
 
 ### Switching language 🌍
 
@@ -376,7 +376,7 @@ Three ways, in order of urgency:
 2. **The "Stop Lucy" notification** — swipe down from anywhere, even inside another app, and tap **Stop Lucy**. This is the one you want when she's off doing something in a different app.
 3. **Force-stop the app** from Android settings — the nuclear option.
 
-Lucy also stops herself automatically after **50 steps** on a single command, so she can never loop forever.
+Lucy uses a **50-step / 3-minute** budget for ordinary tasks and up to **150 steps / 6 minutes** for explicit deep-list tasks. The Stop control remains available throughout.
 
 ---
 
@@ -513,7 +513,7 @@ Tap the 🔑 icon and paste a valid key from [AI Studio](https://aistudio.google
 <details>
 <summary><b>Lucy taps the wrong thing</b></summary>
 
-This usually means the accessibility tree is incomplete — some apps (games, or apps with poor semantics) expose very little. Check the conversation view: if the action summary shows a `tap` on an element that doesn't match, the UI tree given to the model was misleading. Please [open an issue](https://github.com/alzin/lucy-screen-agent/issues) with the app name and what you asked for.
+This usually means the accessibility tree is incomplete — some apps (games, or apps with poor semantics) expose very little. Check the conversation view: if the action summary shows a `tap` on an element that doesn't match, the UI tree given to the model was misleading. Please [open an issue](https://github.com/vishalkshirsagr4-lab/Android-assistant-/issues) with the app name and what you asked for.
 
 </details>
 
@@ -614,7 +614,7 @@ Ideas that would make great contributions. Comment on an issue or open one to cl
 
 👉 Start with **[CONTRIBUTING.md](CONTRIBUTING.md)**. It covers the dev setup, code style, the PR process, and walkthroughs for adding a new agent action or language.
 
-Good first issues are labelled [`good first issue`](https://github.com/alzin/lucy-screen-agent/labels/good%20first%20issue).
+Good first issues are labelled [`good first issue`](https://github.com/vishalkshirsagr4-lab/Android-assistant-/labels/good%20first%20issue).
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -624,7 +624,7 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Lucy is free, open source, and developed in spare time. If she saves you some of yours, you can chip in:
 
-<a href="https://ko-fi.com/alzin"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="36"></a>
+<a href=""><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="36"></a>
 
 Support is entirely optional and buys no priority on issues or pull requests — it just keeps the API bills paid and the roadmap moving. Starring the repo and filing good bug reports helps just as much.
 
@@ -642,7 +642,7 @@ Released under the [MIT License](LICENSE).
 
 If Lucy is useful to you, consider leaving a ⭐ — it genuinely helps others find the project.
 
-[Report a bug](https://github.com/alzin/lucy-screen-agent/issues/new?template=bug_report.yml) · [Request a feature](https://github.com/alzin/lucy-screen-agent/issues/new?template=feature_request.yml)
+[Report a bug](https://github.com/vishalkshirsagr4-lab/Android-assistant-/issues/new?template=bug_report.yml) · [Request a feature](https://github.com/vishalkshirsagr4-lab/Android-assistant-/issues/new?template=feature_request.yml)
 
 </div>
 "# Android-assistant-" 
