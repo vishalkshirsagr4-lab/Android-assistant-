@@ -11,6 +11,6 @@ void main() {
     expect(prompt, contains('MEMORY AND PRIVACY'));
     expect(prompt, contains('RESPONSE FORMAT'));
     expect(prompt, contains('LANGUAGE RULES'));
-    expect(prompt, isNot(contains(r'\\n')));
+    expect(prompt, isNot(contains(r'\n')));
   });
 }
