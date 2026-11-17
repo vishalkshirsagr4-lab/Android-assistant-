@@ -952,15 +952,15 @@ class AgentController extends ChangeNotifier {
     }
 
     if (!await _settingsStore.isEnabled(LucySettingsStore.aiRequests)) {
-      await _speakLocalReply('Cloud AI requests are disabled in Privacy & settings. I can still help with supported offline commands.');
+      _statusMessage = 'Cloud AI disabled · Offline commands remain available';
+      notifyListeners();
       await _resumeOrFinishListening();
       return;
     }
 
     if (!await _aiService.isProviderReady()) {
-      await _speakLocalReply(
-        'I can help offline with the time, battery and flashlight. Add an AI provider key in Lucy tools for screen and app tasks.',
-      );
+      _statusMessage = 'AI provider not configured · Offline commands remain available';
+      notifyListeners();
       await _resumeOrFinishListening();
       return;
     }
@@ -983,7 +983,9 @@ class AgentController extends ChangeNotifier {
     } finally {
       await _screenCapture.keepScreenAwake(false);
     }
-    _updateTaskProgress('Task finished · Listening again');
+    if (!_statusMessage.startsWith('AI unavailable')) {
+      _updateTaskProgress('Task finished · Listening again');
+    }
 
     // Continuous mode resumes; push-to-talk closes after one completed turn.
     await _resumeOrFinishListening();
