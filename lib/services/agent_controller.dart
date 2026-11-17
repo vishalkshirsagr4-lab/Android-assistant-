@@ -1017,7 +1017,7 @@ class AgentController extends ChangeNotifier {
 
     _updateTaskProgress('Planning your request');
     await _screenCapture.keepScreenAwake(true);
-    await _performanceMonitor.beginTask();
+    _performanceMonitor.beginTask();
     try {
       await _runAgentLoop(text);
     } finally {
