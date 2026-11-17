@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -463,7 +464,7 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
   }
 
   Future<void> _openSetupWizard({bool markSeen = false}) async {
-    await widget.controller.speakSetupGuide();
+    unawaited(widget.controller.speakSetupGuide());
     if (!mounted) return;
     await showDialog<void>(
       context: context,
