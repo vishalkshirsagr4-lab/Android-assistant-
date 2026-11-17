@@ -1,0 +1,287 @@
+package com.poc.screen_aware_ai
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.util.Log
+
+/** User-started microphone service with a visible notification and Stop action. */
+class NativeVoiceService : Service() {
+    companion object {
+        const val ACTION_FORCE_STOP = "com.poc.screen_aware_ai.NATIVE_VOICE_STOPPED"
+        const val ACTION_RESULT = "com.poc.screen_aware_ai.NATIVE_VOICE_RESULT"
+        const val ACTION_ERROR = "com.poc.screen_aware_ai.NATIVE_VOICE_ERROR"
+        const val ACTION_STOPPED = "com.poc.screen_aware_ai.NATIVE_VOICE_STOPPED_EVENT"
+        const val EXTRA_LOCALE = "localeId"
+        private const val ACTION_STOP = "com.poc.screen_aware_ai.STOP_NATIVE_VOICE"
+        private const val CHANNEL_ID = "lucy_native_voice"
+        private const val NOTIFICATION_ID = 2301
+        private const val TAG = "NativeVoiceService"
+
+        @Volatile
+        private var activeInstance: NativeVoiceService? = null
+
+        /** Updates the ongoing notification only while Lucy's voice service is active. */
+        fun updateStatus(status: String) {
+            activeInstance?.updateNotificationStatus(status)
+        }
+
+        fun pauseForProcessing() {
+            activeInstance?.pauseRecognitionForProcessing()
+        }
+
+        fun resumeAfterProcessing() {
+            activeInstance?.resumeRecognitionAfterProcessing()
+        }
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var recognizer: SpeechRecognizer? = null
+    private var localeId = "en_US"
+    private var stopped = false
+    private var pausedForProcessing = false
+    private var userInitiatedStop = false
+    private var restartScheduled = false
+    private var retryMs = 1000L
+    private var notificationStatus = "Listening for your command"
+    private var deviceLocked = false
+
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    deviceLocked = try {
+                        (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                Intent.ACTION_USER_PRESENT -> deviceLocked = false
+                else -> return
+            }
+            // Keep task state intact; only add/remove the lock-screen context.
+            updateNotificationStatus(notificationStatus)
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        activeInstance = this
+        deviceLocked = try {
+            (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
+        } catch (_: Exception) {
+            false
+        }
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenStateReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(screenStateReceiver, screenFilter)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "Lucy microphone", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopByUser()
+            return START_NOT_STICKY
+        }
+        stopped = false
+        userInitiatedStop = false
+        localeId = intent?.getStringExtra(EXTRA_LOCALE) ?: localeId
+        try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            startRecognition()
+        } catch (error: Exception) {
+            Log.e(TAG, "Could not start voice foreground service", error)
+            emitError(error.message ?: "Could not start microphone service")
+            stopSelf()
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun startRecognition() {
+        if (stopped || pausedForProcessing || restartScheduled) return
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            emitError("Android speech recognition service is unavailable.")
+            stopSelf()
+            return
+        }
+        try {
+            recognizer?.destroy()
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this).also { engine ->
+                engine.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: android.os.Bundle?) { retryMs = 1000L }
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+                    override fun onPartialResults(results: android.os.Bundle?) { publish(results, false) }
+                    override fun onResults(results: android.os.Bundle?) {
+                        publish(results, true)
+                        scheduleRestart(350L)
+                    }
+                    override fun onError(error: Int) {
+                        if (stopped || pausedForProcessing) return
+                        if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                            emitError("Microphone permission is missing.")
+                            stopSelf()
+                        } else {
+                            // SpeechRecognizer commonly ends an utterance with
+                            // ERROR_SPEECH_TIMEOUT. This is recoverable: retry
+                            // inside the foreground service only. Do not also
+                            // ask Flutter to restart, which caused competing
+                            // recognizers and repeated listening-timeout loops.
+                            Log.w(TAG, "Recoverable speech interruption (code $error); reconnecting")
+                            scheduleRestart(retryMs)
+                        }
+                    }
+                })
+                val request = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeId.replace('_', '-'))
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+                }
+                engine.startListening(request)
+            }
+        } catch (error: Exception) {
+            emitError(error.message ?: "Speech recognition failed")
+            scheduleRestart(retryMs)
+        }
+    }
+
+    private fun publish(bundle: android.os.Bundle?, final: Boolean) {
+        val words = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+        sendBroadcast(Intent(ACTION_RESULT).setPackage(packageName).apply {
+            putExtra("text", words)
+            putExtra("isFinal", final)
+        })
+    }
+
+    private fun emitError(message: String) {
+        sendBroadcast(Intent(ACTION_ERROR).setPackage(packageName).putExtra("message", message))
+    }
+
+    private fun scheduleRestart(delay: Long) {
+        if (stopped || pausedForProcessing || restartScheduled) return
+        restartScheduled = true
+        handler.postDelayed({
+            restartScheduled = false
+            if (!stopped) startRecognition()
+        }, delay)
+        retryMs = (retryMs * 2).coerceAtMost(30000L)
+    }
+
+    private fun stopByUser() {
+        userInitiatedStop = true
+        stopped = true
+        handler.removeCallbacksAndMessages(null)
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        recognizer?.destroy()
+        recognizer = null
+        sendBroadcast(Intent(ACTION_FORCE_STOP).setPackage(packageName))
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun pauseRecognitionForProcessing() {
+        if (stopped || pausedForProcessing) return
+        pausedForProcessing = true
+        restartScheduled = false
+        handler.removeCallbacksAndMessages(null)
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        recognizer?.destroy()
+        recognizer = null
+    }
+
+    private fun resumeRecognitionAfterProcessing() {
+        if (stopped || !pausedForProcessing) return
+        pausedForProcessing = false
+        startRecognition()
+    }
+
+    private fun updateNotificationStatus(status: String) {
+        if (stopped) return
+        notificationStatus = status.take(120)
+        try {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, buildNotification())
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not update voice notification", error)
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val stopIntent = Intent(this, NativeVoiceService::class.java).setAction(ACTION_STOP)
+        val stopAction = PendingIntent.getService(this, NOTIFICATION_ID, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val isWorking = pausedForProcessing || !notificationStatus.startsWith("Listening")
+        val title = when {
+            isWorking -> "Lucy is working"
+            deviceLocked -> "Lucy is ready"
+            else -> "Lucy is listening"
+        }
+        val visibleStatus = if (deviceLocked) {
+            "Phone locked • $notificationStatus"
+        } else {
+            notificationStatus
+        }
+        return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle(title)
+            .setContentText(visibleStatus)
+            .setOngoing(true)
+            .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "Stop Lucy", stopAction).build())
+            .build()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        stopped = true
+        if (activeInstance === this) activeInstance = null
+        try { unregisterReceiver(screenStateReceiver) } catch (_: Exception) {}
+        handler.removeCallbacksAndMessages(null)
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        recognizer?.destroy()
+        recognizer = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName).putExtra("userInitiated", userInitiatedStop))
+        super.onDestroy()
+    }
+}

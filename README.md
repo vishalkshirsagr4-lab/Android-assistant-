@@ -293,7 +293,7 @@ The first build downloads Gradle dependencies and can take several minutes. Late
 
 ### Step 7 — Add your key to Lucy
 
-In the app, tap the 🔑 **key icon** in the top bar, paste your key and hit **Save**. It is stored locally with `shared_preferences` and never leaves your device except in requests to Google's Gemini API.
+In the app, tap the 🔑 **key icon** in the top bar, paste your key and hit **Save**. Lucy stores it with Android-backed `flutter_secure_storage`; the key is sent to Google only for Gemini API authentication.
 
 ### Step 8 — Enable the accessibility service
 
@@ -331,6 +331,30 @@ Watch the conversation view fill up with screenshots and actions. 🎉
 | ⏰ | *"Set an alarm for 7 in the morning."* |
 
 Lucy asks *"Do you need any further help?"* after each completed task. Answer **"no"** (or "stop", "nothing") and she shuts down cleanly.
+
+### Lucy's personality and memory
+
+Lucy keeps a small, structured memory on this device. You can explicitly save a fact, preference, routine, relationship or contact, set the name/nickname Lucy uses, review saved entries, or ask Lucy to forget one or all entries.
+
+Voice commands are supported in English, Japanese, Arabic, Hindi and Kannada. Examples:
+
+- `Remember that I prefer short explanations`
+- `Call me Alex` or `My nickname is Alex`
+- `What do you remember about me?`
+- `Forget my nickname`
+- `Forget everything`
+
+Memory is not learned silently from conversations or repeated app behavior. Lucy saves only details you explicitly ask her to remember or approve. Up to 50 entries are stored locally with a category, timestamps and confidence value. Only a small relevance-ranked subset is attached to an AI request when it helps with that request. You can inspect or delete entries in **Lucy tools → Manage saved memory**.
+
+### Proactive suggestions and action approval
+
+Lucy can optionally check local device signals and post a small number of suggestions. Enable this in **Lucy tools → Proactive suggestions**. You can configure quiet hours, a daily limit and a cooldown, and ask **Why did Lucy suggest that?** to see the stored reason, confidence and risk.
+
+The checks are local-only: low battery, a calendar event starting soon, or a recent notification. For a known messaging app Lucy may offer to help draft a reply, but it does not read the notification body in the background, draft or send a message automatically, or call an AI provider from WorkManager. If you choose to ask Lucy to draft a reply, the normal on-demand context and provider privacy rules apply.
+
+Android WorkManager periodic jobs have a 15-minute minimum interval and may run later under Doze or OEM battery restrictions. This is not an exact timer. Lucy's existing foreground services are used only during active, user-started voice or screen-control sessions; there is no always-on polling foreground service.
+
+Every AI action carries `confidence`, `risk` and `reason` metadata. A local policy can raise the model's risk but cannot lower it. Low-risk actions can proceed; medium-risk actions ask for a yes/no answer; high-risk actions require an explicit approval. Password-field typing and text entry in financial apps are treated as high risk, and Lucy does not repeat sensitive text in the approval prompt.
 
 ### Switching language 🌍
 
@@ -504,19 +528,46 @@ Please read this before installing. Lucy is powerful precisely because she has d
 
 **What leaves your device**
 
-- 📸 **Screenshots** (downscaled to max 1280px, JPEG quality 72) are sent to the **Google Gemini API** on every step of an active task.
-- 🌲 The **accessibility tree** — including any text visible on screen — is sent with them.
-- 🎤 **Voice** is transcribed by Android's speech recognizer, subject to your device's own settings.
+- 📸 **Screenshots** (downscaled to max 1280px, JPEG quality 72) and the **accessibility tree** (which can contain visible app text) are sent to whichever AI provider processes the current step.
+- Gemini, Groq and Grok can receive screen images. The optional 100milionseek/HMS provider is text-only and is skipped when a screenshot is attached.
+- Lucy tries the selected provider first, then Gemini, Groq, Grok and HMS as available. A fallback provider may therefore receive the same current task context if an earlier provider fails.
+- 🎤 **Voice** is transcribed by Android's speech-recognition service. Audio handling depends on the recognizer and Android/device settings.
+- If enabled, foreground-app name, notification summaries/details, calendar events and approximate location may be included in the AI prompt context. These sources are permission- and setting-dependent.
 
 **What does not**
 
-- Lucy has **no backend**. There is no analytics, no crash reporting, no account, no server operated by this project.
-- Your **API key** is stored locally in `shared_preferences` and only ever sent to Google.
+- Lucy has **no project-operated backend**. There is no project account or analytics service.
+- Provider API keys are stored with `flutter_secure_storage` and are sent only to their corresponding provider for authentication.
+- Phase 6 structured diagnostics log event names, provider/action labels, timings and error types in debug builds. They do not log prompt text, screenshots, notification bodies, phone numbers or API keys.
 
 **What this means in practice**
 
 > [!CAUTION]
 > While a task is running, **anything visible on your screen may be sent to Google** — including messages, emails, banking screens and notifications. The accessibility service can also read text fields and dispatch taps. Don't run Lucy while sensitive information is on screen, and review [Google's Gemini API terms](https://ai.google.dev/gemini-api/terms) to understand how prompt data is handled on your tier.
+
+**Privacy & settings (Phase 7)**
+
+Open the shield icon on Lucy's top bar to control cloud AI requests, provider fallback, voice input/output, screen automation, AI screenshot/UI sharing, direct phone actions, saved memory, scheduled reminders, notification context, calendar context, approximate location and proactive suggestions. Quiet hours are configurable on the same screen. The permissions guide explains each access. **Delete all my data** clears saved memories, local app preferences/history, notification cache, scheduled reminders and provider API keys. Android permissions granted in system settings are not revoked by that button; revoke those separately in Android Settings.
+
+**Android permissions and special access**
+
+- `RECORD_AUDIO`: voice input, only while you start listening.
+- `INTERNET`: requests to the AI provider and update checks.
+- `ACCESS_NETWORK_STATE`: read the current network connectivity type for local context.
+- `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `FOREGROUND_SERVICE_SPECIAL_USE`: visible microphone, screen-capture and stop-control sessions.
+- `POST_NOTIFICATIONS`: stop control and scheduled/proactive reminder notifications on Android 13+.
+- `ACCESS_COARSE_LOCATION`: optional approximate location context; disabled until opted in.
+- `READ_CALENDAR`: optional upcoming-event context; disabled until opted in.
+- `PACKAGE_USAGE_STATS` (special Usage Access): optional foreground-app context.
+- `READ_CONTACTS`: requested only for contact lookup.
+- `CAMERA`: used for the requested camera/flashlight-related operation, subject to device support.
+- `WRITE_SETTINGS` (special access): allows the user to review and change system brightness through Android settings.
+- `REQUEST_INSTALL_PACKAGES`: opens Android's installer for an update the user chooses to install.
+- `QUERY_ALL_PACKAGES`: used to identify installed apps that Lucy can open by package name.
+- `com.android.alarm.permission.SET_ALARM`: allows Android's alarm-clock intent.
+- Accessibility service: reads the visible UI tree and performs requested taps, typing, swipes and navigation. Enable it manually in Android Accessibility settings.
+- Notification listener: optional access to notification metadata/content for local context. Lucy's in-app switch disables its use and clears the cached notification history; Android's system access can also be revoked manually.
+- MediaProjection: Android shows a system consent prompt for each screen-capture session.
 
 **Recommendations**
 
@@ -533,7 +584,7 @@ Found a security issue? Please read **[SECURITY.md](SECURITY.md)** — don't ope
 
 Ideas that would make great contributions. Comment on an issue or open one to claim it:
 
-- [ ] 🔒 **Confirmation gate** for destructive actions (sending messages, purchases, deletions)
+- [x] 🔒 **Confirmation gate** for consequential actions (sending messages, purchases, deletions)
 - [ ] 🧩 **Pluggable AI backends** — OpenAI, Anthropic, or a local model behind the `AiService` interface
 - [ ] 🚫 **App allowlist/blocklist** so Lucy can never touch chosen apps
 - [ ] 💾 **Persistent conversation history** across restarts
@@ -583,3 +634,89 @@ If Lucy is useful to you, consider leaving a ⭐ — it genuinely helps others f
 </div>
 "# Android-assistant-" 
 "# Android-assistant-" 
+
+
+### Native alarm and timer permission
+
+Lucy declares `com.android.alarm.permission.SET_ALARM` for Android Clock `ACTION_SET_ALARM` and `ACTION_SET_TIMER` intents. This is a normal permission (no runtime prompt). Alarm and timer requests still open the system Clock UI for user review. See the [Android AlarmClock reference](https://developer.android.com/reference/android/provider/AlarmClock) and [common intents guide](https://developer.android.com/guide/components/intents-common#Clock).
+
+
+---
+
+## 🎙️ Voice experience (Phase 5)
+
+Lucy supports two user-started microphone modes:
+
+- **Continuous conversation:** tap the microphone once. Lucy listens, answers, and resumes listening after each response. The session ends after 60 seconds without detected speech, or when you tap Stop.
+- **Push-to-talk:** press and hold the microphone button while speaking. On release, Lucy allows a short recognition-finalization window, completes the captured command, then closes the microphone session. Push-to-talk does not request screen capture permission; use tap-to-start continuous mode for screen-based app automation.
+- **Interrupt a spoken response:** tap the microphone while Lucy is speaking. Lucy stops the current response and reopens listening for your next command. This is tap-to-interrupt, not full-duplex voice interruption; Lucy does not run a second microphone recognizer over her own TTS audio.
+- **Voice controls:** use the voice-settings icon to choose Calm, Balanced or Bright, then adjust speaking speed, pitch and volume. These values are saved locally.
+- **Offline commands:** the current time, battery status and flashlight on/off are handled on-device without an AI request. Flashlight control asks for Android camera permission when needed.
+- **Avatar feedback:** Lucy's face and status label react to listening, thinking, speaking, working and confirmation states.
+
+### Microphone privacy
+
+The microphone is started only after you tap or hold Lucy's microphone control. Android shows the ongoing microphone foreground-service notification with a Stop action. Lucy does not implement an always-on wake-word listener in this phase. Speech recognition uses Android's installed recognition service; whether audio is processed on-device or by the device vendor's recognition provider depends on Android and the selected speech service.
+
+### Voice phase validation
+
+1. Tap the microphone and say “What time is it?”; verify the answer works with mobile data and Wi-Fi disabled.
+2. Say “Battery status”; verify the percentage and charging state.
+3. Say “Turn flashlight on”, then “Turn flashlight off”; deny camera permission once and verify Lucy explains that it could not change the torch.
+4. Tap the microphone while Lucy is speaking; verify speech stops and Lucy listens again.
+5. Hold the microphone, say a short command, then release; verify listening stops.
+6. Leave continuous conversation silent for 60 seconds; verify Lucy closes the session.
+7. Change voice style, speed, pitch and volume; restart Lucy and verify the settings persist.
+8. Switch through English, Hindi, Kannada, Japanese and Arabic; verify the selected recognition and TTS locales where installed.
+
+**Known voice limitation:** simultaneous voice barge-in while Lucy is speaking is not enabled because the speech recognizer can mistake Lucy's own TTS for the user's command. Tap-to-interrupt is provided; reliable full-duplex barge-in needs device-tested acoustic echo cancellation and voice-activity detection.
+
+No new Android permissions or pubspec dependencies are introduced by Phase 5. The existing `RECORD_AUDIO` permission and microphone foreground service are reused. Phase 5 does not add model actions, so the Phase 4 action/decision JSON schema is unchanged.
+
+
+---
+
+## 🧰 Reliability and recovery (Phase 6)
+
+- **Plan-first responses:** each model response can include a short ordered `plan` (maximum 8 steps) and no more than one action. Lucy retains the plan across model turns and provider switches.
+- **Action verification:** accessibility actions are checked against a fresh UI tree/package snapshot. Native phone actions are checked against their MethodChannel result. Lucy does not report a UI action as complete solely because it was dispatched.
+- **Stuck-loop protection:** Lucy detects a repeated action on an unchanged screen and several different attempts against the same unchanged screen. It requests a re-plan, permits at most two re-plans per task, and stops rather than repeating indefinitely.
+- **Safe permission recovery:** system permission windows are included in the accessibility snapshot. If Lucy detects a permission prompt, it pauses and asks you to review it manually. Lucy never taps an Allow button automatically.
+- **Provider fallback:** Lucy tries the selected provider first, then Gemini, Groq, Grok and finally 100milionseek/HMS. HMS remains text-only and is skipped when a screenshot is attached. Provider attempts and failures are recorded without raw error bodies or credentials.
+- **Read-only cache:** a small in-memory cache keeps only successful, action-free text answers for 20 seconds. It excludes screen/image requests, memory-bearing requests, dynamic/time-sensitive questions, and likely personal identifiers. It is cleared when the chat is reset.
+- **Structured diagnostics:** debug builds emit timestamped JSON events for provider attempts, latency, action dispatch/verification, re-plans and failures. Prompts, screenshots, message bodies, phone numbers and secrets are not logged.
+
+### Phase 6 action response schema
+
+The model response now includes a plan and at most one action. Every action must contain confidence, risk and reason; Lucy validates these fields and rejects unsupported action types.
+
+```json
+{
+  "plan": ["Open the requested app", "Find the requested item", "Verify the result"],
+  "actions": [
+    {
+      "type": "open_app",
+      "package": "com.whatsapp",
+      "confidence": 0.96,
+      "risk": "low",
+      "reason": "Opening an app is reversible navigation."
+    }
+  ],
+  "speak": "",
+  "done": false,
+  "lang": "en"
+}
+```
+
+### Phase 6 device validation
+
+1. Ask Lucy to open an installed app; verify it checks the foreground package before reporting success.
+2. Ask Lucy to tap a visible element; verify a fresh UI tree is captured afterward.
+3. Use a test screen with a permission prompt; verify Lucy pauses and waits for you instead of tapping Allow.
+4. Temporarily disable Accessibility and issue a screen task; verify Lucy reports the blocker and does not guess coordinates.
+5. Test with the selected provider unavailable and a second configured provider; verify fallback works. Do not enter real account credentials for this test.
+6. Repeat a harmless navigation request on a test app with a deliberately unchanged screen; verify Lucy re-plans and stops after its retry limit.
+7. Ask the same non-dynamic, text-only question twice within 20 seconds with screen capture unavailable; verify the second answer can be served from the in-memory cache.
+8. Inspect debug logs; verify they contain event metadata only and no prompt text, screenshots, secrets, phone numbers or notification bodies.
+
+No new Android permissions or pubspec dependencies are introduced by Phase 6. The existing accessibility service is reused to observe application and system windows. The only Android source change allows system windows to appear in the UI snapshot so permission prompts can be identified.

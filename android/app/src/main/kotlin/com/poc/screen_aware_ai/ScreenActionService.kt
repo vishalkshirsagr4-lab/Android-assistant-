@@ -4,8 +4,12 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.PixelFormat
 import android.os.Bundle
+import android.app.KeyguardManager
 import android.util.Log
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -21,6 +25,8 @@ class ScreenActionService : AccessibilityService() {
         private const val TAG = "ScreenActionService"
     }
 
+    private var keepAwakeView: View? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -35,11 +41,62 @@ class ScreenActionService : AccessibilityService() {
         // Required override
     }
 
+    /** Keep the display awake during an explicitly started Lucy task. */
+    @Synchronized
+    fun keepScreenAwake(enabled: Boolean): Boolean {
+        val manager = getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
+        if (!enabled) {
+            val existing = keepAwakeView ?: return true
+            return try {
+                manager.removeView(existing)
+                keepAwakeView = null
+                true
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not release keep-awake overlay", error)
+                false
+            } finally {
+                keepAwakeView = null
+            }
+        }
+        if (isDeviceLocked()) {
+            Log.i(TAG, "Not keeping the display awake while the device is locked")
+            return false
+        }
+        if (keepAwakeView != null) return true
+        return try {
+            val view = View(this)
+            val params = WindowManager.LayoutParams(
+                1,
+                1,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT
+            )
+            manager.addView(view, params)
+            keepAwakeView = view
+            true
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not add keep-awake accessibility overlay", error)
+            false
+        }
+    }
+
     /**
      * Dispatch a gesture and wait for completion (up to 2 seconds).
      * Returns true if completed, false if cancelled or timed out.
      */
+    fun isDeviceLocked(): Boolean {
+        val keyguard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        return keyguard.isKeyguardLocked
+    }
+
     private fun dispatchGestureSync(gesture: GestureDescription): Boolean {
+        if (isDeviceLocked()) {
+            Log.i(TAG, "Ignoring screen gesture while the device is locked")
+            return false
+        }
         val latch = CountDownLatch(1)
         var success = false
 
@@ -79,8 +136,9 @@ class ScreenActionService : AccessibilityService() {
         return dispatchGestureSync(gestureBuilder.build())
     }
 
-    fun performType(text: String) {
-        val rootNode = rootInActiveWindow ?: return
+    fun performType(text: String): Boolean {
+        if (isDeviceLocked()) return false
+        val rootNode = rootInActiveWindow ?: return false
         val focusedNode = findFocusedEditText(rootNode)
 
         if (focusedNode != null) {
@@ -89,9 +147,13 @@ class ScreenActionService : AccessibilityService() {
                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                 text
             )
-            focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            val changed = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            focusedNode.recycle()
+            rootNode.recycle()
+            return changed
         }
         rootNode.recycle()
+        return false
     }
 
     private fun findFocusedEditText(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -119,12 +181,14 @@ class ScreenActionService : AccessibilityService() {
         return dispatchGestureSync(gestureBuilder.build())
     }
 
-    fun pressBack() {
-        performGlobalAction(GLOBAL_ACTION_BACK)
+    fun pressBack(): Boolean {
+        if (isDeviceLocked()) return false
+        return performGlobalAction(GLOBAL_ACTION_BACK)
     }
 
-    fun pressHome() {
-        performGlobalAction(GLOBAL_ACTION_HOME)
+    fun pressHome(): Boolean {
+        if (isDeviceLocked()) return false
+        return performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
     /**
@@ -134,6 +198,13 @@ class ScreenActionService : AccessibilityService() {
      * Limits: max ~200 elements, max depth ~20.
      */
     fun getUITree(): String {
+        if (isDeviceLocked()) {
+            return JSONObject().apply {
+                put("package", "locked")
+                put("locked", true)
+                put("elements", JSONArray())
+            }.toString()
+        }
         val elements = JSONArray()
         var elementCount = 0
         val maxElements = 200
@@ -149,6 +220,7 @@ class ScreenActionService : AccessibilityService() {
             val contentDesc = node.contentDescription?.toString()
             val isClickable = node.isClickable
             val isEditable = node.isEditable
+            val isPassword = node.isPassword
             val isCheckable = node.isCheckable
             val isScrollable = node.isScrollable
             val isVisible = node.isVisibleToUser
@@ -179,6 +251,7 @@ class ScreenActionService : AccessibilityService() {
                     if (!contentDesc.isNullOrBlank()) put("desc", contentDesc)
                     if (isClickable) put("clickable", true)
                     if (isEditable) put("editable", true)
+                    if (isPassword) put("password", true)
                     if (isFocused) put("focused", true)
                     if (isCheckable) {
                         put("checkable", true)
@@ -233,7 +306,9 @@ class ScreenActionService : AccessibilityService() {
                     for (window in allWindows) {
                         if (elementCount >= maxElements) break
                         // Focus on application windows — skip system UI, input method, etc.
-                        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
+                            window.type != AccessibilityWindowInfo.TYPE_SYSTEM
+                        ) continue
                         val windowRoot = window.root ?: continue
                         // Skip if this is the same window we already traversed
                         val windowPkg = windowRoot.packageName?.toString()
@@ -278,7 +353,9 @@ class ScreenActionService : AccessibilityService() {
         try {
             val allWindows = windows
             for (window in allWindows) {
-                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
+                            window.type != AccessibilityWindowInfo.TYPE_SYSTEM
+                        ) continue
                 val root = window.root ?: continue
                 val pkg = root.packageName?.toString()
                 try {
@@ -297,6 +374,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        keepScreenAwake(false)
         super.onDestroy()
         instance = null
     }

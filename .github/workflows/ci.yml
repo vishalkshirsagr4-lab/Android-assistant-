@@ -34,7 +34,6 @@ jobs:
 
       - name: Format Dart files
         run: dart format .
-
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
 

@@ -64,12 +64,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/avatar_viewer/index.html
-    - assets/amica/LICENSE
-    - assets/amica/vrm/AvatarSample_A.vrm
-    - assets/amica/animations/idle_loop.vrma
-    - assets/amica/animations/greeting.vrma
-    - assets/amica/animations/dance.vrma
-    - assets/amica/animations/peaceSign.vrma
 
   # To add assets to your application, add an assets section, like this:
   # assets:

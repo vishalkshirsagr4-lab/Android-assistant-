@@ -44,10 +44,15 @@ class GrokService {
     if (key.isEmpty) throw ArgumentError('Paste your xAI API key.');
     final client = http.Client();
     try {
-      final response = await client.get(
-        Uri.parse(_modelsEndpoint),
-        headers: {'Authorization': 'Bearer $key', 'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 25));
+      final response = await client
+          .get(
+            Uri.parse(_modelsEndpoint),
+            headers: {
+              'Authorization': 'Bearer $key',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 25));
       if (response.statusCode != 200) {
         throw GrokRequestException(
           _errorMessage(response.statusCode, response.body, checkingKey: true),
@@ -57,10 +62,15 @@ class GrokService {
       final decoded = jsonDecode(response.body);
       final data = decoded is Map ? decoded['data'] : null;
       if (data is! List) {
-        throw const FormatException('xAI returned an unexpected models response.');
+        throw const FormatException(
+          'xAI returned an unexpected models response.',
+        );
       }
-      final models = data.whereType<Map>()
-          .map((item) => item['id']?.toString()).whereType<String>().toSet();
+      final models = data
+          .whereType<Map>()
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .toSet();
       if (!models.contains(_model)) {
         throw const GrokRequestException(
           'The key works, but grok-4.7 is not listed for this xAI account.',
@@ -108,15 +118,17 @@ class GrokService {
 
     final client = http.Client();
     try {
-      final response = await client.post(
-        Uri.parse(_endpoint),
-        headers: {
-          'Authorization': 'Bearer ${key.trim()}',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({'model': model, 'input': input}),
-      ).timeout(timeout);
+      final response = await client
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer ${key.trim()}',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'model': model, 'input': input}),
+          )
+          .timeout(timeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw GrokRequestException(
@@ -127,7 +139,9 @@ class GrokService {
 
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
-        throw const FormatException('Grok returned an invalid response object.');
+        throw const FormatException(
+          'Grok returned an invalid response object.',
+        );
       }
       final output = decoded['output'];
       final result = StringBuffer();
@@ -151,7 +165,9 @@ class GrokService {
       }
       return answer;
     } on TimeoutException {
-      throw TimeoutException('Grok request timed out. Check your connection and retry.');
+      throw TimeoutException(
+        'Grok request timed out. Check your connection and retry.',
+      );
     } finally {
       client.close();
     }
@@ -171,9 +187,10 @@ class GrokService {
     if (detail.length > 400) detail = detail.substring(0, 400);
     if (status == 400) {
       final lowerDetail = detail.toLowerCase();
-      if (checkingKey && (lowerDetail.contains('incorrect api key') ||
-          lowerDetail.contains('invalid api key') ||
-          lowerDetail.contains('api key provided'))) {
+      if (checkingKey &&
+          (lowerDetail.contains('incorrect api key') ||
+              lowerDetail.contains('invalid api key') ||
+              lowerDetail.contains('api key provided'))) {
         return 'This is not a valid xAI API key. Create one in the xAI Console API Keys page. A Grok app/X subscription or management key will not work. Paste only the key itself, without Bearer.';
       }
       return 'xAI rejected the request (HTTP 400). ' +
@@ -181,9 +198,12 @@ class GrokService {
     }
     if (status == 401) return 'xAI rejected this API key (HTTP 401).';
     if (status == 403) return 'This xAI key does not have access (HTTP 403).';
-    if (status == 404) return 'Grok model or API endpoint not found (HTTP 404).';
-    if (status == 429) return 'xAI rate limit or account quota reached (HTTP 429).';
-    if (status >= 500) return 'xAI service error (HTTP $status). Try again later.';
+    if (status == 404)
+      return 'Grok model or API endpoint not found (HTTP 404).';
+    if (status == 429)
+      return 'xAI rate limit or account quota reached (HTTP 429).';
+    if (status >= 500)
+      return 'xAI service error (HTTP $status). Try again later.';
     return '${checkingKey ? 'xAI key check' : 'Grok request'} failed (HTTP $status). $detail';
   }
 }

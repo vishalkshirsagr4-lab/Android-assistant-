@@ -62,8 +62,8 @@ const col={skin:[1,.72,.66],hair:[.20,.13,.42],hair2:[.32,.23,.60],purple:[.40,.
 function ball(x,y,z,sx,sy,sz,color,rot=0){let m=mul(tr(x,y,z),mul(ry(rot),sc(sx,sy,sz)));draw(S,m,color);}
 function rod(a,b,r,color){const d=sub(b,a),len=Math.hypot(...d),mid=a.map((v,i)=>(v+b[i])/2),axis=norm(d),angle=Math.acos(Math.max(-1,Math.min(1,axis[1]))),rotAxis=[axis[2],0,-axis[0]],rot=Math.hypot(...rotAxis)>.0001?Math.atan2(Math.hypot(...rotAxis),axis[1]):0;let m=mul(tr(...mid),mul(rotateAxis(rotAxis,rot),sc(r,len,r)));draw(C,m,color);ball(...a,r,r,r,color);ball(...b,r,r,r,color);}
 function rotateAxis(axis,a){if(Math.hypot(...axis)<.0001)return I();const [x,y,z]=norm(axis),c=Math.cos(a),s=Math.sin(a),t=1-c,m=I();m[0]=t*x*x+c;m[1]=t*x*y+s*z;m[2]=t*x*z-s*y;m[4]=t*x*y-s*z;m[5]=t*y*y+c;m[6]=t*y*z+s*x;m[8]=t*x*z+s*y;m[9]=t*y*z-s*x;m[10]=t*z*z+c;return m;}
-let assistantState='idle',pose='idle',poseUntil=0,last=0,raf=0;
-window.setAssistantState=s=>{assistantState=s||'idle';const labels={idle:'Ready',listening:'Listening',capturing:'Looking at screen',analyzing:'Thinking',speaking:'Speaking',executingAction:'Working',waitingConfirmation:'Needs confirmation'};status.textContent=labels[assistantState]||'Ready';};
+let assistantState='idle',expression='calm',pose='idle',poseUntil=0,last=0,raf=0;
+window.setAssistantState=s=>{assistantState=s||'idle';const labels={idle:'Ready',listening:'Listening',capturing:'Looking at screen',analyzing:'Thinking',speaking:'Speaking',executingAction:'Working',waitingConfirmation:'Needs confirmation'};const moods={idle:'calm',listening:'attentive',capturing:'focused',analyzing:'thinking',speaking:'happy',executingAction:'focused',waitingConfirmation:'curious'};expression=moods[assistantState]||'calm';status.textContent=labels[assistantState]||'Ready';};
 window.playClip=name=>{pose=name;poseUntil=performance.now()+(name==='dance'?2600:1800);};
 function character(t){
  const bob=Math.sin(t*2)*.035,turn=Math.sin(t*.65)*.045,listen=assistantState==='listening',talk=assistantState==='speaking',wave=pose==='greeting'&&performance.now()<poseUntil,dance=pose==='dance'&&performance.now()<poseUntil,peace=pose==='peaceSign'&&performance.now()<poseUntil;
@@ -103,16 +103,18 @@ function character(t){
  ball(-.65,1.18+bodyY,0,.11,.17,.12,col.skin);ball(.65,1.18+bodyY,0,.11,.17,.12,col.skin);
  // eyes, brows, blink
  const blink=(Math.sin(t*1.7)> .995 || (listen&&Math.sin(t*2.8)>.97))? .12:1;
+ const eyeOpen=expression==='thinking'?.88:expression==='attentive'?1.08:1;
  for(const x of [-.25,.25]){
-  ball(x,1.28+bodyY,.505,.125,.145*blink,.055,col.white);
-  ball(x,1.27+bodyY,.554,.073,.105*blink,.035,col.iris);
-  ball(x,1.27+bodyY,.582,.034,.062*blink,.018,col.black);
-  ball(x-.022,1.32+bodyY,.602,.019,.025*blink,.012,col.white);
+  ball(x,1.28+bodyY,.505,.125,.145*blink*eyeOpen,.055,col.white);
+  ball(x,1.27+bodyY,.554,.073,.105*blink*eyeOpen,.035,col.iris);
+  ball(x,1.27+bodyY,.582,.034,.062*blink*eyeOpen,.018,col.black);
+  ball(x-.022,1.32+bodyY,.602,.019,.025*blink*eyeOpen,.012,col.white);
   ball(x,1.48+bodyY,.51,.14,.027,.035,col.hair);
  }
- // cheeks and mouth
+ // cheeks and mouth react to Lucy's current voice state
  ball(-.40,1.02+bodyY,.48,.13,.055,.025,col.pink);ball(.40,1.02+bodyY,.48,.13,.055,.025,col.pink);
- const mouthH=talk?.085+Math.abs(Math.sin(t*10))*.075:.018;
+ const smile=expression==='happy'?.055:expression==='curious'?.035:expression==='attentive'?.025:.018;
+ const mouthH=talk?.085+Math.abs(Math.sin(t*10))*.075:smile;
  ball(0,.98+bodyY,.535,.075,mouthH,.025,col.pink);
  // little shoulder badge
  ball(.30,.40+bodyY,.28,.09,.09,.035,col.gold);

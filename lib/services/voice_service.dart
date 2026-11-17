@@ -1,16 +1,24 @@
 import 'dart:async';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:flutter_tts/flutter_tts.dart';
 
+import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'lucy_settings_store.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+
+/// Owns the Flutter TTS engine and Lucy's user-started native Android
+/// SpeechRecognizer foreground service.
 class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _tts = FlutterTts();
 
-  bool _isInitialized = false;
-  bool _isListening = false;
-  bool _isSpeaking = false;
-  bool _errorOccurred = false;
-  String _currentTtsLanguage = 'en-US';
+  static const MethodChannel _native = MethodChannel(
+    'com.poc.screen_aware_ai/voice',
+  );
+
+  static const String _rateKey = 'lucy_voice_rate';
+  static const String _pitchKey = 'lucy_voice_pitch';
+  static const String _volumeKey = 'lucy_voice_volume';
 
   static const Map<String, String> _langToTtsLocale = {
     'en': 'en-US',
@@ -20,7 +28,6 @@ class VoiceService {
     'kn': 'kn-IN',
   };
 
-  // speech_to_text uses the same locale IDs as TTS on Android.
   static const Map<String, String> _langToSttLocale = {
     'en': 'en_US',
     'ja': 'ja_JP',
@@ -29,102 +36,227 @@ class VoiceService {
     'kn': 'kn_IN',
   };
 
-  /// Resolve a short language code ("en"/"ja") to an STT locale ID.
-  /// Returns null for unknown codes so STT falls back to its default.
-  static String? sttLocaleFor(String? lang) =>
-      _langToSttLocale[lang?.toLowerCase()];
+  bool _nativeHandlerInstalled = false;
+  bool _isInitialized = false;
+  bool _isListening = false;
+  bool _isPausedForProcessing = false;
+  bool _isSpeaking = false;
+  bool _disposed = false;
+  String _currentTtsLanguage = 'en-US';
+
+  double _speechRate = 0.48;
+  double _pitch = 1.0;
+  double _volume = 1.0;
 
   bool get isListening => _isListening;
   bool get isSpeaking => _isSpeaking;
+  double get speechRate => _speechRate;
+  double get pitch => _pitch;
+  double get volume => _volume;
 
-  // Callbacks
   Function(String text, bool isFinal)? onResult;
   Function()? onListeningDone;
   Function(String error)? onError;
 
+  static String? sttLocaleFor(String? lang) =>
+      _langToSttLocale[lang?.toLowerCase()];
+
   Future<bool> initialize() async {
     if (_isInitialized) return true;
+    if (_disposed) return false;
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      _speechRate = (prefs.getDouble(_rateKey) ?? 0.48)
+          .clamp(0.35, 0.65)
+          .toDouble();
+      _pitch = (prefs.getDouble(_pitchKey) ?? 1.0)
+          .clamp(0.8, 1.2)
+          .toDouble();
+      _volume = (prefs.getDouble(_volumeKey) ?? 1.0)
+          .clamp(0.3, 1.0)
+          .toDouble();
+
+      // speech_to_text requests RECORD_AUDIO while Lucy is visible. The native
+      // service owns the actual recognizer so there is only one microphone.
       _isInitialized = await _speech.initialize(
-        onError: (error) {
-          _isListening = false;
-          _errorOccurred = true;
-          onError?.call(error.errorMsg);
-        },
-        onStatus: (status) {
-          if (status == 'done' || status == 'notListening') {
-            _isListening = false;
-            if (_errorOccurred) {
-              _errorOccurred = false;
-            } else {
-              onListeningDone?.call();
-            }
-          }
-        },
+        onError: (_) {},
+        onStatus: (_) {},
       );
 
-      await _tts.setLanguage('en-US');
-      _currentTtsLanguage = 'en-US';
-      await _tts.setSpeechRate(0.5);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.0);
+      await _tts.awaitSpeakCompletion(true);
+      await _tts.setLanguage(_currentTtsLanguage);
+      await _applyTtsSettings();
 
+      _tts.setStartHandler(() {
+        _isSpeaking = true;
+      });
       _tts.setCompletionHandler(() {
+        _isSpeaking = false;
+      });
+      _tts.setCancelHandler(() {
         _isSpeaking = false;
       });
 
       return _isInitialized;
-    } catch (e) {
-      onError?.call('Failed to initialize voice: $e');
+    } catch (error) {
+      onError?.call('Failed to initialize voice: $error');
       return false;
     }
   }
 
-  Future<void> startListening({String? localeId}) async {
-    if (!_isInitialized) {
-      await initialize();
+  Future<void> _applyTtsSettings() async {
+    await _tts.setSpeechRate(_speechRate);
+    await _tts.setPitch(_pitch);
+    await _tts.setVolume(_volume);
+  }
+
+  /// Adjusts the installed Android TTS engine. Values are clamped to
+  /// conservative ranges and persisted locally on this device.
+  Future<void> setVoiceSettings({
+    double? speechRate,
+    double? pitch,
+    double? volume,
+  }) async {
+    if (_disposed) return;
+
+    if (speechRate != null) {
+      _speechRate = speechRate.clamp(0.35, 0.65).toDouble();
+    }
+    if (pitch != null) {
+      _pitch = pitch.clamp(0.8, 1.2).toDouble();
+    }
+    if (volume != null) {
+      _volume = volume.clamp(0.3, 1.0).toDouble();
     }
 
-    // Stop TTS if speaking
+    if (_isInitialized) {
+      await _applyTtsSettings();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_rateKey, _speechRate);
+    await prefs.setDouble(_pitchKey, _pitch);
+    await prefs.setDouble(_volumeKey, _volume);
+  }
+
+  Future<bool> startListening({String? localeId}) async {
+    if (!_isInitialized && !await initialize()) {
+      onError?.call(
+        'Speech recognition is unavailable or microphone permission is missing.',
+      );
+      return false;
+    }
+    if (_disposed) return false;
+
     if (_isSpeaking) {
       await stopSpeaking();
     }
+    if (_isListening && !_isPausedForProcessing) return true;
+    if (_isListening && _isPausedForProcessing) {
+      try {
+        final resumed = await _native.invokeMethod<bool>('resumeAfterProcessing');
+        _isPausedForProcessing = false;
+        return resumed == true;
+      } catch (error) {
+        onError?.call('Could not resume listening: $error');
+        return false;
+      }
+    }
 
-    if (_isListening) return;
+    if (!_nativeHandlerInstalled) {
+      _nativeHandlerInstalled = true;
+      _native.setMethodCallHandler((call) async {
+        if (call.method == 'onResult' && call.arguments is Map) {
+          final data = Map<dynamic, dynamic>.from(call.arguments as Map);
+          final words = data['text']?.toString() ?? '';
+          if (words.isNotEmpty) {
+            onResult?.call(words, data['isFinal'] == true);
+          }
+        } else if (call.method == 'onError' && call.arguments is Map) {
+          final data = Map<dynamic, dynamic>.from(call.arguments as Map);
+          onError?.call(
+            data['message']?.toString() ?? 'Speech recognition error',
+          );
+        } else if (call.method == 'onStopped') {
+          final data = call.arguments is Map
+              ? Map<dynamic, dynamic>.from(call.arguments as Map)
+              : const <dynamic, dynamic>{};
+          final wasListening = _isListening;
+          _isListening = false;
+          if (wasListening && data['userInitiated'] != true && !_disposed) {
+            onListeningDone?.call();
+          }
+        }
+      });
+    }
 
-    // Cancel any lingering STT session to ensure a clean engine state
-    await _speech.cancel();
+    try {
+      final started = await _native.invokeMethod<bool>('start', {
+        'localeId': localeId ?? 'en_US',
+      });
+      _isListening = started == true;
+      if (!_isListening) {
+        onError?.call(
+          'Android did not start the microphone foreground service.',
+        );
+      }
+      return _isListening;
+    } catch (error) {
+      _isListening = false;
+      onError?.call('Could not start native speech recognition: $error');
+      return false;
+    }
+  }
 
-    _isListening = true;
-    _errorOccurred = false;
-    await _speech.listen(
-      onResult: (result) {
-        onResult?.call(result.recognizedWords, result.finalResult);
-      },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3),
-      localeId: localeId,
-      listenOptions: stt.SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-      ),
-    );
+  /// Updates Lucy's existing Android microphone notification without restarting
+  /// speech recognition. The status never includes the user's spoken command.
+  Future<void> updateNotificationStatus(String status) async {
+    if (_disposed) return;
+    try {
+      await _native.invokeMethod<bool>('updateStatus', {
+        'status': status.trim().isEmpty ? 'Lucy is working' : status.trim(),
+      });
+    } catch (_) {
+      // Notification updates are best-effort; they must never interrupt a task.
+    }
+  }
+
+  /// Pauses recognition but keeps the foreground service and Stop notification
+  /// alive while Lucy processes a command or speaks its response.
+  Future<void> pauseListeningForProcessing() async {
+    if (!_isListening || _isPausedForProcessing || _disposed) return;
+    try {
+      await _native.invokeMethod<bool>('pauseForProcessing');
+      _isPausedForProcessing = true;
+    } catch (_) {
+      // Continue processing even if Android cannot pause recognition cleanly.
+    }
   }
 
   Future<void> stopListening() async {
-    if (_isListening) {
-      await _speech.stop();
-      _isListening = false;
+    // Clear the flags before Android's onDestroy broadcast arrives so a
+    // deliberate stop is never interpreted as an unexpected disconnect.
+    _isListening = false;
+    _isPausedForProcessing = false;
+    try {
+      await _native.invokeMethod<bool>('stop');
+    } catch (_) {
+      // The service may already have stopped during an Android lifecycle event.
     }
   }
 
   Future<void> speak(String text, {String? lang}) async {
-    if (!_isInitialized) await initialize();
+    if (_disposed || text.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
+    if (!_isInitialized && !await initialize()) return;
 
-    // Stop listening while speaking
-    if (_isListening) {
+    if (_isListening && !_isPausedForProcessing) {
       await stopListening();
+    }
+    if (_isSpeaking) {
+      await stopSpeaking();
     }
 
     final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
@@ -134,17 +266,51 @@ class VoiceService {
     }
 
     _isSpeaking = true;
-    await _tts.speak(text);
+    try {
+      await _tts.speak(text);
+    } catch (error) {
+      _isSpeaking = false;
+      onError?.call('Text-to-speech failed: $error');
+    } finally {
+      _isSpeaking = false;
+    }
   }
 
   Future<void> stopSpeaking() async {
-    await _tts.stop();
-    _isSpeaking = false;
+    try {
+      await _tts.stop();
+    } catch (_) {
+      // A stop can race with natural TTS completion.
+    } finally {
+      _isSpeaking = false;
+    }
   }
 
   void dispose() {
-    _speech.stop();
-    _speech.cancel();
-    _tts.stop();
+    if (_disposed) return;
+    _disposed = true;
+    _native.setMethodCallHandler(null);
+    unawaited(_disposeNative());
+    unawaited(_disposeSpeech());
+    unawaited(_disposeTts());
+  }
+
+  Future<void> _disposeNative() async {
+    try {
+      await _native.invokeMethod<bool>('stop');
+    } catch (_) {}
+  }
+
+  Future<void> _disposeSpeech() async {
+    try {
+      await _speech.stop();
+      await _speech.cancel();
+    } catch (_) {}
+  }
+
+  Future<void> _disposeTts() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
   }
 }
