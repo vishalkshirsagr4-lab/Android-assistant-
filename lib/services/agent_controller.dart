@@ -719,18 +719,11 @@ class AgentController extends ChangeNotifier {
             pendingApproval.complete(!denied && approved);
           unawaited(_voiceService.stopListening());
         } else {
+          // The approval prompt was already spoken. Treat unrelated speech
+          // (including notification audio) as neither approval nor rejection.
+          // NativeVoiceService restarts recognition after this utterance; do
+          // not start a second recognizer or speak over the current audio focus.
           _currentTranscript = 'Please say approve or cancel.';
-          unawaited(
-            _voiceService.speak(
-              'Please say approve or cancel.',
-              lang: _currentLang,
-            ),
-          );
-          unawaited(
-            _voiceService.startListening(
-              localeId: VoiceService.sttLocaleFor(_currentLang),
-            ),
-          );
         }
       } else if (isFinal && text.isNotEmpty) {
         if (_isDuplicateFinalTranscript(text)) {
