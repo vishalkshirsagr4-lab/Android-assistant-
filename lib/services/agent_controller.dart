@@ -289,15 +289,7 @@ class AgentController extends ChangeNotifier {
           category: 'preference',
         );
         await _replyToMemoryCommand(
-          _currentLang == 'hi'
-              ? 'ठीक है, मैं तुम्हें $preferredName कहूँगा।'
-              : _currentLang == 'kn'
-              ? 'ಸರಿ, ಇನ್ನು ಮುಂದೆ ನಿಮ್ಮನ್ನು $preferredName ಎಂದು ಕರೆಯುತ್ತೇನೆ.'
-              : _currentLang == 'ja'
-              ? 'わかりました。これから$preferredNameと呼びます。'
-              : _currentLang == 'ar'
-              ? 'حسنًا، سأناديك $preferredName.'
-              : 'Okay. I will call you $preferredName.',
+          'Saved the user-approved preferred name.',
           event: 'memory_saved',
         );
       } else {
@@ -356,7 +348,10 @@ class AgentController extends ChangeNotifier {
       if (lower.startsWith(prefix)) {
         final fact = trimmed.substring(prefix.length).trim();
         if (fact.isEmpty) {
-          await _replyToMemoryCommand(_memoryReply('askRemember'));
+          await _replyToMemoryCommand(
+            'The user asked to remember something but did not provide the detail. Ask one short question.',
+            event: 'clarification_needed',
+          );
           return true;
         }
         final factLower = fact.toLowerCase();
