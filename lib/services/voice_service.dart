@@ -287,7 +287,7 @@ class VoiceService {
     _isListening = false;
     _isPausedForProcessing = false;
     try {
-      await _native.invokeMethod<bool>('stop');
+      await _native.invokeMethod<bool>('stop').timeout(const Duration(seconds: 2));
     } catch (_) {
       // The service may already have stopped during an Android lifecycle event.
     }
@@ -451,7 +451,7 @@ class VoiceService {
   Future<void> stopSpeaking() async {
     _speechGeneration++;
     try {
-      await _tts.stop();
+      await _tts.stop().timeout(const Duration(seconds: 2));
     } catch (_) {
       // A stop can race with natural TTS completion.
     } finally {
