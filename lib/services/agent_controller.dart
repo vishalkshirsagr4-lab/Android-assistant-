@@ -642,6 +642,7 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> initialize({bool voiceEnabled = true}) async {
+    _textOnlyMode = !voiceEnabled;
     await _activityStore.seedDefaults();
     final prefs = await SharedPreferences.getInstance();
     final savedLang = prefs.getString(_langPrefKey);
