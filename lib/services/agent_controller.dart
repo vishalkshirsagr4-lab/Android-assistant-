@@ -193,6 +193,21 @@ class AgentController extends ChangeNotifier {
     return changed;
   }
 
+  Future<bool> forgetLearnedSkill(String id) async {
+    final removed = await _learningStore.forgetSkill(id);
+    notifyListeners();
+    return removed;
+  }
+
+  Future<bool> forgetLearnedUiMap(String key) async {
+    final removed = await _learningStore.forgetUiMap(key);
+    if (removed && _lastRecordedUiSignature == key) {
+      _lastRecordedUiSignature = null;
+    }
+    notifyListeners();
+    return removed;
+  }
+
   Future<void> _replyToMemoryCommand(
     String context, {
     String event = 'memory_update',
