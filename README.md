@@ -343,7 +343,7 @@ Voice commands are supported in English, Japanese, Arabic, Hindi and Kannada. Ex
 - `Forget my nickname`
 - `Forget everything`
 
-Personal facts and preferences are saved only when you explicitly ask Lucy to remember them. Safe navigation/reading workflows can become skill suggestions after the same sequence succeeds twice; they remain disabled until you approve them in **Lucy tools → Manage learning**. You can revoke approval at any time. Entries are stored locally with categories, timestamps and confidence; only a relevance-ranked subset is included in each AI request. You can inspect or delete memories in **Lucy tools → Manage saved memory**.
+Personal facts and preferences are saved only when you explicitly ask Lucy to remember them. Safe navigation/reading workflows can become skill suggestions after the same sequence succeeds twice; they remain disabled until you approve them in **Lucy tools → Manage learning**. You can revoke approval at any time. Entries are stored locally with categories, timestamps and confidence; only a relevance-ranked subset is included in each AI request. You can inspect or delete memories in **Lucy tools → Manage saved memory**, and say “forget skill X” or “forget this app layout” to remove individual learned automation data.
 
 ### Proactive suggestions and action approval
 
