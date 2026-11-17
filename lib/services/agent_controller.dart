@@ -1087,7 +1087,10 @@ class AgentController extends ChangeNotifier {
 
     if (!await _aiService.isProviderReady()) {
       _statusMessage = 'AI provider not configured · Offline commands remain available';
-      notifyListeners();
+      _updateTaskProgress(_statusMessage);
+      await _speakLocalReply(
+        'Cloud AI is not configured. I can still handle supported offline phone commands, but I cannot inspect apps or complete multi-step screen tasks until you add and test an AI provider key in Lucy settings.',
+      );
       await _resumeOrFinishListening(statusMessage: _statusMessage);
       return;
     }
@@ -1109,10 +1112,14 @@ class AgentController extends ChangeNotifier {
       );
       notifyListeners();
     } finally {
-      final taskSucceeded = !_statusMessage.toLowerCase().contains('stopped') &&
+      final taskSucceeded =
+          !_statusMessage.toLowerCase().contains('stopped') &&
           !_statusMessage.startsWith('AI unavailable') &&
+          !_statusMessage.startsWith('AI temporarily unavailable') &&
+          !_statusMessage.startsWith('AI provider not configured') &&
           !_statusMessage.startsWith('Phone locked') &&
-          !_statusMessage.startsWith('Task failed');
+          !_statusMessage.startsWith('Task failed') &&
+          !_statusMessage.startsWith('Autopilot is off');
       await _performanceMonitor.endTask(success: taskSucceeded);
       try {
         await _screenCapture.keepScreenAwake(false);
@@ -1130,7 +1137,8 @@ class AgentController extends ChangeNotifier {
         _statusMessage.startsWith('AI provider not configured') ||
         _statusMessage.startsWith('Phone locked') ||
         _statusMessage.startsWith('Task failed') ||
-        _statusMessage.startsWith('Task stopped');
+        _statusMessage.startsWith('Task stopped') ||
+        _statusMessage.startsWith('Autopilot is off');
     final nextStatus = taskStopped
         ? _statusMessage
         : 'Task completed · Ready for your next command';
@@ -1561,13 +1569,19 @@ class AgentController extends ChangeNotifier {
   }) async {
     _cancelRequested = false;
     int step = 0;
+    // Multi-step intent is broader than words such as "all" or "entire".
+    // App cleanup, organizing, review and search workflows need the deep-task
+    // budget even when the user says "delete unnecessary Gmail".
     final isDeepTask = RegExp(
-      r'\b(all|every|entire|inbox|all chats|all emails|all notifications|last \d+)\b',
+      r'\b(all|every|entire|inbox|mailbox|emails?|messages?|chats?|notifications?|'
+      r'clean(?:\s+up)?|cleanup|organ(?:i[sz]e|ise)|sort|review|inspect|'
+      r'find|search|delete|remove|archive|unread|unnecessary|spam|'
+      r'last\s+\d+|older\s+than|before\s+\d{4})\b',
       caseSensitive: false,
     ).hasMatch(userMessage);
     final stepLimit = isDeepTask ? 250 : _maxStepsPerCommand;
     final taskTimeBudget = isDeepTask
-        ? const Duration(minutes: 10)
+        ? const Duration(minutes: 12)
         : const Duration(minutes: 3);
     final taskStopwatch = Stopwatch()..start();
     final alternatives = speechAlternatives
