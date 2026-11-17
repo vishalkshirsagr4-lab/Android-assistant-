@@ -389,10 +389,10 @@ class MainActivity : FlutterActivity() {
                     val collect = call.argument<Boolean>("collect") ?: false
                     val service = ScreenActionService.instance
                     if (service != null) {
-                        service.beginScrollOperation()
+                        val operationId = service.beginScrollOperation()
                         Thread {
                             val payload = try {
-                                service.scrollScreen(forward, maxScrolls, collect)
+                                service.scrollScreen(forward, maxScrolls, collect, operationId)
                             } catch (error: Exception) {
                                 Log.e(TAG, "Native deep scroll failed", error)
                                 org.json.JSONObject().apply {
