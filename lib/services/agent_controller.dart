@@ -881,6 +881,19 @@ class AgentController extends ChangeNotifier {
     await _handleUserInput(text);
   }
 
+  Future<void> closeChatMode() async {
+    if (!_textOnlyMode) return;
+    _cancelRequested = true;
+    _isActive = false;
+    final pending = _pendingVoiceApproval;
+    if (pending != null && !pending.isCompleted) pending.complete(false);
+    try {
+      await _screenCapture.cancelScreenOperation();
+    } catch (_) {
+      LucyReliabilityLog.event('chat_close_cancel_failed', success: false);
+    }
+  }
+
   Future<void> cancelChatTask() async {
     if (!_textOnlyMode) return;
     _cancelRequested = true;
