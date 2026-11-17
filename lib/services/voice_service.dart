@@ -125,7 +125,7 @@ class VoiceService {
   Future<void> _setTtsLanguage(String targetLocale) async {
     if (targetLocale == _currentTtsLanguage) return;
     try {
-      final result = await _setTtsLanguage(targetLocale);
+      final result = await _tts.setLanguage(targetLocale);
       if (result is num && result < 0) {
         throw StateError('Selected TTS language is unavailable');
       }
