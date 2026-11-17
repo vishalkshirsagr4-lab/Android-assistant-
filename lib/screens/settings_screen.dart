@@ -353,58 +353,90 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Set up Lucy'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Enable only the capabilities you want. Android controls these permissions; Lucy cannot grant them silently.'),
-              SizedBox(height: 14),
-              Text('1. Accessibility — required for screen reading and requested UI actions.'),
-              SizedBox(height: 8),
-              Text('2. Screen capture — optional; Android shows a consent prompt when a task needs screenshots.'),
-              SizedBox(height: 8),
-              Text('3. Notification access — optional; lets Lucy summarize notifications when enabled.'),
-              SizedBox(height: 8),
-              Text('4. Usage access — optional; adds foreground-app context.'),
-              SizedBox(height: 8),
-              Text('5. Calendar access — optional; used only when calendar context is enabled.'),
-              SizedBox(height: 12),
-              Text('Never enable access you are uncomfortable with. You can change these choices later in Android Settings.'),
+              const Text(
+                'Enable only the capabilities you want. Android controls these permissions; Lucy cannot grant them silently.',
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Accessibility is required for screen reading and requested UI actions.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await widget.controller.screenCapture.openAccessibilitySettings();
+                },
+                icon: const Icon(Icons.accessibility_new),
+                label: const Text('Open Accessibility settings'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Screen capture is optional. Android displays its own consent prompt when a task needs screenshots.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final granted = await widget.controller.screenCapture.requestPermission();
+                  if (dialogContext.mounted) {
+                    _message(
+                      granted
+                          ? 'Screen capture is ready.'
+                          : 'Screen capture was not enabled.',
+                    );
+                  }
+                },
+                icon: const Icon(Icons.screen_share_outlined),
+                label: const Text('Set up screen capture'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Notification access is optional and is used only when notification context is enabled.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await _context.openNotificationAccessSettings();
+                },
+                icon: const Icon(Icons.notifications_outlined),
+                label: const Text('Open notification access'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Usage access is optional and adds the foreground app name to context.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await _context.openUsageAccessSettings();
+                },
+                icon: const Icon(Icons.apps_outlined),
+                label: const Text('Open Usage access'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Calendar access is optional and requested only for calendar context.',
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final granted = await _context.requestCalendarAccess();
+                  _message(
+                    granted
+                        ? 'Calendar access is ready.'
+                        : 'Calendar access was not granted.',
+                  );
+                },
+                icon: const Icon(Icons.calendar_month_outlined),
+                label: const Text('Set up Calendar access'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Microphone and Contacts permissions are requested only when you use the related feature. Never enable access you are uncomfortable with.',
+              ),
             ],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () async {
-              await widget.controller.screenCapture.openAccessibilitySettings();
-            },
-            child: const Text('Accessibility'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final granted = await widget.controller.screenCapture.requestPermission();
-              if (dialogContext.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(granted ? 'Screen capture is ready.' : 'Screen capture was not enabled.')),
-                );
-              }
-            },
-            child: const Text('Screen capture'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await _context.openNotificationAccessSettings();
-            },
-            child: const Text('Notifications'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await _context.openUsageAccessSettings();
-            },
-            child: const Text('Usage access'),
-          ),
-          FilledButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Finish'),
           ),
