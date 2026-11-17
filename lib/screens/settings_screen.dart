@@ -632,6 +632,16 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                         dense: true,
                         title: Text(map['package']?.toString() ?? 'Unknown app'),
                         subtitle: Text('Signature: ${map['signature'] ?? 'unknown'}'),
+                        trailing: IconButton(
+                          tooltip: 'Forget this app layout',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            final key = map['key']?.toString() ?? '';
+                            if (key.isEmpty) return;
+                            await widget.controller.forgetLearnedUiMap(key);
+                            if (mounted) refreshDialog(() {});
+                          },
+                        ),
                       ),
                     const Divider(),
                     Text('Safe skills · ${skills.length}'),
@@ -640,6 +650,16 @@ class _LucySettingsScreenState extends State<LucySettingsScreen> {
                       SwitchListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
+                        secondary: IconButton(
+                          tooltip: 'Forget this skill',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            final id = skill['id']?.toString() ?? '';
+                            if (id.isEmpty) return;
+                            await widget.controller.forgetLearnedSkill(id);
+                            if (mounted) refreshDialog(() {});
+                          },
+                        ),
                         title: Text(skill['command']?.toString() ?? 'Unnamed skill'),
                         subtitle: Text(
                           '${skill['package'] ?? 'Unknown app'} · successes: ${skill['successCount'] ?? 0} · failures: ${skill['failureCount'] ?? 0} · ${skill['approved'] == true ? 'approved' : 'approval required'}',
