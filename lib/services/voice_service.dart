@@ -102,7 +102,7 @@ class VoiceService {
 
     try {
       await _tts.awaitSpeakCompletion(true);
-      await _setTtsLanguage(_currentTtsLanguage);
+      await _setTtsLanguage('en-US');
       await _applyTtsSettings();
     } catch (_) {
       // TTS is optional. Recognition remains usable even if no voice engine or
@@ -335,9 +335,11 @@ class VoiceService {
     if (!_isInitialized && !await initialize()) return;
     if (_isSpeaking) await stopSpeaking();
     final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
-    if (targetLocale != _currentTtsLanguage) {
+    try {
       await _setTtsLanguage(targetLocale);
-      _currentTtsLanguage = targetLocale;
+    } catch (_) {
+      onError?.call('tts_unavailable');
+      return;
     }
     _streamingSpeechGeneration = ++_speechGeneration;
     _streamingSpeechQueue = Future<void>.value();
@@ -392,10 +394,12 @@ class VoiceService {
     if (_isSpeaking) await stopSpeaking();
 
     final generation = ++_speechGeneration;
-    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
-    if (targetLocale != _currentTtsLanguage) {
+    final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
+    try {
       await _setTtsLanguage(targetLocale);
-      _currentTtsLanguage = targetLocale;
+    } catch (_) {
+      onError?.call('tts_unavailable');
+      return;
     }
 
     for (final chunk in splitSpeechChunks(text)) {
@@ -425,18 +429,14 @@ class VoiceService {
       await stopSpeaking();
     }
 
-    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
-    if (targetLocale != _currentTtsLanguage) {
-      await _setTtsLanguage(targetLocale);
-      _currentTtsLanguage = targetLocale;
-    }
-
-    _isSpeaking = true;
+    final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     try {
+      await _setTtsLanguage(targetLocale);
+      _isSpeaking = true;
       await _tts.speak(text);
-    } catch (error) {
+    } catch (_) {
       _isSpeaking = false;
-      onError?.call('Text-to-speech failed: $error');
+      onError?.call('tts_unavailable');
     } finally {
       _isSpeaking = false;
     }
