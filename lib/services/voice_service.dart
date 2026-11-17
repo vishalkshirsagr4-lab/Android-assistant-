@@ -246,6 +246,77 @@ class VoiceService {
     }
   }
 
+  /// Splits completed model text into sentence-sized speech units.
+  /// The model providers currently return complete responses; this improves
+  /// playback responsiveness and allows intermediate speech to overlap actions,
+  /// but it is not token-level model streaming.
+  static List<String> splitSpeechChunks(
+    String text, {
+    int maxChars = 220,
+  }) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return const <String>[];
+    final sentences = normalized
+        .split(RegExp(r'(?<=[.!?。！？؟])\s+'))
+        .where((sentence) => sentence.trim().isNotEmpty);
+    final chunks = <String>[];
+    for (final sentence in sentences) {
+      final value = sentence.trim();
+      if (value.length <= maxChars) {
+        chunks.add(value);
+        continue;
+      }
+      var current = '';
+      for (final word in value.split(' ')) {
+        final candidate = current.isEmpty ? word : '$current $word';
+        if (candidate.length > maxChars && current.isNotEmpty) {
+          chunks.add(current);
+          current = word;
+        } else {
+          current = candidate;
+        }
+      }
+      if (current.isNotEmpty) chunks.add(current);
+    }
+    return chunks;
+  }
+
+  int _speechGeneration = 0;
+
+  /// Plays sentence-sized units in order. Calling stopSpeaking invalidates the
+  /// current generation so no later sentence starts after an interruption.
+  Future<void> speakProgressively(String text, {String? lang}) async {
+    if (_disposed || text.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
+    if (!_isInitialized && !await initialize()) return;
+
+    if (_isListening && !_isPausedForProcessing) {
+      await stopListening();
+    }
+    if (_isSpeaking) await stopSpeaking();
+
+    final generation = ++_speechGeneration;
+    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
+    if (targetLocale != _currentTtsLanguage) {
+      await _tts.setLanguage(targetLocale);
+      _currentTtsLanguage = targetLocale;
+    }
+
+    for (final chunk in splitSpeechChunks(text)) {
+      if (_disposed || generation != _speechGeneration) break;
+      _isSpeaking = true;
+      try {
+        await _tts.speak(chunk);
+      } catch (error) {
+        onError?.call('Text-to-speech failed.');
+        break;
+      } finally {
+        _isSpeaking = false;
+      }
+    }
+  }
+
   Future<void> speak(String text, {String? lang}) async {
     if (_disposed || text.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
@@ -277,6 +348,7 @@ class VoiceService {
   }
 
   Future<void> stopSpeaking() async {
+    _speechGeneration++;
     try {
       await _tts.stop();
     } catch (_) {
