@@ -63,6 +63,7 @@ Use test accounts populated with synthetic content.
 - [ ] Repeat the exact same workflow successfully a second time; confirm approval becomes available.
 - [ ] Approve it in Lucy tools; verify it replays only on the matching app version and screen signature.
 - [ ] Revoke approval; verify replay stops immediately.
+- [ ] Say “forget skill X” and “forget this app layout” in Hindi/Kannada; verify only the named skill/current app layouts are removed.
 - [ ] Change the workflow sequence or update the target app; verify the previous approval is invalidated.
 
 ## 6. Voice and multilingual behavior
