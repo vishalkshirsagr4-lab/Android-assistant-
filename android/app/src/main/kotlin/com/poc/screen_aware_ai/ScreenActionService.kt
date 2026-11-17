@@ -35,8 +35,45 @@ class ScreenActionService : AccessibilityService() {
         Log.d(TAG, "Accessibility service connected")
     }
 
+    private val uiEventMonitor = Object()
+    @Volatile private var uiEventSequence: Long = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // We don't need to process events for this PoC
+        if (event == null) return
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
+                synchronized(uiEventMonitor) {
+                    uiEventSequence += 1L
+                    uiEventMonitor.notifyAll()
+                }
+            }
+        }
+    }
+
+    fun getUiEventSequence(): Long = synchronized(uiEventMonitor) {
+        uiEventSequence
+    }
+
+    /**
+     * Waits for a real accessibility event instead of repeatedly traversing
+     * the UI tree. The caller still verifies the resulting tree afterwards.
+     */
+    fun waitForUiEvent(afterSequence: Long, timeoutMs: Long): Long {
+        val timeout = timeoutMs.coerceIn(0L, 2_000L)
+        synchronized(uiEventMonitor) {
+            if (uiEventSequence <= afterSequence && timeout > 0L) {
+                try {
+                    uiEventMonitor.wait(timeout)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+            return uiEventSequence
+        }
     }
 
     override fun onInterrupt() {
