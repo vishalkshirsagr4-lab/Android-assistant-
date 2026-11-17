@@ -13,7 +13,7 @@ internal object ScreenWatcherPolicy {
 
     private val safeDismissLabels = setOf(
         "not now", "maybe later", "no thanks", "dismiss", "got it",
-        "reject all", "reject",
+        "reject all",
         "अभी नहीं", "बाद में", "नहीं धन्यवाद", "धन्यवाद नहीं", "ठीक है",
         "ಈಗ ಬೇಡ", "ನಂತರ", "ಬೇಡ ಧನ್ಯವಾದ", "ಸರಿ",
         "今はしない", "後で", "結構です", "了解",
