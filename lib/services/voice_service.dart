@@ -233,9 +233,11 @@ class VoiceService {
     }
 
     try {
-      final started = await _native.invokeMethod<bool>('start', {
-        'localeId': localeId ?? 'en_US',
-      });
+      final started = await _native
+          .invokeMethod<bool>('start', {
+            'localeId': localeId ?? 'en_US',
+          })
+          .timeout(const Duration(seconds: 5));
       _isListening = started == true;
       if (!_isListening) {
         onError?.call(
