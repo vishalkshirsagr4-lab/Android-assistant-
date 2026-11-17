@@ -80,8 +80,8 @@ class LucyPerformanceMonitor {
   Future<int?>? _taskStartChargeFuture;
   DateTime? _taskStartedAt;
 
-  void recordResponse(Duration duration) =>
-      recordTiming('model', duration);
+  void recordResponse(Duration duration, {bool success = true}) =>
+      recordTiming('model', duration, success: success);
 
   void recordTiming(
     String metric,
