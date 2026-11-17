@@ -134,6 +134,31 @@ void main() {
     expect(store.skills.single['successCount'], 2);
   });
 
+  test('matches parameterized search skills without storing the query text', () async {
+    final store = LucyLearningStore();
+    await store.initialize();
+    await store.recordSkill(
+      id: 'skill_search',
+      command: 'Search cats on Chrome',
+      commandTemplate: 'search {query} on chrome',
+      packageName: 'com.android.chrome',
+      startSignature: 'chrome_home',
+      actions: <Map<String, dynamic>>[
+        <String, dynamic>{'type': 'tap', 'resourceId': 'chrome:id/search', 'label': 'Search'},
+        <String, dynamic>{'type': 'type', 'parameter': 'query'},
+      ],
+    );
+    final match = store.findSkill(
+      command: 'Search red pandas on Chrome',
+      packageName: 'com.android.chrome',
+      startSignature: 'chrome_home',
+    );
+    expect(match, isNotNull);
+    expect((match!['parameters'] as Map)['query'], 'red pandas');
+    final savedType = (store.skills.single['actions'] as List).last as Map;
+    expect(savedType.containsKey('text'), isFalse);
+  });
+
   test('rejects skills containing typing or other unapproved operations', () async {
     final store = LucyLearningStore();
     await store.initialize();
