@@ -111,7 +111,6 @@ class AgentController extends ChangeNotifier {
   int _lastActionEventSequence = 0;
   String? _previousModelTreePackage;
   Map<int, String> _previousModelTreeElements = <int, String>{};
-  int _treeDiffStep = 0;
   Completer<bool>? _pendingVoiceApproval;
 
   /// Language code of the most recent agent reply ("en" or "ja").
@@ -1054,7 +1053,6 @@ class AgentController extends ChangeNotifier {
     var completedPlanSteps = 0;
     _previousModelTreePackage = null;
     _previousModelTreeElements = <int, String>{};
-    _treeDiffStep = 0;
 
     LucyReliabilityLog.event('agent_task_started');
     while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
@@ -1470,7 +1468,6 @@ class AgentController extends ChangeNotifier {
     if (forceFull) {
       _previousModelTreePackage = package;
       _previousModelTreeElements = current;
-      _treeDiffStep = step;
       return jsonEncode(<String, dynamic>{
         'package': package,
         'mode': 'full',
@@ -1495,7 +1492,6 @@ class AgentController extends ChangeNotifier {
     final unchangedCount = current.length - changed.length;
     _previousModelTreePackage = package;
     _previousModelTreeElements = current;
-    _treeDiffStep = step;
     return jsonEncode(<String, dynamic>{
       'package': package,
       'mode': 'diff',
