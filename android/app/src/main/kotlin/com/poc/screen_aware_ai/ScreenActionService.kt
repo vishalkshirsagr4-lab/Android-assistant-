@@ -194,7 +194,7 @@ class ScreenActionService : AccessibilityService() {
             repeat(10) {
                 val resourceId = current.viewIdResourceName?.lowercase().orEmpty()
                 val className = current.className?.toString()?.lowercase().orEmpty()
-                if (listOf("dialog", "popup", "modal", "banner", "bottom_sheet")
+                if (listOf("dialog", "popup", "modal", "banner", "bottom_sheet", "snackbar", "notice", "promo", "consent")
                         .any(resourceId::contains) ||
                     className.contains("dialog") ||
                     className.contains("popupwindow")
