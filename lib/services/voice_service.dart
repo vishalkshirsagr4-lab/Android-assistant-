@@ -42,7 +42,7 @@ class VoiceService {
   bool _isPausedForProcessing = false;
   bool _isSpeaking = false;
   bool _disposed = false;
-  String _currentTtsLanguage = 'en-US';
+  String _currentTtsLanguage = '';
 
   double _speechRate = 0.48;
   double _pitch = 1.0;
