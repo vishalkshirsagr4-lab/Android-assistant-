@@ -22,6 +22,7 @@ class LucyMemory {
   const LucyMemory({
     required this.id,
     required this.type,
+    required this.category,
     required this.text,
     required this.createdAt,
     required this.lastUsedAt,
@@ -167,7 +168,7 @@ class LucyMemoryStore {
         LucyMemory(
           id: old.id,
           type: old.type,
-          category: normalizedType,
+          category: type ?? category,
           text: cleaned,
           createdAt: old.createdAt,
           lastUsedAt: now,
