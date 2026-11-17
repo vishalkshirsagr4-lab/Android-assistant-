@@ -1483,7 +1483,10 @@ class AgentController extends ChangeNotifier {
     _previousModelTreeElements = <int, String>{};
 
     LucyReliabilityLog.event('agent_task_started');
-    while (step < stepLimit &&\n        taskStopwatch.elapsed < taskTimeBudget &&\n        _isActive &&\n        !_cancelRequested) {
+    while (step < stepLimit &&
+        taskStopwatch.elapsed < taskTimeBudget &&
+        _isActive &&
+        !_cancelRequested) {
       if (await _screenCapture.isDeviceLocked()) {
         _statusMessage = 'Phone locked · Unlock to continue';
         notifyListeners();
@@ -1941,7 +1944,9 @@ class AgentController extends ChangeNotifier {
 
     if (step >= stepLimit || taskStopwatch.elapsed >= taskTimeBudget) {
       LucyReliabilityLog.event('agent_step_limit_reached', step: step, success: false);
-      _statusMessage = step >= stepLimit\n          ? 'Task stopped at the $stepLimit-step safety limit'\n          : 'Task stopped at the time budget to protect battery and stability';
+      _statusMessage = step >= stepLimit
+          ? 'Task stopped at the $stepLimit-step safety limit'
+          : 'Task stopped at the time budget to protect battery and stability';
       notifyListeners();
     }
   }
