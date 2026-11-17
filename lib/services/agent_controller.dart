@@ -1853,7 +1853,7 @@ class AgentController extends ChangeNotifier {
           final isForward = action.type != 'scroll_to_top';
           final rawMaxScrolls = action.params['maxScrolls'];
           final maxScrolls = rawMaxScrolls is num
-              ? rawMaxScrolls.toInt().clamp(1, 120)
+              ? rawMaxScrolls.toInt().clamp(1, 120).toInt()
               : 80;
           final result = await _screenCapture.scrollScreen(
             forward: isForward,
