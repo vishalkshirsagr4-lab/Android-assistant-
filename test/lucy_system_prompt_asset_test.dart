@@ -16,7 +16,7 @@ void main() {
     expect(prompt, contains('[TASK_CONTEXT]'));
     expect(prompt, contains('Do not use "batch" in model planning'));
     expect(prompt, contains('Completion requires the done_when condition'));
-    expect(prompt, contains('wait for explicit approval of that exact batch'));
+    expect(prompt, contains('wait for explicit approval of the exact selected messages'));
     expect(prompt, isNot(contains(r'\n')));
   });
 }
