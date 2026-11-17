@@ -105,3 +105,14 @@ Use test accounts populated with synthetic content.
 - Ads can be skipped only when a usable skip control is exposed.
 - Battery charge-counter telemetry is OEM-dependent and is an estimate, not a laboratory power measurement.
 - Hindi/Kannada STT and TTS depend on language packs and the speech engine installed on the phone.
+
+## Voice continuity and speech understanding
+
+- Start Lucy, ask one reversible task, and wait for the spoken completion response. Confirm the status says the task is completed and Lucy is ready for the next command, not that the previous task is still running.
+- While Lucy is speaking, receive a normal notification. Confirm the spoken response continues or resumes without restarting the command or treating notification text as a new instruction.
+- Repeat the same short phrase once within three seconds only when testing duplicate suppression. Confirm one user turn and one task are recorded.
+- With Contacts permission granted, say a contact name with a common speech variant (for example, “pappa” for a saved “Papa” contact). Confirm Lucy resolves the local match and uses the exact saved number.
+- Create two similarly named contacts or two numbers for one contact. Confirm Lucy asks which one is intended and does not open the dialer until the user clarifies.
+- Test alternate pronunciations for app names, places and media titles. Confirm Lucy uses visible/local context when the match is clear and asks when it is not.
+- Dictate an exact message body containing an unusual name or spelling. Confirm entity correction does not rewrite the message body.
+- Deny Contacts permission. Confirm Lucy explains the limitation and does not guess a number or claim a call was prepared.
