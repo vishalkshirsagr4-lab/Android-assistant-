@@ -206,10 +206,12 @@ class LucyActionApprovalPolicy {
     // uses the dedicated scroll actions, so require approval for a mail swipe.
     if (action == 'swipe' && mailPackage) return 'high';
 
-    if (action == 'place_call' || action == 'send_sms' ||
-        action == 'share_text') {
-      return 'high';
-    }
+    // Calls and SMS use Android's dialer/message composer intents. Lucy does
+    // not add a second yes/no prompt; Android still leaves the final Call/Send
+    // action to the user in the system app.
+    if (action == 'place_call' || action == 'send_sms') return 'low';
+
+    if (action == 'share_text') return 'high';
 
     if (action == 'type') {
       return sensitiveInput || sensitivePackage ? 'high' : 'low';
