@@ -1867,9 +1867,10 @@ class AgentController extends ChangeNotifier {
           _taskStartSignature = signature;
           _taskStartVersion = versionCode;
         }
-        if (signature != _lastRecordedUiSignature &&
+        final recordKey = packageName + ':' + versionCode + ':' + signature;
+        if (recordKey != _lastRecordedUiSignature &&
             await _settingsStore.isEnabled(LucySettingsStore.uiMemory)) {
-          _lastRecordedUiSignature = signature;
+          _lastRecordedUiSignature = recordKey;
           final size = _cachedScreenSize;
           unawaited(_learningStore.recordUiMap(
             packageName: packageName,
