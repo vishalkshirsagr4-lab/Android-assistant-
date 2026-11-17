@@ -65,7 +65,9 @@ class NotificationContextListener : NotificationListenerService() {
             val updated = JSONArray()
             val start = (previous.length() - MAX_ENTRIES + 1).coerceAtLeast(0)
             for (index in start until previous.length()) {
-                updated.put(previous.getJSONObject(index))
+                // Ignore malformed legacy entries rather than crashing the
+                // notification listener while it is running in the background.
+                previous.optJSONObject(index)?.let(updated::put)
             }
             updated.put(entry)
             preferences.edit().putString(NOTIFICATION_KEY, updated.toString()).apply()
