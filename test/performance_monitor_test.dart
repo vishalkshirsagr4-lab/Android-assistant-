@@ -30,7 +30,7 @@ void main() {
 
   test('tracks task counts, steps and duration without Android metrics', () async {
     final monitor = LucyPerformanceMonitor.shared;
-    await monitor.beginTask();
+    monitor.beginTask();
     monitor.recordStep();
     monitor.recordStep();
     await monitor.endTask(success: false);
