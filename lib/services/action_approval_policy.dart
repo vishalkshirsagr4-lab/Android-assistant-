@@ -67,12 +67,10 @@ class LucyActionApprovalPolicy {
       localRisk = sensitiveInput || sensitivePackage ? 'high' : 'low';
     } else if (_lowRiskActions.contains(action)) {
       localRisk = 'low';
-    } else if (action == 'place_call' || action == 'send_sms') {
-      // These native actions only open a dialer or prefilled composer.
-      // The final Call/Send control remains a separate user-confirmed UI action.
-      localRisk = 'low';
-    } else if (action == 'share_text') {
-      localRisk = 'medium';
+    } else if (action == 'place_call' ||
+        action == 'send_sms' ||
+        action == 'share_text') {
+      localRisk = 'high';
     } else if (action == 'read_contact' ||
         action == 'create_calendar_event' ||
         action == 'take_photo') {
