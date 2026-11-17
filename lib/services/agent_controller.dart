@@ -16,6 +16,7 @@ import 'routine_scheduler.dart';
 import 'phone_action_service.dart';
 import 'lucy_memory_store.dart';
 import 'agent_reliability.dart';
+import 'screen_classifier.dart';
 import 'lucy_settings_store.dart';
 
 enum AgentState {
@@ -71,6 +72,7 @@ class AgentController extends ChangeNotifier {
       LucyPerformanceMonitor.shared;
   final PhoneActionService _phoneActions = PhoneActionService();
   final LucySettingsStore _settingsStore = LucySettingsStore();
+  final ScreenClassifier _screenClassifier = ScreenClassifier();
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -1784,6 +1786,7 @@ class AgentController extends ChangeNotifier {
     }
 
     final package = snapshot.packageName ?? '';
+    final classification = _screenClassifier.classify(snapshot.rawTree).toJson();
     final forceFull = _previousModelTreePackage != package ||
         _previousModelTreeElements.isEmpty ||
         step == 1 ||
@@ -1795,6 +1798,7 @@ class AgentController extends ChangeNotifier {
       return jsonEncode(<String, dynamic>{
         'package': package,
         'mode': 'full',
+        'screen': classification,
         'elements': snapshot.elements,
       });
     }
@@ -1818,6 +1822,7 @@ class AgentController extends ChangeNotifier {
     return jsonEncode(<String, dynamic>{
       'package': package,
       'mode': 'diff',
+      'screen': classification,
       'baseStep': step - 1,
       'elements': changed,
       'removed': removed,
