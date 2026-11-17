@@ -45,6 +45,10 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Run Android JVM unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest
+
   build:
     name: Build debug APK
     runs-on: ubuntu-latest
