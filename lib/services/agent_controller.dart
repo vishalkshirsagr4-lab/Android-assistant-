@@ -1149,6 +1149,14 @@ class AgentController extends ChangeNotifier {
         break;
       }
 
+      // Route is semantic model output, not an English keyword gate.
+      // It is surfaced in task progress and validated by the response parser.
+      _updateTaskProgress(switch (agentResponse.route) {
+        'read' => 'Reading and checking the requested content · Step $step',
+        'phone' => 'Handling your phone task · Step $step',
+        _ => 'Working on your request · Step $step',
+      });
+
       if (agentResponse.plan.isNotEmpty) {
         currentPlan = agentResponse.plan;
         if (step == 1) {
@@ -1871,6 +1879,62 @@ class AgentController extends ChangeNotifier {
         case 'take_photo':
         case 'share_text':
           await _executeNativePhoneAction(action);
+          break;
+
+        case 'remember':
+          final memoryText = (action.params['text'] ??
+                  action.params['content'] ??
+                  action.params['memory'])
+              ?.toString()
+              .trim() ?? '';
+          final memoryType =
+              action.params['memory_type']?.toString() ??
+              action.params['category']?.toString() ??
+              'fact';
+          if (memoryText.isEmpty) {
+            _lastActionDispatchSucceeded = false;
+          } else {
+            await rememberUserMemory(memoryText, category: memoryType);
+            _lastActionDispatchSucceeded = true;
+            await _speakEvent(
+              'memory_saved',
+              context: 'A user-requested memory was saved locally.',
+            );
+          }
+          break;
+
+        case 'forget':
+          final query = action.params['query']?.toString().trim() ?? '';
+          if (query.isEmpty) {
+            _lastActionDispatchSucceeded = false;
+          } else if (const {'all', 'everything', 'all memories'}
+              .contains(query.toLowerCase())) {
+            await clearUserMemories();
+            _lastActionDispatchSucceeded = true;
+            await _speakEvent(
+              'memory_cleared',
+              context: 'The user explicitly requested that all saved memories be cleared.',
+            );
+          } else {
+            final removed = await forgetUserMemory(query);
+            _lastActionDispatchSucceeded = removed > 0;
+            await _speakEvent(
+              'memory_forgotten',
+              context: removed > 0
+                  ? 'The requested matching memory was removed.'
+                  : 'No saved memory matched the requested detail.',
+            );
+          }
+          break;
+
+        case 'recall_memories':
+          _lastActionDispatchSucceeded = true;
+          await _replyToMemoryCommand(
+            memorySummary.isEmpty
+                ? 'No saved memories were found.'
+                : 'Summarize these user-approved saved memories in the user’s language: $memorySummary',
+            event: 'memory_recalled',
+          );
           break;
 
         case 'wait':
