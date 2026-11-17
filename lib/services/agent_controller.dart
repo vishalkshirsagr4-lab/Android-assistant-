@@ -142,10 +142,33 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _replyToMemoryCommand(String reply) async {
-    _addConversation(reply, false);
+  Future<void> _replyToMemoryCommand(
+    String context, {
+    String event = 'memory_update',
+  }) async {
+    await _speakEvent(event, context: context);
+  }
+
+  /// Ask the configured model to phrase a short, localized status event.
+  /// If every provider is unavailable, keep the event visible in status only.
+  Future<void> _speakEvent(
+    String event, {
+    String context = '',
+  }) async {
+    final response = await _aiService.agentChat(
+      '[EVENT: $event]\n'
+      'User language: $_currentLang\n'
+      'App status: $context\n'
+      'Return one short natural sentence. Do not perform an action.',
+    );
+    if (response.isError || response.speak.trim().isEmpty) {
+      _statusMessage = 'Lucy · $event';
+      notifyListeners();
+      return;
+    }
+    _addConversation(response.speak, false);
     _setState(AgentState.speaking);
-    await _voiceService.speak(reply, lang: _currentLang);
+    await _voiceService.speak(response.speak, lang: _currentLang);
   }
 
   String _memoryReply(
@@ -258,6 +281,7 @@ class AgentController extends ChangeNotifier {
         summary.isEmpty
             ? _memoryReply('empty')
             : _memoryReply('show', value: summary),
+        event: 'memory_recalled',
       );
       return true;
     }
@@ -279,7 +303,10 @@ class AgentController extends ChangeNotifier {
     };
     if (clearCommands.contains(lower)) {
       await clearUserMemories();
-      await _replyToMemoryCommand(_memoryReply('cleared'));
+      await _replyToMemoryCommand(
+        _memoryReply('cleared'),
+        event: 'memory_cleared',
+      );
       return true;
     }
 
@@ -300,6 +327,7 @@ class AgentController extends ChangeNotifier {
       final removed = await forgetUserMemory('prefers to be addressed as');
       await _replyToMemoryCommand(
         _memoryReply(removed > 0 ? 'nameForgot' : 'noName'),
+        event: 'memory_forgotten',
       );
       return true;
     }
@@ -344,9 +372,13 @@ class AgentController extends ChangeNotifier {
               : _currentLang == 'ar'
               ? 'حسنًا، سأناديك $preferredName.'
               : 'Okay. I will call you $preferredName.',
+          event: 'memory_saved',
         );
       } else {
-        await _replyToMemoryCommand(_memoryReply('askRemember'));
+        await _replyToMemoryCommand(
+            _memoryReply('askRemember'),
+            event: 'clarification_needed',
+          );
       }
       return true;
     }
@@ -363,11 +395,15 @@ class AgentController extends ChangeNotifier {
       if (lower.startsWith(prefix)) {
         final query = trimmed.substring(prefix.length).trim();
         if (query.isEmpty || query == 'this') {
-          await _replyToMemoryCommand(_memoryReply('askForget'));
+          await _replyToMemoryCommand(
+            _memoryReply('askForget'),
+            event: 'clarification_needed',
+          );
         } else {
           final removed = await forgetUserMemory(query);
           await _replyToMemoryCommand(
             _memoryReply(removed > 0 ? 'forgot' : 'noMatch', count: removed),
+            event: 'memory_forgotten',
           );
         }
         return true;
@@ -454,7 +490,10 @@ class AgentController extends ChangeNotifier {
             ? 'goal'
             : 'fact';
         await rememberUserMemory(fact, category: category);
-        await _replyToMemoryCommand(_memoryReply('saved', value: category));
+        await _replyToMemoryCommand(
+          _memoryReply('saved', value: category),
+          event: 'memory_saved',
+        );
         return true;
       }
     }
@@ -1095,10 +1134,10 @@ class AgentController extends ChangeNotifier {
       if (_cancelRequested) break;
 
       if (_isPermissionPrompt(uiSnapshot)) {
-        const message =
-            'Android is showing a permission prompt. Please review it and choose the option you want. Lucy will not grant permissions automatically. Restart the task after you finish.';
-        _addConversation(message, false);
-        await _voiceService.speak(message, lang: _currentLang);
+        await _speakEvent(
+          'permission_needed',
+          context: 'Android is showing a permission dialog. Ask the user to review and choose it themselves; never grant it automatically.',
+        );
         break;
       }
 
