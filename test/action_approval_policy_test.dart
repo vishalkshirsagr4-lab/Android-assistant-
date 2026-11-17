@@ -68,6 +68,43 @@ void main() {
       }
     });
 
+    test('requires approval for app installation and account security changes', () {
+      for (final label in [
+        'Install',
+        'Install now',
+        'Change password',
+        'Recovery email',
+        'Enable 2FA',
+        'Factory reset',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
+          isTrue,
+          reason: label,
+        );
+      }
+    });
+
+    test('recognizes common Indian payment app package names as sensitive', () {
+      for (final package in [
+        'com.google.android.apps.nbu.paisa.user',
+        'com.phonepe.app',
+        'net.one97.paytm',
+        'com.sbi.lotusintouch',
+        'com.dreamplug.androidapp',
+      ]) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval(
+            'tap',
+            targetLabel: 'Continue',
+            packageName: package,
+          ),
+          isTrue,
+          reason: package,
+        );
+      }
+    });
+
     test('requires approval for taps inside financial apps', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval(
