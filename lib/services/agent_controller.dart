@@ -1608,6 +1608,7 @@ class AgentController extends ChangeNotifier {
     final loopGuard = LucyAgentLoopGuard();
     var currentPlan = <String>[];
     var completedPlanSteps = 0;
+    var providerRecoveryAttempts = 0;
     _previousModelTreePackage = null;
     _previousModelTreeElements = <int, String>{};
 
@@ -1813,6 +1814,20 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
       if (agentResponse.isError) {
+        if (providerRecoveryAttempts < 1 && !_cancelRequested) {
+          providerRecoveryAttempts++;
+          _updateTaskProgress('AI connection interrupted · Retrying safely');
+          LucyReliabilityLog.event(
+            'agent_provider_recovery_retry',
+            step: step,
+            attempt: providerRecoveryAttempts,
+            success: false,
+          );
+          await Future.delayed(const Duration(milliseconds: 900));
+          // No action from this failed response was executed. Reuse the same
+          // user goal and plan context, then obtain a fresh screen snapshot.
+          continue;
+        }
         final detail = agentResponse.rawResponse;
         final hasConfiguredProvider = await _aiService.isProviderReady();
         _statusMessage = hasConfiguredProvider
