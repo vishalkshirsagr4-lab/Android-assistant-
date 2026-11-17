@@ -90,7 +90,7 @@ class LucyPerformanceMonitor {
     final key = metric.trim().toLowerCase();
     if (key.isEmpty) return;
     final values = _samples.putIfAbsent(key, () => <int>[]);
-    values.add(duration.inMilliseconds.clamp(0, 600000));
+    values.add(duration.inMilliseconds.clamp(0, 600000).toInt());
     if (values.length > _maxSamples) values.removeAt(0);
     if (!success) _failures[key] = (_failures[key] ?? 0) + 1;
   }
@@ -99,14 +99,13 @@ class LucyPerformanceMonitor {
     if (_taskStartedAt != null) _currentTaskSteps++;
   }
 
-  void beginTask() {
+  Future<void> beginTask() async {
     _taskStartedAt = DateTime.now();
     _taskStartChargeUah = null;
     _currentTaskSteps = 0;
-    unawaited(_readNativeMetrics().then((metrics) {
-      final value = metrics['chargeCounterUah'];
-      if (value is num && value >= 0) _taskStartChargeUah = value.toInt();
-    }));
+    final metrics = await _readNativeMetrics();
+    final value = metrics['chargeCounterUah'];
+    if (value is num && value >= 0) _taskStartChargeUah = value.toInt();
   }
 
   Future<void> endTask({required bool success}) async {
@@ -186,7 +185,7 @@ class LucyPerformanceMonitor {
     }
     int percentile(double value) {
       final index = ((values.length - 1) * value).round();
-      return values[index.clamp(0, values.length - 1)];
+      return values[index.clamp(0, values.length - 1).toInt()];
     }
     return LucyTimingSummary(
       samples: values.length,
