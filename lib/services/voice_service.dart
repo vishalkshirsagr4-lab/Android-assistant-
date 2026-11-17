@@ -281,6 +281,60 @@ class VoiceService {
     return chunks;
   }
 
+  bool _streamingSpeechActive = false;
+  Future<void> _streamingSpeechQueue = Future<void>.value();
+  int _streamingSpeechGeneration = 0;
+
+  /// Prepares TTS so complete sentences can be spoken while Gemini is
+  /// still generating the rest of Lucy's structured response.
+  Future<void> beginStreamingSpeech({String? lang}) async {
+    if (_disposed) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(LucySettingsStore.voiceOutput) == false) return;
+    if (!_isInitialized && !await initialize()) return;
+    if (_isSpeaking) await stopSpeaking();
+    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
+    if (targetLocale != _currentTtsLanguage) {
+      await _tts.setLanguage(targetLocale);
+      _currentTtsLanguage = targetLocale;
+    }
+    _streamingSpeechGeneration = ++_speechGeneration;
+    _streamingSpeechQueue = Future<void>.value();
+    _streamingSpeechActive = true;
+  }
+
+  /// Queues a complete sentence emitted from the partial model response.
+  void addStreamingSpeechText(String sentence) {
+    if (!_streamingSpeechActive || _disposed) return;
+    final value = sentence.trim();
+    if (value.isEmpty) return;
+    final generation = _streamingSpeechGeneration;
+    _streamingSpeechQueue = _streamingSpeechQueue.then((_) async {
+      if (_disposed || generation != _speechGeneration) return;
+      _isSpeaking = true;
+      try {
+        await _tts.speak(value);
+      } catch (_) {
+        onError?.call('Text-to-speech failed.');
+      } finally {
+        if (generation == _speechGeneration) _isSpeaking = false;
+      }
+    });
+  }
+
+  /// Closes the stream and returns a future that completes after queued speech.
+  Future<void> finishStreamingSpeech() async {
+    if (!_streamingSpeechActive) return;
+    _streamingSpeechActive = false;
+    await _streamingSpeechQueue;
+  }
+
+  /// Cancels queued speech if the streaming provider fails before valid JSON.
+  Future<void> cancelStreamingSpeech() async {
+    _streamingSpeechActive = false;
+    await stopSpeaking();
+  }
+
   int _speechGeneration = 0;
 
   /// Plays sentence-sized units in order. Calling stopSpeaking invalidates the
