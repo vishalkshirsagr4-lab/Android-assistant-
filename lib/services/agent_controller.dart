@@ -1052,6 +1052,8 @@ class AgentController extends ChangeNotifier {
           'device_locked',
           context: 'The phone is locked. Tell the user to unlock it before Lucy continues. Do not attempt to interact with the lock screen.',
         );
+        _statusMessage = 'Phone locked · Unlock to continue';
+        notifyListeners();
         break;
       }
       step++;
