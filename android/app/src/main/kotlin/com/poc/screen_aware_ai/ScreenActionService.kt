@@ -125,7 +125,7 @@ class ScreenActionService : AccessibilityService() {
                     viewId.endsWith("skip_ads_button") || viewId.endsWith("ad_skip_button")
                 val isAdSkipLabel = normalized in setOf("skip", "skip ad", "skip ads", "close ad")
                 val isSafePopupLabel = normalized in setOf(
-                    "not now", "maybe later", "no thanks", "dismiss", "got it", "close", "reject all"
+                    "not now", "maybe later", "no thanks", "dismiss", "got it", "reject all"
                 )
                 val shouldClick = (autoSkipAds && (isAdSkipId || isAdSkipLabel)) ||
                     (autoDismissPopups && isSafePopupLabel)
@@ -203,7 +203,7 @@ class ScreenActionService : AccessibilityService() {
             if (sensitive || visited >= 400 || depth > 24) return
             visited++
             if (node.isPassword) { sensitive = true; return }
-            val value = "\${node.text ?: ""} \${node.contentDescription ?: ""}".lowercase()
+            val value = "${node.text ?: ""} ${node.contentDescription ?: ""}".lowercase()
             if (sensitiveTerms.any(value::contains)) { sensitive = true; return }
             for (index in 0 until node.childCount) {
                 if (sensitive || visited >= 400) break
