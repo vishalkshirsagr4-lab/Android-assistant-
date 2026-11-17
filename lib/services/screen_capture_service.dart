@@ -104,6 +104,20 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Cancel a running native deep-scroll pass. Safe to call when idle.
+  Future<bool> cancelScreenOperation() async {
+    try {
+      return await _channel.invokeMethod<bool>('cancelScreenOperation') ?? false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_scroll_cancel_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return false;
+    }
+  }
+
   /// Run a bounded native scroll pass. With collect=true, native code
   /// returns de-duplicated visible text gathered across the entire pass.
   Future<Map<String, dynamic>?> scrollScreen({

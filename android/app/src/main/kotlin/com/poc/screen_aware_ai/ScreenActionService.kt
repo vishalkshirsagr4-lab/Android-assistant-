@@ -39,6 +39,7 @@ class ScreenActionService : AccessibilityService() {
     @Volatile private var excludedWatcherPackages: Set<String> = emptySet()
     private var lastWatcherClickAt = 0L
     private var lastWatcherClickKey = ""
+    @Volatile private var scrollOperationId = 0L
     private val watcherRunnable = Runnable { inspectAndHandleSafeOverlay() }
 
     override fun onServiceConnected() {
@@ -101,6 +102,20 @@ class ScreenActionService : AccessibilityService() {
             .putStringSet("excluded_packages", excludedPackages)
             .apply()
         if (!enabled) watcherHandler.removeCallbacks(watcherRunnable)
+        return true
+    }
+
+    /** Starts a new bounded deep-scroll operation before its worker is launched. */
+    @Synchronized
+    fun beginScrollOperation(): Long {
+        scrollOperationId += 1L
+        return scrollOperationId
+    }
+
+    /** Invalidates the current scroll token so any worker exits promptly. */
+    @Synchronized
+    fun cancelScreenOperation(): Boolean {
+        scrollOperationId += 1L
         return true
     }
 
@@ -564,7 +579,12 @@ class ScreenActionService : AccessibilityService() {
      * visible-content signatures are unchanged, or maxScrolls is reached.
      * This method is invoked from a worker thread by MainActivity.
      */
-    fun scrollScreen(forward: Boolean, maxScrolls: Int = 80, collect: Boolean = false): String {
+    fun scrollScreen(
+        forward: Boolean,
+        maxScrolls: Int = 80,
+        collect: Boolean = false,
+        operationId: Long
+    ): String {
         if (isDeviceLocked()) {
             return JSONObject().apply {
                 put("scrolls", 0)
@@ -601,7 +621,7 @@ class ScreenActionService : AccessibilityService() {
         val height = display.heightPixels.toFloat()
 
         try {
-            while (scrolls < limit && !isDeviceLocked()) {
+            while (scrolls < limit && !isDeviceLocked() && operationId == scrollOperationId) {
                 val target = current.scrollNode
                 var moved = false
                 var gestureFallbackAllowed = target == null
@@ -707,6 +727,7 @@ class ScreenActionService : AccessibilityService() {
             put("dispatchFailed", dispatchFailed)
             put("verificationUnavailable", verificationUnavailable)
             put("locked", isDeviceLocked())
+            put("cancelled", operationId != scrollOperationId)
             put("forward", forward)
             put("items", items)
         }.toString()
@@ -742,7 +763,7 @@ class ScreenActionService : AccessibilityService() {
             if (visited >= maxNodes || depth > maxDepth) return
             visited++
 
-            if (node.isVisibleToUser) {
+            if (node.isVisibleToUser && !node.isPassword) {
                 val text = node.text?.toString()?.trim().orEmpty()
                 val desc = node.contentDescription?.toString()?.trim().orEmpty()
                 val nodeBounds = Rect()
@@ -824,11 +845,13 @@ class ScreenActionService : AccessibilityService() {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
 
-            val text = node.text?.toString()
-            val contentDesc = node.contentDescription?.toString()
+            // Password fields remain represented only by the boolean marker;
+            // never export their text or content description to the model.
+            val isPassword = node.isPassword
+            val text = if (isPassword) null else node.text?.toString()
+            val contentDesc = if (isPassword) null else node.contentDescription?.toString()
             val isClickable = node.isClickable || clickableAncestor
             val isEditable = node.isEditable
-            val isPassword = node.isPassword
             val isCheckable = node.isCheckable
             val isScrollable = node.isScrollable
             val isVisible = node.isVisibleToUser
@@ -1002,6 +1025,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        scrollOperationId += 1L
         watcherHandler.removeCallbacks(watcherRunnable)
         keepScreenAwake(false)
         super.onDestroy()

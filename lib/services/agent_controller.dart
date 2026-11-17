@@ -835,6 +835,8 @@ class AgentController extends ChangeNotifier {
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
     _cancelRequested = false;
+    // Stop a native deep-scroll pass before releasing task resources.
+    await _screenCapture.cancelScreenOperation();
     await _screenCapture.keepScreenAwake(false);
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
@@ -2666,14 +2668,17 @@ class AgentController extends ChangeNotifier {
           } else {
             _lastToolResult = jsonEncode(result);
             _lastActionDispatchSucceeded =
-                result['locked'] != true && result['dispatchFailed'] != true;
+                result['locked'] != true &&
+                result['dispatchFailed'] != true &&
+                result['cancelled'] != true;
           }
           break;
 
         case 'open_each':
           final result = await _executeOpenEach(action, beforeSnapshot);
           _lastToolResult = jsonEncode(result);
-          _lastActionDispatchSucceeded = result['error'] == null;
+          _lastActionDispatchSucceeded =
+              result['error'] == null && result['cancelled'] != true;
           break;
 
         case 'batch':
@@ -2947,13 +2952,19 @@ class AgentController extends ChangeNotifier {
     _UiSnapshot? startingSnapshot,
   ) async {
     final requestedLimit = action.params['maxItems'];
+    // Support long inboxes/chat lists while keeping a strict per-command cap.
     final maxItems = (requestedLimit is num ? requestedLimit.toInt() : 10)
-        .clamp(1, 100)
+        .clamp(1, 250)
         .toInt();
     final requestedScrolls = action.params['detailMaxScrolls'];
     final detailMaxScrolls =
         (requestedScrolls is num ? requestedScrolls.toInt() : 20)
-            .clamp(1, 40)
+            .clamp(1, 80)
+            .toInt();
+    final requestedPageScrolls = action.params['maxListScrolls'];
+    final maxListScrolls =
+        (requestedPageScrolls is num ? requestedPageScrolls.toInt() : 120)
+            .clamp(1, 120)
             .toInt();
     final screenSize = await _screenCapture.getScreenSize();
     final width = (screenSize?['width'] ?? 1080).toDouble();
@@ -2976,6 +2987,7 @@ class AgentController extends ChangeNotifier {
     var unchangedPages = 0;
     var pageScrolls = 0;
     var reachedEnd = false;
+    var nativeOperationCancelled = false;
 
     List<Map<String, dynamic>> listRows(_UiSnapshot? snapshot) {
       if (snapshot == null) return <Map<String, dynamic>>[];
@@ -3063,8 +3075,8 @@ class AgentController extends ChangeNotifier {
       return rows;
     }
 
-    while (results.length < maxItems && pageScrolls <= 80) {
-      if (_cancelRequested) break;
+    while (results.length < maxItems && pageScrolls < maxListScrolls) {
+      if (_cancelRequested || !_isActive) break;
       final rows = listRows(current);
       Map<String, dynamic>? nextRow;
       for (final row in rows) {
@@ -3089,12 +3101,23 @@ class AgentController extends ChangeNotifier {
         }
 
         await Future<void>.delayed(const Duration(milliseconds: 350));
+        if (_cancelRequested || !_isActive) {
+          nativeOperationCancelled = true;
+          break;
+        }
         final openedSnapshot = await _fetchUiSnapshot();
         if (openedSnapshot == null ||
             (openedSnapshot.packageName == current?.packageName &&
                 openedSnapshot.signature == current?.signature)) {
           results.add(<String, dynamic>{
             'label': nextRow['label'],
+            'rowLabels': nextRow['labels'],
+            'sender': null,
+            'title': null,
+            'keyPoints': <String>[],
+            'unread': null,
+            'time': null,
+            'urgency': 'unknown',
             'opened': false,
             'content': <String>[],
           });
@@ -3106,6 +3129,10 @@ class AgentController extends ChangeNotifier {
           maxScrolls: detailMaxScrolls,
           collect: true,
         );
+        if (_cancelRequested || !_isActive || detailScroll?['cancelled'] == true) {
+          nativeOperationCancelled = true;
+          break;
+        }
         final detailSnapshot = await _fetchUiSnapshot();
         final content = <String>{};
         final rawItems = detailScroll?['items'];
@@ -3132,8 +3159,39 @@ class AgentController extends ChangeNotifier {
           }
         }
 
+        final rowLabels = (nextRow['labels'] as List?)
+                ?.map((value) => value.toString())
+                .where((value) => value.trim().isNotEmpty)
+                .toList(growable: false) ??
+            <String>[];
+        final detailText = content.join(' ');
+        final evidenceText = '${nextRow['label']} $detailText';
+        final unreadEvidence = RegExp(
+          r'\b(unread|new message|new messages|未読|غير مقروء|अपठित|ಓದದ)\b',
+          caseSensitive: false,
+        ).hasMatch(evidenceText);
+        final timeMatch = RegExp(
+          r'\b(today|yesterday|tomorrow|[01]?\d|2[0-3]):[0-5]\d\b|\b(today|yesterday|tomorrow)\b',
+          caseSensitive: false,
+        ).firstMatch(evidenceText);
+        final urgency = RegExp(
+          r'\b(urgent|action required|deadline|asap|immediately|overdue)\b',
+          caseSensitive: false,
+        ).hasMatch(evidenceText)
+            ? 'high'
+            : RegExp(r'\b(important|reminder|due soon)\b', caseSensitive: false)
+                    .hasMatch(evidenceText)
+                ? 'medium'
+                : 'unknown';
         results.add(<String, dynamic>{
           'label': nextRow['label'],
+          'rowLabels': rowLabels,
+          'sender': rowLabels.isNotEmpty ? rowLabels.first : null,
+          'title': rowLabels.length > 1 ? rowLabels.skip(1).join(' · ') : null,
+          'keyPoints': content.take(5).toList(growable: false),
+          'unread': unreadEvidence ? true : null,
+          'time': timeMatch?.group(0),
+          'urgency': urgency,
           'opened': true,
           'content': content.toList(growable: false),
           'detailReachedEnd': detailScroll?['reachedEnd'] == true,
@@ -3155,7 +3213,7 @@ class AgentController extends ChangeNotifier {
         continue;
       }
 
-      if (current == null || pageScrolls >= 80) break;
+      if (current == null || pageScrolls >= maxListScrolls) break;
       final beforeSignature = current.signature;
       final moved = await _screenCapture.performSwipe(
         width * 0.5,
@@ -3181,8 +3239,11 @@ class AgentController extends ChangeNotifier {
     return <String, dynamic>{
       'processed': results.length,
       'requestedMaxItems': maxItems,
+      'maxListScrolls': maxListScrolls,
+      'cancelled': nativeOperationCancelled || _cancelRequested || !_isActive,
       'reachedEnd': reachedEnd,
-      'limited': !reachedEnd && results.length >= maxItems,
+      'limited': !reachedEnd &&
+          (results.length >= maxItems || pageScrolls >= maxListScrolls),
       'pageScrolls': pageScrolls,
       'items': results,
     };
