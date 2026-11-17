@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 
 import 'agent_reliability.dart';
@@ -98,6 +100,36 @@ class ScreenCaptureManager {
       return null;
     } catch (e) {
       LucyReliabilityLog.event('screen_capture_failed', errorType: e.runtimeType.toString(), success: false);
+      return null;
+    }
+  }
+
+  /// Run a bounded native scroll pass. With collect=true, native code
+  /// returns de-duplicated visible text gathered across the entire pass.
+  Future<Map<String, dynamic>?> scrollScreen({
+    required bool forward,
+    int maxScrolls = 80,
+    bool collect = false,
+  }) async {
+    try {
+      final raw = await _channel.invokeMethod<String>(
+        'scrollScreen',
+        <String, dynamic>{
+          'forward': forward,
+          'maxScrolls': maxScrolls.clamp(1, 120),
+          'collect': collect,
+        },
+      );
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_scroll_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
       return null;
     }
   }
