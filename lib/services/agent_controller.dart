@@ -127,6 +127,9 @@ class AgentController extends ChangeNotifier {
   bool _cancelRequested = false;
   bool _lastActionDispatchSucceeded = true;
   String? _lastToolResult;
+  final Map<String, String> _resolvedContactNumbers = <String, String>{};
+  String? _pendingResolvedContactRef;
+  int _contactReferenceCounter = 0;
   int _lastActionEventSequence = 0;
   String? _previousModelTreePackage;
   Map<int, String> _previousModelTreeElements = <int, String>{};
@@ -1042,6 +1045,9 @@ class AgentController extends ChangeNotifier {
 
     _silenceTimeoutTimer?.cancel();
     _silenceTimeoutTimer = null;
+    // Contact references are short-lived and scoped to one spoken task.
+    _resolvedContactNumbers.clear();
+    _pendingResolvedContactRef = null;
     _setState(AgentState.analyzing);
     await _voiceService.pauseListeningForProcessing();
 
@@ -1872,7 +1878,7 @@ class AgentController extends ChangeNotifier {
           );
           if (const {
             'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch',
-            'read_contact',
+            'read_contact', 'place_call', 'send_sms',
           }.contains(action.type)) {
             toolResultForNextTurn = _lastToolResult;
           }
@@ -2727,7 +2733,8 @@ class AgentController extends ChangeNotifier {
     // task, ask for spoken approval, and resume the same agent loop on approval.
     String? targetLabel;
     if (action.type == 'place_call' || action.type == 'send_sms') {
-      targetLabel = action.params['phoneNumber']?.toString();
+      targetLabel = action.params['contactName']?.toString() ??
+          action.params['phoneNumber']?.toString();
     }
     if (action.type == 'open_settings') {
       targetLabel = action.params['page']?.toString();
@@ -3537,9 +3544,34 @@ class AgentController extends ChangeNotifier {
 
   Future<void> _executeNativePhoneAction(AgentAction action) async {
     _lastActionDispatchSucceeded = false;
+    final nativeParams = Map<String, dynamic>.from(action.params);
+    if (action.type == 'place_call' || action.type == 'send_sms') {
+      final contactRef = nativeParams.remove('contactRef')?.toString();
+      if (_pendingResolvedContactRef != null &&
+          contactRef != _pendingResolvedContactRef) {
+        _lastToolResult = jsonEncode(<String, dynamic>{
+          'success': false,
+          'error': 'resolved_contact_reference_required',
+        });
+        return;
+      }
+      if (contactRef != null) {
+        final number = _resolvedContactNumbers.remove(contactRef);
+        if (number == null) {
+          _lastToolResult = jsonEncode(<String, dynamic>{
+            'success': false,
+            'error': 'resolved_contact_reference_expired',
+          });
+          return;
+        }
+        nativeParams['phoneNumber'] = number;
+        _pendingResolvedContactRef = null;
+      }
+      nativeParams.remove('contactName');
+    }
     dynamic nativeResult;
     try {
-      nativeResult = await _phoneActions.execute(action.type, action.params);
+      nativeResult = await _phoneActions.execute(action.type, nativeParams);
     } catch (error) {
       LucyReliabilityLog.event(
         'native_action_failure',
@@ -3562,8 +3594,8 @@ class AgentController extends ChangeNotifier {
         _lastActionDispatchSucceeded = true;
         return;
       }
-      _lastToolResult = jsonEncode(resultMap);
       if (resultMap['ambiguous'] == true || resultMap['found'] == false) {
+        _lastToolResult = jsonEncode(resultMap);
         // A search result is a successful lookup even when Lucy must ask the
         // user to choose between candidates or correct the spoken name.
         _lastActionDispatchSucceeded = true;
@@ -3571,6 +3603,16 @@ class AgentController extends ChangeNotifier {
       }
       if (resultMap['found'] == true &&
           resultMap['phoneNumber']?.toString().isNotEmpty == true) {
+        _resolvedContactNumbers.clear();
+        final contactRef = 'lucy_contact_${++_contactReferenceCounter}';
+        _resolvedContactNumbers[contactRef] = resultMap['phoneNumber'].toString();
+        _pendingResolvedContactRef = contactRef;
+        _lastToolResult = jsonEncode(<String, dynamic>{
+          'found': true,
+          'name': resultMap['name']?.toString() ?? 'the contact',
+          'type': resultMap['type']?.toString() ?? 'other',
+          'contactRef': contactRef,
+        });
         _lastActionDispatchSucceeded = true;
         _addConversation(
           'I found ${resultMap['name'] ?? 'the contact'} in your contacts.',
