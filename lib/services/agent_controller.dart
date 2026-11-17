@@ -940,6 +940,29 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(reply, lang: _currentLang);
   }
 
+  Future<bool> _runLocalPhoneAction(
+    String action,
+    Map<String, dynamic> params,
+    String successReply,
+  ) async {
+    if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+      return false;
+    }
+    try {
+      final result = await _phoneActions.execute(action, params);
+      final succeeded = result == true ||
+          (result is Map &&
+              (result['success'] == true ||
+                  result['level'] != null ||
+                  result['batteryPercent'] != null));
+      if (!succeeded) return false;
+      await _speakLocalReply(successReply);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> _handleOfflineCommand(String text) async {
     final command = text.toLowerCase().trim();
     final asksTime = RegExp(
@@ -1124,6 +1147,171 @@ class AgentController extends ChangeNotifier {
         await _speakLocalReply(reply);
       }
       return true;
+    }
+
+    final settingsMatch = RegExp(
+      r'^(?:open|show|go to|खोलो|ತೆರೆ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?$',
+    ).firstMatch(command);
+    if (settingsMatch != null) {
+      final requestedPage = settingsMatch.group(1);
+      final page = switch (requestedPage) {
+        'wifi' || 'wi-fi' => 'wifi',
+        'bluetooth' => 'bluetooth',
+        'display' => 'display',
+        'sound' => 'sound',
+        'apps' => 'apps',
+        'accessibility' => 'accessibility',
+        'location' => 'location',
+        'battery' => 'battery',
+        'wireless' => 'wireless',
+        _ => 'general',
+      };
+      final reply = switch (_currentLang) {
+        'hi' => 'सेटिंग्स खोल दी।',
+        'kn' => 'ಸೆಟ್ಟಿಂಗ್ಸ್ ತೆರೆಯಿತು.',
+        'ja' => '設定を開きました。',
+        'ar' => 'تم فتح الإعدادات.',
+        _ => 'Settings opened.',
+      };
+      if (await _runLocalPhoneAction(
+        'open_settings',
+        <String, dynamic>{'page': page},
+        reply,
+      )) return true;
+    }
+
+    final timerMatch = RegExp(
+      r'^(?:set\s+)?(?:a\s+)?timer(?:\s+for)?\s+(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)$',
+    ).firstMatch(command);
+    if (timerMatch != null) {
+      final amount = int.tryParse(timerMatch.group(1) ?? '') ?? 0;
+      final unit = timerMatch.group(2) ?? '';
+      final multiplier = unit.startsWith('h')
+          ? 3600
+          : unit.startsWith('m')
+              ? 60
+              : 1;
+      final seconds = amount * multiplier;
+      if (seconds >= 1 && seconds <= 86400) {
+        final reply = switch (_currentLang) {
+          'hi' => 'टाइमर शुरू कर दिया।',
+          'kn' => 'ಟೈಮರ್ ಪ್ರಾರಂಭಿಸಿದೆ.',
+          'ja' => 'タイマーを開始しました。',
+          'ar' => 'بدأت المؤقت.',
+          _ => 'Timer started.',
+        };
+        if (await _runLocalPhoneAction(
+          'set_timer',
+          <String, dynamic>{'durationSeconds': seconds},
+          reply,
+        )) return true;
+      }
+    }
+
+    final alarmMatch = RegExp(
+      r'^(?:set\s+)?(?:an?\s+)?alarm(?:\s+(?:for|at))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$',
+    ).firstMatch(command);
+    if (alarmMatch != null) {
+      var hour = int.tryParse(alarmMatch.group(1) ?? '') ?? -1;
+      final minute = int.tryParse(alarmMatch.group(2) ?? '0') ?? -1;
+      final meridiem = alarmMatch.group(3);
+      if (meridiem == 'pm' && hour < 12) hour += 12;
+      if (meridiem == 'am' && hour == 12) hour = 0;
+      if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+        final reply = switch (_currentLang) {
+          'hi' => 'अलार्म सेट करने के लिए क्लॉक ऐप खोल दिया।',
+          'kn' => 'ಅಲಾರಂ ಹೊಂದಿಸಲು ಗಡಿಯಾರ ಆ್ಯಪ್ ತೆರೆಯಿತು.',
+          'ja' => 'アラーム設定画面を開きました。',
+          'ar' => 'فتحت شاشة ضبط المنبه.',
+          _ => 'Opened the clock app to set that alarm.',
+        };
+        if (await _runLocalPhoneAction(
+          'set_alarm',
+          <String, dynamic>{'hour': hour, 'minute': minute},
+          reply,
+        )) return true;
+      }
+    }
+
+    final navigationMatch = RegExp(
+      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
+    ).firstMatch(text.trim());
+    final destination = navigationMatch?.group(1)?.trim();
+    if (destination != null && destination.isNotEmpty) {
+      final reply = switch (_currentLang) {
+        'hi' => 'मैप्स में रास्ता खोल दिया।',
+        'kn' => 'ಮ್ಯಾಪ್ಸ್‌ನಲ್ಲಿ ಮಾರ್ಗ ತೆರೆಯಿತು.',
+        'ja' => 'マップでルートを開きました。',
+        'ar' => 'فتحت المسار في الخرائط.',
+        _ => 'Opened the route in Maps.',
+      };
+      if (await _runLocalPhoneAction(
+        'start_navigation',
+        <String, dynamic>{'destination': destination},
+        reply,
+      )) return true;
+    }
+
+    final urlMatch = RegExp(
+      r'^(?:open|visit)\s+(https?://\S+|[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?:/\S*)?$',
+    ).firstMatch(command);
+    final requestedUrl = urlMatch?.group(1);
+    if (requestedUrl != null) {
+      final url = requestedUrl.startsWith('http')
+          ? requestedUrl
+          : 'https://$requestedUrl';
+      final reply = switch (_currentLang) {
+        'hi' => 'वेबसाइट खोल दी।',
+        'kn' => 'ವೆಬ್‌ಸೈಟ್ ತೆರೆಯಿತು.',
+        'ja' => 'ウェブサイトを開きました。',
+        'ar' => 'تم فتح الموقع.',
+        _ => 'Opened the website.',
+      };
+      if (await _runLocalPhoneAction(
+        'open_url',
+        <String, dynamic>{'url': url},
+        reply,
+      )) return true;
+    }
+
+    final musicMatch = RegExp(
+      r'^(?:play music|search song|find song|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
+    ).firstMatch(text.trim());
+    final musicQuery = musicMatch?.group(1)?.trim();
+    if (musicQuery != null && musicQuery.isNotEmpty) {
+      final reply = switch (_currentLang) {
+        'hi' => 'म्यूज़िक सर्च खोल दिया।',
+        'kn' => 'ಮ್ಯೂಸಿಕ್ ಹುಡುಕಾಟ ತೆರೆಯಿತು.',
+        'ja' => '音楽検索を開きました。',
+        'ar' => 'فتحت البحث عن الموسيقى.',
+        _ => 'Opened music search.',
+      };
+      if (await _runLocalPhoneAction(
+        'music_search',
+        <String, dynamic>{'query': musicQuery},
+        reply,
+      )) return true;
+    }
+
+    final brightnessMatch = RegExp(
+      r'^(?:set )?brightness(?: to)?\s+(\d{1,3})\s*(?:%|percent)?$',
+    ).firstMatch(command);
+    if (brightnessMatch != null) {
+      final level = int.tryParse(brightnessMatch.group(1) ?? '') ?? 0;
+      if (level >= 1 && level <= 100) {
+        final reply = switch (_currentLang) {
+          'hi' => 'ब्राइटनेस सेट कर दी।',
+          'kn' => 'ಬ್ರೈಟ್‌ನೆಸ್ ಹೊಂದಿಸಿದೆ.',
+          'ja' => '明るさを設定しました。',
+          'ar' => 'تم ضبط السطوع.',
+          _ => 'Brightness updated.',
+        };
+        if (await _runLocalPhoneAction(
+          'set_brightness',
+          <String, dynamic>{'level': level},
+          reply,
+        )) return true;
+      }
     }
 
     final asksHome = RegExp(
@@ -1476,7 +1664,10 @@ class AgentController extends ChangeNotifier {
         _updateTaskProgress('Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
-        final speech = _voiceService.speak(ttsText, lang: _currentLang);
+        final speech = _voiceService.speakProgressively(
+          ttsText,
+          lang: _currentLang,
+        );
         if (agentResponse.done) {
           await speech;
           await Future.delayed(const Duration(milliseconds: 250));
