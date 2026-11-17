@@ -1507,7 +1507,7 @@ class AgentController extends ChangeNotifier {
       // continue from the retained plan rather than assuming success.
       if (toolResultForNextTurn != null) {
         currentMessage =
-            'The native deep-reading operation has finished. Inspect its measured results and continue the task.\\n[TOOL_RESULT]\\n$toolResultForNextTurn\\n[/TOOL_RESULT]';
+            'The native deep-reading operation has finished. Inspect its measured results and continue the task.\n[TOOL_RESULT]\n$toolResultForNextTurn\n[/TOOL_RESULT]';
       } else if (actionVerified) {
         currentMessage =
             'I have executed the action. Here is the updated screen. Verify it and continue with the current plan.';
