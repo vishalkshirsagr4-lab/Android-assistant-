@@ -39,7 +39,7 @@ class ScreenActionService : AccessibilityService() {
     @Volatile private var excludedWatcherPackages: Set<String> = emptySet()
     private var lastWatcherClickAt = 0L
     private var lastWatcherClickKey = ""
-    @Volatile private var cancelDeepScroll = false
+    @Volatile private var scrollOperationId = 0L
     private val watcherRunnable = Runnable { inspectAndHandleSafeOverlay() }
 
     override fun onServiceConnected() {
@@ -106,14 +106,16 @@ class ScreenActionService : AccessibilityService() {
     }
 
     /** Starts a new bounded deep-scroll operation before its worker is launched. */
-    fun beginScrollOperation(): Boolean {
-        cancelDeepScroll = false
-        return true
+    @Synchronized
+    fun beginScrollOperation(): Long {
+        scrollOperationId += 1L
+        return scrollOperationId
     }
 
-    /** Requests cancellation of the current bounded deep-scroll operation. */
+    /** Invalidates the current scroll token so any worker exits promptly. */
+    @Synchronized
     fun cancelScreenOperation(): Boolean {
-        cancelDeepScroll = true
+        scrollOperationId += 1L
         return true
     }
 
@@ -577,7 +579,12 @@ class ScreenActionService : AccessibilityService() {
      * visible-content signatures are unchanged, or maxScrolls is reached.
      * This method is invoked from a worker thread by MainActivity.
      */
-    fun scrollScreen(forward: Boolean, maxScrolls: Int = 80, collect: Boolean = false): String {
+    fun scrollScreen(
+        forward: Boolean,
+        maxScrolls: Int = 80,
+        collect: Boolean = false,
+        operationId: Long
+    ): String {
         if (isDeviceLocked()) {
             return JSONObject().apply {
                 put("scrolls", 0)
@@ -614,7 +621,7 @@ class ScreenActionService : AccessibilityService() {
         val height = display.heightPixels.toFloat()
 
         try {
-            while (scrolls < limit && !isDeviceLocked() && !cancelDeepScroll) {
+            while (scrolls < limit && !isDeviceLocked() && operationId == scrollOperationId) {
                 val target = current.scrollNode
                 var moved = false
                 var gestureFallbackAllowed = target == null
@@ -720,7 +727,7 @@ class ScreenActionService : AccessibilityService() {
             put("dispatchFailed", dispatchFailed)
             put("verificationUnavailable", verificationUnavailable)
             put("locked", isDeviceLocked())
-            put("cancelled", cancelDeepScroll)
+            put("cancelled", operationId != scrollOperationId)
             put("forward", forward)
             put("items", items)
         }.toString()
@@ -1018,7 +1025,7 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onDestroy() {
-        cancelDeepScroll = true
+        scrollOperationId += 1L
         watcherHandler.removeCallbacks(watcherRunnable)
         keepScreenAwake(false)
         super.onDestroy()
