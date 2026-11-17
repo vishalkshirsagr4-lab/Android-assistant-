@@ -88,31 +88,55 @@ class VoiceService {
           .clamp(0.3, 1.0)
           .toDouble();
 
-      // speech_to_text requests RECORD_AUDIO while Lucy is visible. The native
-      // service owns the actual recognizer so there is only one microphone.
+      // Initialize recognition independently. A missing TTS voice pack must
+      // never prevent Hindi/Kannada speech recognition from starting.
       _isInitialized = await _speech.initialize(
         onError: (_) {},
         onStatus: (_) {},
       );
-
-      await _tts.awaitSpeakCompletion(true);
-      await _tts.setLanguage(_currentTtsLanguage);
-      await _applyTtsSettings();
-
-      _tts.setStartHandler(() {
-        _isSpeaking = true;
-      });
-      _tts.setCompletionHandler(() {
-        _isSpeaking = false;
-      });
-      _tts.setCancelHandler(() {
-        _isSpeaking = false;
-      });
-
-      return _isInitialized;
-    } catch (error) {
-      onError?.call('Failed to initialize voice: $error');
+    } catch (_) {
+      _isInitialized = false;
+      onError?.call('speech_recognition_unavailable');
       return false;
+    }
+
+    try {
+      await _tts.awaitSpeakCompletion(true);
+      await _setTtsLanguage(_currentTtsLanguage);
+      await _applyTtsSettings();
+    } catch (_) {
+      // TTS is optional. Recognition remains usable even if no voice engine or
+      // selected language pack is installed; speak() reports failure safely.
+    }
+
+    _tts.setStartHandler(() {
+      _isSpeaking = true;
+    });
+    _tts.setCompletionHandler(() {
+      _isSpeaking = false;
+    });
+    _tts.setCancelHandler(() {
+      _isSpeaking = false;
+    });
+
+    return _isInitialized;
+  }
+
+  Future<void> _setTtsLanguage(String targetLocale) async {
+    if (targetLocale == _currentTtsLanguage) return;
+    try {
+      final result = await _setTtsLanguage(targetLocale);
+      if (result is num && result < 0) {
+        throw StateError('Selected TTS language is unavailable');
+      }
+      _currentTtsLanguage = targetLocale;
+    } catch (_) {
+      if (targetLocale == 'en-US') rethrow;
+      final fallback = await _tts.setLanguage('en-US');
+      if (fallback is num && fallback < 0) {
+        throw StateError('No supported TTS language is installed');
+      }
+      _currentTtsLanguage = 'en-US';
     }
   }
 
@@ -312,7 +336,7 @@ class VoiceService {
     if (_isSpeaking) await stopSpeaking();
     final targetLocale = ttsLocaleFor(lang) ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
-      await _tts.setLanguage(targetLocale);
+      await _setTtsLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
     }
     _streamingSpeechGeneration = ++_speechGeneration;
@@ -370,7 +394,7 @@ class VoiceService {
     final generation = ++_speechGeneration;
     final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
-      await _tts.setLanguage(targetLocale);
+      await _setTtsLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
     }
 
@@ -403,7 +427,7 @@ class VoiceService {
 
     final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
     if (targetLocale != _currentTtsLanguage) {
-      await _tts.setLanguage(targetLocale);
+      await _setTtsLanguage(targetLocale);
       _currentTtsLanguage = targetLocale;
     }
 
