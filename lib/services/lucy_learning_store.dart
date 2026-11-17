@@ -115,6 +115,7 @@ class LucyLearningStore {
     required String startSignature,
     required List<Map<String, dynamic>> actions,
     String appVersionCode = 'unknown',
+    String? commandTemplate,
   }) async {
     final normalized = normalizeCommand(command);
     if (normalized.isEmpty || packageName.isEmpty || actions.isEmpty) return;
@@ -124,7 +125,8 @@ class LucyLearningStore {
     };
     final safeActions = actions.where((action) {
       final type = action['type']?.toString() ?? '';
-      if (!allowed.contains(type)) return false;
+      if (!allowed.contains(type) &&
+          !(type == 'type' && action['parameter'] == 'query')) return false;
       if (type == 'tap') {
         return (action['resourceId']?.toString().isNotEmpty ?? false) ||
             (action['label']?.toString().isNotEmpty ?? false);
@@ -139,6 +141,7 @@ class LucyLearningStore {
     _skills[id] = <String, dynamic>{
       'id': id,
       'command': normalized,
+      'commandTemplate': commandTemplate ?? normalized,
       'package': packageName,
       'appVersionCode': appVersionCode,
       'startSignature': startSignature,
@@ -161,7 +164,11 @@ class LucyLearningStore {
     final normalized = normalizeCommand(command);
     for (final entry in _skills.entries.toList().reversed) {
       final skill = entry.value;
-      if (skill['command'] != normalized || skill['package'] != packageName) continue;
+      if (skill['package'] != packageName) continue;
+      final template = skill['commandTemplate']?.toString() ??
+          skill['command']?.toString() ?? '';
+      final parameters = _matchCommandTemplate(template, normalized);
+      if (parameters == null) continue;
       final version = skill['appVersionCode']?.toString() ?? 'unknown';
       if (version != 'unknown' && appVersionCode != 'unknown' && version != appVersionCode) {
         _skills.remove(entry.key);
@@ -169,9 +176,113 @@ class LucyLearningStore {
       }
       if (skill['startSignature'] != startSignature) continue;
       skill['lastUsedAt'] = DateTime.now().toIso8601String();
-      return Map<String, dynamic>.from(skill);
+      return <String, dynamic>{...skill, 'parameters': parameters};
     }
     return null;
+  }
+
+  Map<String, String>? _matchCommandTemplate(String template, String normalizedCommand) {
+    const placeholder = '{query}';
+    if (!template.contains(placeholder)) {
+      return normalizeCommand(template) == normalizedCommand
+          ? <String, String>{}
+          : null;
+    }
+    final parts = template.split(placeholder);
+    if (parts.length != 2) return null;
+    final prefix = normalizeCommand(parts.first);
+    final suffix = normalizeCommand(parts.last);
+    final pattern = RegExp(
+      '^' + RegExp.escape(prefix) + '(.+?)' + RegExp.escape(suffix) + r'
+    final skill = _skills[id];
+    if (skill == null) return;
+    final key = success ? 'successCount' : 'failureCount';
+    skill[key] = ((skill[key] as num?) ?? 0).toInt() + 1;
+    skill['lastUsedAt'] = DateTime.now().toIso8601String();
+    if (!success && (skill['failureCount'] as int) >= 2) _skills.remove(id);
+    await _persist();
+  }
+
+  Future<int> forgetAppLayout(String packageName) async {
+    final keys = _uiMaps.entries.where((entry) => entry.value['package'] == packageName)
+        .map((entry) => entry.key).toList();
+    for (final key in keys) { _uiMaps.remove(key); }
+    if (keys.isNotEmpty) await _persist();
+    return keys.length;
+  }
+
+  Future<bool> forgetSkill(String nameOrId) async {
+    final query = nameOrId.trim().toLowerCase();
+    final matches = _skills.entries.where((entry) =>
+        entry.key.toLowerCase() == query ||
+        entry.value['command']?.toString().toLowerCase() == query)
+        .map((e) => e.key).toList();
+    for (final key in matches) { _skills.remove(key); }
+    if (matches.isNotEmpty) await _persist();
+    return matches.isNotEmpty;
+  }
+
+  Future<void> clear() async {
+    _uiMaps.clear();
+    _skills.clear();
+    final file = _file;
+    if (file != null && await file.exists()) await file.delete();
+  }
+
+  static String normalizeCommand(String value) => value.toLowerCase()
+      .replaceAll(RegExp(r'[^\p{L}\p{M}\p{N}\s]', unicode: true), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  static String stableSignature({
+    required String packageName,
+    required List<Map<String, dynamic>> elements,
+  }) {
+    final stable = elements.map((element) {
+      final id = element['resourceId']?.toString() ?? '';
+      final label = (element['text'] ?? element['desc'])?.toString() ?? '';
+      final type = (element['class'] ?? element['type'])?.toString() ?? '';
+      return '$id|$label|$type';
+    }).where((value) => value != '||').take(160).toList()..sort();
+    final input = '$packageName|${stable.join(';')}';
+    var hash = 0x811c9dc5;
+    for (final unit in input.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
+  }
+
+  String _clip(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.length <= 180 ? text : text.substring(0, 180);
+  }
+
+  void _trimLru() {
+    while (_uiMaps.length > maxUiMaps) _uiMaps.remove(_uiMaps.keys.first);
+    while (_skills.length > maxSkills) _skills.remove(_skills.keys.first);
+  }
+
+  Future<void> _persist() async {
+    final file = _file;
+    if (file == null) return;
+    await file.parent.create(recursive: true);
+    final payload = {
+      'version': 1,
+      'uiMaps': _uiMaps.values.toList(),
+      'skills': _skills.values.toList(),
+    };
+    final temp = File('${file.path}.tmp');
+    await temp.writeAsString(jsonEncode(payload), flush: true);
+    await temp.rename(file.path);
+  }
+}
+,
+      caseSensitive: false,
+    );
+    final match = pattern.firstMatch(normalizedCommand);
+    if (match == null) return null;
+    final query = match.group(1)?.trim() ?? '';
+    return query.isEmpty ? null : <String, String>{'query': query};
   }
 
   Future<void> markSkillResult(String id, {required bool success}) async {
