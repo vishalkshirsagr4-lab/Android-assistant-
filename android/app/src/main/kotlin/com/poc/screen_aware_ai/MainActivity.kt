@@ -365,6 +365,32 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                "scrollScreen" -> {
+                    val forward = call.argument<Boolean>("forward") ?: true
+                    val maxScrolls = call.argument<Int>("maxScrolls") ?: 80
+                    val collect = call.argument<Boolean>("collect") ?: false
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        Thread {
+                            val payload = try {
+                                service.scrollScreen(forward, maxScrolls, collect)
+                            } catch (error: Exception) {
+                                Log.e(TAG, "Native deep scroll failed", error)
+                                org.json.JSONObject().apply {
+                                    put("scrolls", 0)
+                                    put("reachedEnd", false)
+                                    put("limited", false)
+                                    put("dispatchFailed", true)
+                                    put("error", error.javaClass.simpleName)
+                                    put("items", org.json.JSONArray())
+                                }.toString()
+                            }
+                            runOnUiThread { result.success(payload) }
+                        }.start()
+                    } else {
+                        result.error("NO_SERVICE", "Accessibility service not enabled", null)
+                    }
+                }
                 "getUITree" -> {
                     val service = ScreenActionService.instance
                     if (service != null) {
