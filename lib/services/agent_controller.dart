@@ -1476,18 +1476,41 @@ class AgentController extends ChangeNotifier {
         _updateTaskProgress('Lucy is preparing your answer');
 
         final ttsText = _trimForTts(speakText);
-        await _voiceService.speak(ttsText, lang: _currentLang);
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking && !_cancelRequested) {
-          await Future.delayed(const Duration(milliseconds: 200));
+        final speech = _voiceService.speak(ttsText, lang: _currentLang);
+        if (agentResponse.done) {
+          await speech;
+          await Future.delayed(const Duration(milliseconds: 250));
+          while (_voiceService.isSpeaking && !_cancelRequested) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+          ttsStopwatch.stop();
+          LucyReliabilityLog.event(
+            'agent_tts_timing',
+            step: step,
+            elapsedMs: ttsStopwatch.elapsedMilliseconds,
+            success: true,
+          );
+        } else {
+          // Intermediate speech runs alongside the next planning/action turn;
+          // only a final answer waits for TTS completion.
+          unawaited(speech.then((_) {
+            ttsStopwatch.stop();
+            LucyReliabilityLog.event(
+              'agent_tts_timing',
+              step: step,
+              elapsedMs: ttsStopwatch.elapsedMilliseconds,
+              success: true,
+            );
+          }, onError: (_) {
+            ttsStopwatch.stop();
+            LucyReliabilityLog.event(
+              'agent_tts_timing',
+              step: step,
+              elapsedMs: ttsStopwatch.elapsedMilliseconds,
+              success: false,
+            );
+          }));
         }
-        ttsStopwatch.stop();
-        LucyReliabilityLog.event(
-          'agent_tts_timing',
-          step: step,
-          elapsedMs: ttsStopwatch.elapsedMilliseconds,
-          success: true,
-        );
       }
 
       if (_cancelRequested) break;
