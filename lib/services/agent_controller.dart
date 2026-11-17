@@ -1042,15 +1042,19 @@ class AgentController extends ChangeNotifier {
           'set_flashlight',
           <String, dynamic>{'enabled': !turnOff},
         );
-        final reply = changed == true
-            ? switch (_currentLang) {
-                'hi' => turnOff ? 'टॉर्च बंद कर दी।' : 'टॉर्च चालू कर दी।',
-                'kn' => turnOff ? 'ಟಾರ್ಚ್ ಆಫ್ ಮಾಡಿದೆ.' : 'ಟಾರ್ಚ್ ಆನ್ ಮಾಡಿದೆ.',
-                'ja' => turnOff ? 'ライトを消しました。' : 'ライトをつけました。',
-                'ar' => turnOff ? 'أطفأت المصباح.' : 'شغّلت المصباح.',
-                _ => turnOff ? 'Flashlight off.' : 'Flashlight on.',
-              }
-            : 'I could not change the flashlight. Check camera permission and device support.';
+        String reply;
+        if (changed == true) {
+          reply = switch (_currentLang) {
+            'hi' => turnOff ? 'टॉर्च बंद कर दी।' : 'टॉर्च चालू कर दी।',
+            'kn' => turnOff ? 'ಟಾರ್ಚ್ ಆಫ್ ಮಾಡಿದೆ.' : 'ಟಾರ್ಚ್ ಆನ್ ಮಾಡಿದೆ.',
+            'ja' => turnOff ? 'ライトを消しました。' : 'ライトをつけました。',
+            'ar' => turnOff ? 'أطفأت المصباح.' : 'شغّلت المصباح.',
+            _ => turnOff ? 'Flashlight off.' : 'Flashlight on.',
+          };
+        } else {
+          reply =
+              'I could not change the flashlight. Check camera permission and device support.';
+        }
         await _speakLocalReply(reply);
       } catch (_) {
         await _speakLocalReply(
