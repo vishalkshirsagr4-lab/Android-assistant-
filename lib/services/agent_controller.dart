@@ -143,12 +143,12 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> _replyToMemoryCommand(
-    String _, {
+    String context, {
     String event = 'memory_update',
   }) async {
-    // The localized legacy phrase is intentionally not spoken. The event
-    // protocol lets the selected model phrase the result naturally.
-    await _speakEvent(event);
+    // Context describes the completed operation; the model phrases it in the
+    // user's language. If no provider is available, the UI remains silent.
+    await _speakEvent(event, context: context);
   }
 
   /// Ask the configured model to phrase a short, localized status event.
@@ -173,84 +173,6 @@ class AgentController extends ChangeNotifier {
     await _voiceService.speak(response.speak, lang: _currentLang);
   }
 
-  String _memoryReply(
-    String key, {
-    String value = '',
-    int count = 0,
-  }) {
-    switch (_currentLang) {
-      case 'ja':
-        return switch (key) {
-          'empty' => 'まだ保存された思い出はありません。「覚えておいて」と言えば保存できます。',
-          'show' => 'あなたが保存を頼んだ内容はこちらです。$value',
-          'cleared' => 'この端末に保存していたLucyのメモリーを消去しました。',
-          'nameForgot' => '呼び方の設定を忘れました。',
-          'noName' => '保存された呼び方はありません。',
-          'askForget' => '忘れてほしい内容を教えてください。',
-          'forgot' => '一致した$count件のメモリーを忘れました。',
-          'noMatch' => 'その内容に一致するメモリーは見つかりませんでした。',
-          'askRemember' => '覚えておく内容を教えてください。',
-          'saved' => '$valueとしてこの端末に保存しました。いつでも確認したり、削除したりできます。',
-          _ => 'メモリーを更新しました。',
-        };
-      case 'ar':
-        return switch (key) {
-          'empty' => 'لا توجد ذكريات محفوظة بعد. قل «تذكّر أن…» لحفظ شيء.',
-          'show' => 'هذه هي المعلومات التي طلبت مني حفظها: $value',
-          'cleared' => 'مسحت الذكريات التي حفظتها على هذا الجهاز.',
-          'nameForgot' => 'نسيت الاسم الذي طلبت مني استخدامه.',
-          'noName' => 'لا يوجد اسم مفضّل محفوظ.',
-          'askForget' => 'ما المعلومة التي تريد مني نسيانها؟',
-          'forgot' => 'نسيت $count من عناصر الذاكرة المطابقة.',
-          'noMatch' => 'لم أجد معلومة محفوظة تطابق ذلك.',
-          'askRemember' => 'ما الذي تريد مني تذكّره؟',
-          'saved' => 'حفظت ذلك على هذا الجهاز ضمن $value. يمكنك طلب عرضه أو حذفه في أي وقت.',
-          _ => 'تم تحديث الذاكرة.',
-        };
-      case 'hi':
-        return switch (key) {
-          'empty' => 'अभी कोई याद सेव नहीं है। कुछ सेव करवाने के लिए कहो, “याद रखना कि…”।',
-          'show' => 'तुमने जो बातें सेव करने को कहा था, वे ये हैं: $value',
-          'cleared' => 'मैंने इस डिवाइस पर सेव की गई यादें मिटा दी हैं।',
-          'nameForgot' => 'मैंने तुम्हारा पसंदीदा नाम भूल दिया है।',
-          'noName' => 'कोई पसंदीदा नाम सेव नहीं है।',
-          'askForget' => 'बताओ, कौन-सी सेव की हुई बात भूलनी है?',
-          'forgot' => 'मैंने मेल खाने वाली $count यादें हटा दी हैं।',
-          'noMatch' => 'उस बात से मेल खाती कोई सेव की हुई याद नहीं मिली।',
-          'askRemember' => 'बताओ, क्या याद रखना है?',
-          'saved' => 'मैंने इसे इस डिवाइस पर $value के रूप में सेव कर लिया है।',
-          _ => 'याद अपडेट कर दी है।',
-        };
-      case 'kn':
-        return switch (key) {
-          'empty' => 'ಇನ್ನೂ ಯಾವುದೇ ನೆನಪುಗಳನ್ನು ಉಳಿಸಿಲ್ಲ. “ಇದನ್ನು ನೆನಪಿಟ್ಟುಕೋ…” ಎಂದು ಹೇಳಬಹುದು.',
-          'show' => 'ನೀವು ಉಳಿಸಲು ಕೇಳಿದ ವಿಷಯಗಳು ಇವು: $value',
-          'cleared' => 'ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ್ದ ನೆನಪುಗಳನ್ನು ಅಳಿಸಿದ್ದೇನೆ.',
-          'nameForgot' => 'ನಿಮ್ಮ ಇಷ್ಟದ ಹೆಸರನ್ನು ಮರೆತಿದ್ದೇನೆ.',
-          'noName' => 'ಯಾವುದೇ ಇಷ್ಟದ ಹೆಸರು ಉಳಿಸಿಲ್ಲ.',
-          'askForget' => 'ಯಾವ ಉಳಿಸಿದ ವಿಷಯವನ್ನು ಮರೆಯಬೇಕು ಎಂದು ಹೇಳಿ.',
-          'forgot' => 'ಹೊಂದಿಕೆಯಾದ $count ನೆನಪುಗಳನ್ನು ಮರೆತಿದ್ದೇನೆ.',
-          'noMatch' => 'ಆ ವಿಷಯಕ್ಕೆ ಹೊಂದುವ ಉಳಿಸಿದ ನೆನಪು ಸಿಗಲಿಲ್ಲ.',
-          'askRemember' => 'ಏನು ನೆನಪಿಟ್ಟುಕೊಳ್ಳಬೇಕು ಎಂದು ಹೇಳಿ.',
-          'saved' => '$value ಎಂದು ಈ ಸಾಧನದಲ್ಲಿ ಉಳಿಸಿದ್ದೇನೆ. ಬೇಕಾದಾಗ ನೋಡಬಹುದು ಅಥವಾ ಅಳಿಸಬಹುದು.',
-          _ => 'ನೆನಪನ್ನು ನವೀಕರಿಸಿದ್ದೇನೆ.',
-        };
-      default:
-        return switch (key) {
-          'empty' => 'I do not have any saved memories yet. Say “remember that…” when you want me to save something.',
-          'show' => 'Here is what I have saved because you asked me to remember it: $value',
-          'cleared' => 'I cleared the memories Lucy saved on this device.',
-          'nameForgot' => 'I forgot your saved preferred name.',
-          'noName' => 'I do not have a preferred name saved.',
-          'askForget' => 'Tell me the saved detail you want me to forget.',
-          'forgot' => 'I forgot $count matching saved memory items.',
-          'noMatch' => 'I could not find a saved memory matching that detail.',
-          'askRemember' => 'Tell me what you want me to remember.',
-          'saved' => 'Saved on this device as a $value. You can ask what I remember or tell me to forget it.',
-          _ => 'Memory updated.',
-        };
-    }
-  }
 
   bool _containsAny(String value, List<String> terms) =>
       terms.any(value.contains);
@@ -281,8 +203,8 @@ class AgentController extends ChangeNotifier {
       final summary = memorySummary;
       await _replyToMemoryCommand(
         summary.isEmpty
-            ? _memoryReply('empty')
-            : _memoryReply('show', value: summary),
+            ? 'No saved memories were found.'
+            : 'The user asked what is remembered. Summarize these saved details: $summary',
         event: 'memory_recalled',
       );
       return true;
@@ -306,7 +228,7 @@ class AgentController extends ChangeNotifier {
     if (clearCommands.contains(lower)) {
       await clearUserMemories();
       await _replyToMemoryCommand(
-        _memoryReply('cleared'),
+        'The requested saved memories were successfully cleared.',
         event: 'memory_cleared',
       );
       return true;
@@ -328,7 +250,9 @@ class AgentController extends ChangeNotifier {
     if (forgetNameCommands.contains(lower)) {
       final removed = await forgetUserMemory('prefers to be addressed as');
       await _replyToMemoryCommand(
-        _memoryReply(removed > 0 ? 'nameForgot' : 'noName'),
+        removed > 0
+            ? 'The saved preferred-name detail was removed.'
+            : 'There was no saved preferred-name detail to remove.',
         event: 'memory_forgotten',
       );
       return true;
@@ -378,7 +302,7 @@ class AgentController extends ChangeNotifier {
         );
       } else {
         await _replyToMemoryCommand(
-            _memoryReply('askRemember'),
+            'The user asked to remember something but did not provide the detail. Ask one short question.',
             event: 'clarification_needed',
           );
       }
@@ -400,13 +324,15 @@ class AgentController extends ChangeNotifier {
         final query = trimmed.substring(prefix.length).trim();
         if (query.isEmpty || query == 'this') {
           await _replyToMemoryCommand(
-            _memoryReply('askForget'),
+            'The user asked to forget something but did not identify it. Ask one short question.',
             event: 'clarification_needed',
           );
         } else {
           final removed = await forgetUserMemory(query);
           await _replyToMemoryCommand(
-            _memoryReply(removed > 0 ? 'forgot' : 'noMatch', count: removed),
+            removed > 0
+                ? 'Successfully removed $removed matching memory item(s).'
+                : 'No saved memory matched the requested detail.',
             event: 'memory_forgotten',
           );
         }
@@ -512,7 +438,7 @@ class AgentController extends ChangeNotifier {
             : 'fact';
         await rememberUserMemory(fact, category: category);
         await _replyToMemoryCommand(
-          _memoryReply('saved', value: category),
+          'Successfully saved one user-approved memory of type $category.',
           event: 'memory_saved',
         );
         return true;
