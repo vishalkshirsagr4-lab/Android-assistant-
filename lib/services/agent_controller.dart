@@ -3986,7 +3986,9 @@ class AgentController extends ChangeNotifier {
   @override
   void dispose() {
     _silenceTimeoutTimer?.cancel();
-    _voiceService.dispose();
+    // Chat mode never initializes VoiceService. Disposing an unused instance
+    // can still invoke the shared native stop channel and interrupt Voice Mode.
+    if (!_textOnlyMode) _voiceService.dispose();
     super.dispose();
   }
 }
