@@ -2228,18 +2228,9 @@ class AgentController extends ChangeNotifier {
     if (snapshot == null) return false;
     final visibleText = snapshot.elements
         .map((element) => '${element['text'] ?? ''} ${element['desc'] ?? ''}')
-        .join(' ')
-        .toLowerCase();
-    final permissionContext = visibleText.contains('permission') ||
-        visibleText.contains('while using the app') ||
-        visibleText.contains('only this time') ||
-        visibleText.contains('allow lucy');
-    final permissionChoice = visibleText.contains('allow') ||
-        visibleText.contains("don't allow") ||
-        visibleText.contains('deny');
-    return permissionContext && permissionChoice;
+        .join(' ');
+    return LucyActionApprovalPolicy.isPermissionPromptText(visibleText);
   }
-
   bool _didPackageChange(_UiSnapshot? before, _UiSnapshot? after) {
     if (before?.packageName == null || after?.packageName == null) {
       return false;
