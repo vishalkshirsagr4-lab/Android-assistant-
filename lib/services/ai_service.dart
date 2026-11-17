@@ -607,6 +607,8 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
     Map<String, int>? screenSize,
     String? uiTree,
     String memoryContext = '',
+    void Function(String sentence)? onSpeakChunk,
+    void Function()? onSpeakReset,
   }) async {
     // Do not stop just because the selected provider is not configured.
     // The provider loop below may still find another saved key and use it.
@@ -674,6 +676,7 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
         LucyReliabilityLog.event('provider_attempt', provider: provider);
         try {
           String? text;
+          var streamEmitted = false;
           if (provider == 'hms') {
             if (imageBytes != null || !await _hmsService.isConfigured())
               continue;
@@ -756,6 +759,7 @@ RESPONSE FORMAT (strict JSON, one action per model turn in Phase 1):
           }
           return parsed;
         } catch (error) {
+          if (streamEmitted) onSpeakReset?.call();
           providerStopwatch.stop();
           LucyReliabilityLog.event(
             'provider_failure',
