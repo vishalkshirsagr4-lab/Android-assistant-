@@ -20,6 +20,10 @@ void main() {
         'open_url',
         'set_alarm',
         'set_timer',
+        'scroll_to_end',
+        'scroll_to_top',
+        'read_all',
+        'open_each',
       ]) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
             reason: action);
