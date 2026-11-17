@@ -80,7 +80,7 @@ class AgentResponse {
         'set_flashlight', 'set_volume', 'set_brightness', 'get_device_status',
         'read_contact', 'create_calendar_event', 'open_settings', 'take_photo',
         'share_text', 'remember', 'forget', 'recall_memories', 'forget_skill', 'forget_app_layout',
-        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'batch', 'run_skill',
+        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'run_skill',
       };
       if (!supportedActions.contains(type)) {
         throw FormatException('Unsupported Lucy action type: $type');
@@ -100,30 +100,8 @@ class AgentResponse {
     if (actionsList.length > 1) {
       throw const FormatException('Return one batch action when grouping multiple UI operations.');
     }
-    if (actionsList.any((action) => action.type == 'batch')) {
-      if (actionsList.length != 1) {
-        throw const FormatException('A batch must be the only action in its model response.');
-      }
-      final nested = actionsList.single.params['actions'];
-      if (nested is! List || nested.isEmpty || nested.length > 5) {
-        throw const FormatException('A batch must contain between one and five actions.');
-      }
-      const allowedBatchTypes = {'tap', 'type', 'swipe', 'back', 'wait'};
-      for (final value in nested) {
-        if (value is! Map) {
-          throw const FormatException('Every batch action must be an object.');
-        }
-        final item = Map<String, dynamic>.from(value);
-        final type = item['type']?.toString() ?? '';
-        if (!allowedBatchTypes.contains(type)) {
-          throw FormatException('Unsupported batch action: $type');
-        }
-        final expect = item['expect'];
-        if (expect != null && expect is! Map) {
-          throw const FormatException('Batch expect must be an object.');
-        }
-      }
-    }
+    // One model turn may request only one primitive action. This guarantees
+    // the controller can re-observe the screen before every next decision.
     final rawPlan = json['plan'];
     String goal = '';
     String doneWhen = '';
