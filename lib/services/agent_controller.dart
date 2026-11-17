@@ -3818,7 +3818,13 @@ class AgentController extends ChangeNotifier {
           'found': false,
           'error': 'contacts_access_not_granted',
         });
-        _lastActionDispatchSucceeded = true;
+        _lastActionDispatchSucceeded = false;
+        _cancelRequested = true;
+        _statusMessage =
+            'Task partially completed · Contacts permission is required';
+        const message =
+            'I cannot search your contacts because Contacts permission is not granted. Enable it in Android Settings if you want to continue. I did not select or use a contact.';
+        _addConversation(message, false);
         return;
       }
       if (resultMap['ambiguous'] == true || resultMap['found'] == false) {
