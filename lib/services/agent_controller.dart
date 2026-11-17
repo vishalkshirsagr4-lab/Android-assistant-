@@ -2074,7 +2074,7 @@ class AgentController extends ChangeNotifier {
           'remove', 'mark as read', 'mark as unread', 'report spam',
           'block', 'unsubscribe', 'select all',
         }.contains(normalized) ||
-            RegExp(r'^(delete|archive|remove|block|report|unsubscribe)\\b')
+            RegExp(r'^(delete|archive|remove|block|report|unsubscribe)\b')
                 .hasMatch(normalized)) {
           continue;
         }
