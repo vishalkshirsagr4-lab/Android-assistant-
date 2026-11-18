@@ -52,13 +52,44 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Configure permanent release signing
+        if: inputs.build_type == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ] || [ -z "${KEYSTORE_PASSWORD}" ] || [ -z "${KEY_ALIAS}" ] || [ -z "${KEY_PASSWORD}" ]; then
+            echo "::error::Release signing secrets are missing. Refusing to create a debug-signed release APK."
+            exit 1
+          fi
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/lucy-release.jks"
+          keytool -list -keystore "${RUNNER_TEMP}/lucy-release.jks" -alias "${KEY_ALIAS}" -storepass "${KEYSTORE_PASSWORD}" >/dev/null
+          {
+            echo "storeFile=${RUNNER_TEMP}/lucy-release.jks"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > android/key.properties
+          echo "Permanent release keystore configured and alias verified."
+
       - name: Build debug APK
         if: inputs.build_type == 'debug'
         run: flutter build apk --debug
 
-      - name: Build release APK
+      - name: Build signed release APK
         if: inputs.build_type == 'release'
         run: flutter build apk --release
+
+      - name: Verify release APK signature
+        if: inputs.build_type == 'release'
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          apksigner verify --verbose "$APK"
+          apksigner verify --print-certs "$APK"
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
