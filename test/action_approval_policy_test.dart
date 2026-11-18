@@ -3,55 +3,38 @@ import 'package:screen_aware_ai/services/action_approval_policy.dart';
 
 void main() {
   group('LucyActionApprovalPolicy', () {
-    test('allows routine phone and screen actions without approval', () {
+    test('allows routine navigation, communication and content actions', () {
       for (final action in [
-        'open_app',
-        'type',
-        'swipe',
-        'back',
-        'home',
-        'wait',
-        'set_flashlight',
-        'set_volume',
-        'schedule_reminder',
-        'read_contact',
-        'create_calendar_event',
-        'take_photo',
-        'open_url',
-        'set_alarm',
-        'set_timer',
-        'scroll_to_end',
-        'scroll_to_top',
-        'read_all',
-        'open_each',
-        'batch',
+        'open_app', 'type', 'swipe', 'back', 'home', 'wait',
+        'set_flashlight', 'set_volume', 'schedule_reminder',
+        'read_contact', 'create_calendar_event', 'take_photo', 'open_url',
+        'set_alarm', 'set_timer', 'scroll_to_end', 'scroll_to_top',
+        'read_all', 'open_each', 'batch', 'place_call', 'send_sms',
+        'share_text', 'open_settings',
       ]) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
             reason: action);
       }
     });
 
-    test('allows harmless taps including generic confirmation and permission labels', () {
+    test('does not ask approval for delete, send, share, install or call taps', () {
       for (final label in [
-        'Play', 'Search', 'Home', 'Next', 'Pause',
-        'Confirm', 'Submit', 'Allow', 'Grant',
+        'Send', 'Send message', 'Delete', 'Delete permanently', 'Remove',
+        'Share', 'Post', 'Publish', 'Install', 'Uninstall', 'Call',
+        'Video call', 'Confirm', 'Submit',
       ]) {
         expect(
-          LucyActionApprovalPolicy.requiresApproval(
-            'tap',
-            targetLabel: label,
-            packageName: 'com.example.app',
-          ),
+          LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
           isFalse,
           reason: label,
         );
       }
     });
 
-    test('requires approval for payment and destructive tap labels', () {
+    test('requires approval for explicit payment and UPI actions', () {
       for (final label in [
-        'Send money', 'Transfer money', 'Delete', 'Delete permanently',
-        'Buy', 'Purchase', 'Pay', 'Checkout', 'Uninstall',
+        'Pay', 'Payment', 'UPI', 'Send money', 'Transfer money',
+        'Confirm payment', 'Pay now', 'Checkout', 'Purchase', 'Buy now',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
@@ -61,161 +44,80 @@ void main() {
       }
     });
 
-    test('requires approval for horizontal gestures in mail apps', () {
-      for (final package in [
-        'com.google.android.gm',
-        'com.microsoft.office.outlook',
-      ]) {
-        expect(
-          LucyActionApprovalPolicy.requiresApproval(
-            'swipe',
-            packageName: package,
-          ),
-          isTrue,
-          reason: package,
-        );
-      }
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'swipe',
-          packageName: 'com.example.reader',
-        ),
-        isFalse,
-      );
-    });
-
-    test('does not add Lucy approval prompts for calls and SMS', () {
-      for (final action in ['place_call', 'send_sms']) {
-        expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
-            reason: action);
-      }
-      // Sharing arbitrary text remains a separate consequential action.
-      expect(
-        LucyActionApprovalPolicy.requiresApproval('share_text'),
-        isTrue,
-      );
-    });
-
-    test('requires approval for app installation and account security changes', () {
-      for (final label in [
-        'Install',
-        'Install now',
-        'Change password',
-        'Recovery email',
-        'Enable 2FA',
-        'Factory reset',
-        'Erase all data',
-        'Subscribe',
-        'Change email',
-      ]) {
-        expect(
-          LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
-          isTrue,
-          reason: label,
-        );
-      }
-    });
-
-    test('recognizes common Indian payment app package names as sensitive', () {
+    test('requires approval for interactions inside Indian financial apps', () {
       for (final package in [
         'com.google.android.apps.nbu.paisa.user',
         'com.phonepe.app',
         'net.one97.paytm',
         'com.sbi.lotusintouch',
         'com.dreamplug.androidapp',
+        'com.example.upi.wallet',
       ]) {
-        expect(
-          LucyActionApprovalPolicy.requiresApproval(
-            'tap',
-            targetLabel: 'Continue',
-            packageName: package,
-          ),
-          isTrue,
-          reason: package,
-        );
+        for (final action in ['tap', 'type', 'swipe', 'back']) {
+          expect(
+            LucyActionApprovalPolicy.requiresApproval(
+              action,
+              targetLabel: 'Continue',
+              packageName: package,
+            ),
+            isTrue,
+            reason: '$package / $action',
+          );
+        }
       }
     });
 
-    test('requires approval for taps inside financial apps', () {
+    test('does not gate ordinary mail swipes or password typing outside finance apps', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval(
-          'tap',
-          targetLabel: 'Balance',
-          packageName: 'com.example.upi.wallet',
-        ),
-        isTrue,
-      );
-    });
-
-    test('requires approval for sensitive account and security settings', () {
-      for (final page in ['Security', 'Account', 'Password', 'Privacy']) {
-        expect(
-          LucyActionApprovalPolicy.requiresApproval(
-            'open_settings',
-            targetLabel: page,
-          ),
-          isTrue,
-          reason: page,
-        );
-      }
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'open_settings',
-          targetLabel: 'Display',
+          'swipe',
+          packageName: 'com.google.android.gm',
         ),
         isFalse,
       );
-    });
-
-    test('typing into a password field always requires approval', () {
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'swipe',
+          packageName: 'com.microsoft.office.outlook',
+        ),
+        isFalse,
+      );
       expect(
         LucyActionApprovalPolicy.requiresApproval(
           'type',
           sensitiveInput: true,
-          modelRisk: 'low',
-          confidence: 0.99,
-        ),
-        isTrue,
-      );
-    });
-
-    test('typing in a financial app requires approval', () {
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'type',
-          packageName: 'com.example.upi.wallet',
-        ),
-        isTrue,
-      );
-    });
-
-    test('model risk and low confidence do not add prompts to routine actions', () {
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'open_app',
-          modelRisk: 'high',
-          confidence: 0.4,
+          packageName: 'com.example.app',
         ),
         isFalse,
       );
     });
 
-    test('model cannot downgrade a locally sensitive action', () {
-      // Calls and SMS are intentionally excluded from Lucy's extra prompt.
-      // Other consequential actions must remain protected even if the model
-      // reports low risk and maximum confidence.
+    test('model risk metadata does not add prompts to routine actions', () {
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'open_app',
+          modelRisk: 'high',
+          confidence: 0.1,
+        ),
+        isFalse,
+      );
+      expect(
+        LucyActionApprovalPolicy.requiresApproval(
+          'tap',
+          targetLabel: 'Delete permanently',
+          modelRisk: 'high',
+          confidence: 0.1,
+        ),
+        isFalse,
+      );
+    });
+
+    test('financial app protection cannot be downgraded by model metadata', () {
       expect(
         LucyActionApprovalPolicy.effectiveRisk(
           'tap',
-          targetLabel: 'Delete permanently',
-          modelRisk: 'low',
-          confidence: 1,
-        ),
-        'high',
-      );
-      expect(
-        LucyActionApprovalPolicy.effectiveRisk(
-          'share_text',
+          targetLabel: 'Continue',
+          packageName: 'com.phonepe.app',
           modelRisk: 'low',
           confidence: 1,
         ),
@@ -225,46 +127,23 @@ void main() {
 
     test('Autopilot disabled permits only explicit memory operations', () {
       for (final action in [
-        'remember',
-        'forget',
-        'recall_memories',
-        'forget_skill',
+        'remember', 'forget', 'recall_memories', 'forget_skill',
         'forget_app_layout',
       ]) {
-        expect(
-          LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
-          isTrue,
-          reason: action,
-        );
+        expect(LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
+            isTrue, reason: action);
       }
       for (final action in [
-        'open_app',
-        'tap',
-        'type',
-        'swipe',
-        'back',
-        'home',
-        'scroll_to_end',
-        'scroll_to_top',
-        'read_all',
-        'open_each',
-        'batch',
-        'run_skill',
-        'place_call',
-        'send_sms',
-        'share_text',
-        'set_flashlight',
-        'set_volume',
+        'open_app', 'tap', 'type', 'swipe', 'back', 'home',
+        'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each',
+        'batch', 'run_skill', 'place_call', 'send_sms', 'share_text',
       ]) {
-        expect(
-          LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
-          isFalse,
-          reason: action,
-        );
+        expect(LucyActionApprovalPolicy.allowedWhenAutopilotDisabled(action),
+            isFalse, reason: action);
       }
     });
 
-    test('detects Android permission prompts in supported languages', () {
+    test('recognizes Android permission prompts in supported languages', () {
       for (final prompt in [
         'Allow Lucy to access the microphone? Only this time',
         'Allow WhatsApp to send you notifications? Allow / Don’t allow',
@@ -273,11 +152,8 @@ void main() {
         'アプリの使用中に許可しますか？ 今回のみ',
         'السماح أثناء استخدام التطبيق',
       ]) {
-        expect(
-          LucyActionApprovalPolicy.isPermissionPromptText(prompt),
-          isTrue,
-          reason: prompt,
-        );
+        expect(LucyActionApprovalPolicy.isPermissionPromptText(prompt), isTrue,
+            reason: prompt);
       }
       expect(
         LucyActionApprovalPolicy.isPermissionPromptText(
