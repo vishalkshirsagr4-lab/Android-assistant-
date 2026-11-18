@@ -21,6 +21,7 @@ import 'reading_mode_planner.dart';
 import 'lucy_settings_store.dart';
 import 'lucy_learning_store.dart';
 import 'lucy_app_hint_catalog.dart';
+import 'offline_command_parser.dart';
 
 enum AgentState {
   idle,
@@ -1279,6 +1280,81 @@ class AgentController extends ChangeNotifier {
 
   Future<bool> _handleOfflineCommand(String text) async {
     final command = text.toLowerCase().trim();
+
+    // Resolve simple call/SMS requests locally before the AI loop. Named
+    // recipients are matched by Android's on-device contacts matcher; an
+    // ambiguous name is never silently resolved to the first result.
+    final communication = OfflineCommunicationCommand.parse(text);
+    if (communication != null) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
+      if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+        return false;
+      }
+      try {
+        final digits = communication.target.replaceAll(RegExp(r'\\D'), '');
+        String? phoneNumber =
+            digits.length >= 7 ? communication.target.trim() : null;
+        String? contactName;
+        if (phoneNumber == null) {
+          final lookup = await _phoneActions.execute(
+            'read_contact',
+            <String, dynamic>{'name': communication.target},
+          );
+          final contact = lookup is Map
+              ? Map<dynamic, dynamic>.from(lookup)
+              : const <dynamic, dynamic>{};
+          if (contact['ambiguous'] == true) {
+            await _speakLocalReply(
+              'I found more than one matching contact. Please say the full contact name.',
+            );
+            return true;
+          }
+          if (contact['found'] != true ||
+              contact['phoneNumber']?.toString().trim().isEmpty != false) {
+            await _speakLocalReply(
+              'I could not find one matching phone contact. Check the name or Contacts permission.',
+            );
+            return true;
+          }
+          phoneNumber = contact['phoneNumber'].toString();
+          contactName = contact['name']?.toString();
+        }
+
+        final params = <String, dynamic>{'phoneNumber': phoneNumber};
+        if (communication.action == 'send_sms') {
+          params['message'] = communication.message!;
+        }
+        final result = await _phoneActions.execute(
+          communication.action,
+          params,
+        );
+        final succeeded = result == true ||
+            (result is Map && result['success'] == true);
+        if (!succeeded) {
+          await _speakLocalReply(
+            communication.action == 'place_call'
+                ? 'I could not open the dialer for that contact.'
+                : 'I could not open the SMS composer for that contact.',
+          );
+          return true;
+        }
+        final label = contactName ?? communication.target;
+        await _speakLocalReply(
+          communication.action == 'place_call'
+              ? 'Dialer opened for $label. Review the number and tap Call when ready.'
+              : 'SMS composer opened for $label. Review the message and tap Send when ready.',
+        );
+        return true;
+      } catch (_) {
+        await _speakLocalReply(
+          'I could not complete that phone action. Check Contacts permission and try again.',
+        );
+        return true;
+      }
+    }
     final asksTime = RegExp(
       r"(what.?s the time|what time is it|tell me the time|current time|\btime\b|\bclock\b|समय|कितने बजे|ಸಮಯ|ಗಂಟೆ|時刻|時間|الوقت)",
     ).hasMatch(command);
