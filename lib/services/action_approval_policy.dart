@@ -1,9 +1,9 @@
-/// Local action-risk policy. Consequential actions require a deliberate
-/// user confirmation. Routine navigation and ordinary phone tasks do not.
+/// Local action-risk policy. Only financial and UPI operations require
+/// Lucy's additional confirmation. Android-owned permission and system dialogs
+/// remain controlled by Android.
 class LucyActionApprovalPolicy {
   /// Only explicitly requested local memory operations remain available when
-  /// Autopilot is disabled. All phone/UI actions are blocked at the executor,
-  /// not merely discouraged in the model prompt.
+  /// Autopilot is disabled. All phone/UI actions are blocked at the executor.
   static const Set<String> _memoryOnlyActions = {
     'remember',
     'forget',
@@ -15,115 +15,41 @@ class LucyActionApprovalPolicy {
   static bool allowedWhenAutopilotDisabled(String action) =>
       _memoryOnlyActions.contains(action);
 
-  /// Recognizes Android runtime permission prompts across the app's supported
-  /// languages. The controller must pause before asking the model to act.
   static bool isPermissionPromptText(String visibleText) {
     final text = visibleText.toLowerCase();
     const permissionContextTerms = <String>[
-      'permission',
-      'while using the app',
-      'only this time',
-      'allow lucy',
-      'send you notifications',
-      'take pictures',
-      'record audio',
-      'access your location',
-      'access your contacts',
-      'access the camera',
-      'अनुमति',
-      'ऐप इस्तेमाल करते समय',
-      'केवल इस बार',
-      'ಅನುಮತಿ',
-      'ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ',
-      'ಈ ಬಾರಿ ಮಾತ್ರ',
-      '権限',
-      'アプリの使用中',
-      '今回のみ',
-      'إذن',
-      'السماح للتطبيق',
-      'أثناء استخدام التطبيق',
+      'permission', 'while using the app', 'only this time', 'allow lucy',
+      'send you notifications', 'take pictures', 'record audio',
+      'access your location', 'access your contacts', 'access the camera',
+      'अनुमति', 'ऐप इस्तेमाल करते समय', 'केवल इस बार', 'ಅನುಮತಿ',
+      'ಅಪ್ಲಿಕೇಶನ್ ಬಳಸುವಾಗ', 'ಈ ಬಾರಿ ಮಾತ್ರ', '権限', 'アプリの使用中',
+      '今回のみ', 'إذن', 'السماح للتطبيق', 'أثناء استخدام التطبيق',
       'هذه المرة فقط',
     ];
     const permissionChoiceTerms = <String>[
-      'allow',
-      "don't allow",
-      'deny',
-      'अनुमति दें',
-      'अनुमति न दें',
-      'ಅನುಮತಿಸಿ',
-      'ಅನುಮತಿಸಬೇಡಿ',
-      '許可',
-      '許可しない',
-      'السماح',
+      'allow', "don't allow", 'deny', 'अनुमति दें', 'अनुमति न दें',
+      'ಅನುಮತಿಸಿ', 'ಅನುಮತಿಸಬೇಡಿ', '許可', '許可しない', 'السماح',
       'عدم السماح',
     ];
     return permissionContextTerms.any(text.contains) &&
         permissionChoiceTerms.any(text.contains);
   }
 
-  static const Set<String> _sensitiveTapLabels = {
-    'send',
-    'send message',
-    'send now',
-    'post',
-    'publish',
-    'share',
-    'share text',
+  static const Set<String> _financialTapLabels = {
+    'pay',
+    'payment',
+    'upi',
     'send money',
     'transfer money',
-    'transfer',
-    'delete',
-    'delete permanently',
-    'remove',
-    'buy',
-    'purchase',
-    'pay',
-    'checkout',
     'confirm payment',
-    'submit order',
-    'install',
-    'install app',
-    'install now',
-    'uninstall',
-    'password',
-    'passcode',
-    'recovery',
-    'recovery email',
-    'recovery phone',
-    'two-factor',
-    '2fa',
-    'security key',
-    'factory reset',
-    'erase all data',
-    'wipe data',
-    'reset phone',
-    'reset device',
-    'reset account',
-    'change password',
-    'change email',
-    'change phone',
-    'subscribe',
-    'start free trial',
-    'place order',
-    'confirm order',
+    'pay now',
+    'checkout',
+    'purchase',
     'buy now',
-    'call',
-    'video call',
-    'place call',
-    'make call',
-    'start call',
-    'dial',
+    'submit order',
   };
 
-  static const Set<String> _mailPackageMarkers = {
-    'gmail',
-    'com.google.android.gm',
-    'outlook',
-    'com.microsoft.office.outlook',
-    'mail',
-  };
-
-  static const Set<String> _sensitivePackageMarkers = {
+  static const Set<String> _financialPackageMarkers = {
     'bank',
     'wallet',
     'payment',
@@ -145,49 +71,21 @@ class LucyActionApprovalPolicy {
     'gpay',
     'googlepay',
     'cred',
-    'packageinstaller',
-    'permissioncontroller',
   };
 
   static const Set<String> _knownActions = {
-    'open_app',
-    'type',
-    'swipe',
-    'back',
-    'home',
-    'wait',
-    'schedule_reminder',
-    'set_alarm',
-    'set_timer',
-    'open_url',
-    'start_navigation',
-    'music_search',
-    'set_flashlight',
-    'set_volume',
-    'set_brightness',
-    'get_device_status',
-    'remember',
-    'forget',
-    'recall_memories',
-    'scroll_to_end',
-    'scroll_to_top',
-    'read_all',
-    'open_each',
-    'place_call',
-    'send_sms',
-    'share_text',
-    'read_contact',
-    'create_calendar_event',
-    'take_photo',
-    'open_settings',
-    'tap',
-    'batch',
+    'open_app', 'type', 'swipe', 'back', 'home', 'wait',
+    'schedule_reminder', 'set_alarm', 'set_timer', 'open_url',
+    'start_navigation', 'music_search', 'set_flashlight', 'set_volume',
+    'set_brightness', 'get_device_status', 'remember', 'forget',
+    'recall_memories', 'scroll_to_end', 'scroll_to_top', 'read_all',
+    'open_each', 'place_call', 'send_sms', 'share_text', 'read_contact',
+    'create_calendar_event', 'take_photo', 'open_settings', 'tap', 'batch',
     'run_skill',
   };
 
-  /// Computes risk locally. Model-provided risk/confidence cannot turn a
-  /// routine action into an approval prompt; only local sensitive-action
-  /// checks decide whether approval is required.
+  /// Risk is decided locally. Model metadata cannot add prompts to routine
+  /// actions or downgrade a financial action.
   static String effectiveRisk(
     String action, {
     String? targetLabel,
@@ -199,44 +97,21 @@ class LucyActionApprovalPolicy {
     if (!_knownActions.contains(action)) return 'high';
 
     final package = (packageName ?? '').toLowerCase();
-    final sensitivePackage = _sensitivePackageMarkers.any(package.contains);
-    final mailPackage = _mailPackageMarkers.any(package.contains);
+    final label = (targetLabel ?? '').trim().toLowerCase();
+    final financialPackage =
+        _financialPackageMarkers.any(package.contains);
+    final financialLabel =
+        _financialTapLabels.any((term) => label.contains(term));
 
-    // Horizontal swipes in mail apps can archive or delete a message. Scrolling
-    // uses the dedicated scroll actions, so require approval for a mail swipe.
-    if (action == 'swipe' && mailPackage) return 'high';
+    // Any interaction inside a recognised bank, wallet or UPI app is gated.
+    if (financialPackage) return 'high';
 
-    // Calls and SMS use Android's dialer/message composer intents. Lucy does
-    // not add a second yes/no prompt; Android still leaves the final Call/Send
-    // action to the user in the system app.
-    if (action == 'place_call' || action == 'send_sms') return 'low';
+    // Outside financial apps, only an explicit payment/UPI action is gated.
+    if (action == 'tap' && financialLabel) return 'high';
 
-    if (action == 'share_text') return 'high';
-
-    if (action == 'type') {
-      return sensitiveInput || sensitivePackage ? 'high' : 'low';
-    }
-
-    if (action == 'open_settings') {
-      final page = (targetLabel ?? '').toLowerCase();
-      return page.contains('security') ||
-              page.contains('account') ||
-              page.contains('password') ||
-              page.contains('privacy') ||
-              page.contains('developer')
-          ? 'high'
-          : 'low';
-    }
-
-    if (action == 'tap') {
-      final label = (targetLabel ?? '').trim().toLowerCase();
-      if (sensitivePackage ||
-          _sensitiveTapLabels.any((term) => label.contains(term))) {
-        return 'high';
-      }
-      return 'low';
-    }
-
+    // All other supported actions, including scroll/swipe, delete, send,
+    // share, calling, messaging, reading and password-field typing, do not
+    // trigger Lucy's extra approval prompt.
     return 'low';
   }
 
@@ -247,15 +122,13 @@ class LucyActionApprovalPolicy {
     String? modelRisk,
     double? confidence,
     bool sensitiveInput = false,
-  }) {
-    return effectiveRisk(
-          action,
-          targetLabel: targetLabel,
-          packageName: packageName,
-          modelRisk: modelRisk,
-          confidence: confidence,
-          sensitiveInput: sensitiveInput,
-        ) !=
-        'low';
-  }
+  }) =>
+      effectiveRisk(
+        action,
+        targetLabel: targetLabel,
+        packageName: packageName,
+        modelRisk: modelRisk,
+        confidence: confidence,
+        sensitiveInput: sensitiveInput,
+      ) != 'low';
 }
