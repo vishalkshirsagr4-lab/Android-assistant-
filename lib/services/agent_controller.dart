@@ -1506,65 +1506,6 @@ class AgentController extends ChangeNotifier {
       return true;
     }
 
-    const appPackages = <String, String>{
-      'whatsapp': 'com.whatsapp',
-      'व्हाट्सऐप': 'com.whatsapp',
-      'वाट्सऐप': 'com.whatsapp',
-      'ವಾಟ್ಸಾಪ್': 'com.whatsapp',
-      'telegram': 'org.telegram.messenger',
-      'टेलीग्राम': 'org.telegram.messenger',
-      'ಟೆಲಿಗ್ರಾಂ': 'org.telegram.messenger',
-      'youtube': 'com.google.android.youtube',
-      'यूट्यूब': 'com.google.android.youtube',
-      'ಯೂಟ್ಯೂಬ್': 'com.google.android.youtube',
-      'gmail': 'com.google.android.gm',
-      'जीमेल': 'com.google.android.gm',
-      'ಜಿಮೇಲ್': 'com.google.android.gm',
-      'chrome': 'com.android.chrome',
-      'क्रोम': 'com.android.chrome',
-      'क्रोम ब्राउज़र': 'com.android.chrome',
-      'instagram': 'com.instagram.android',
-      'इंस्टाग्राम': 'com.instagram.android',
-      'ಇನ್‌ಸ್ಟಾಗ್ರಾಮ್': 'com.instagram.android',
-      'maps': 'com.google.android.apps.maps',
-      'google maps': 'com.google.android.apps.maps',
-      'मैप्स': 'com.google.android.apps.maps',
-      'ಸೆಟ್ಟಿಂಗ್ಸ್': 'com.android.settings',
-      'settings': 'com.android.settings',
-      'सेटिंग्स': 'com.android.settings',
-    };
-    final openPrefix = RegExp(
-      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$|^(.+?)\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
-    ).firstMatch(command);
-    final requestedApp =
-        (openPrefix?.group(1) ?? openPrefix?.group(2))?.trim();
-    final packageName = requestedApp == null ? null : appPackages[requestedApp];
-    if (packageName != null) {
-      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
-        _showAutopilotDisabledStatus();
-        return true;
-      }
-      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
-        return false;
-      }
-      final opened = await _screenCapture.openApp(packageName);
-      if (opened) {
-        final reply = switch (_currentLang) {
-          'hi' => 'ऐप खोल दिया।',
-          'kn' => 'ಆ್ಯಪ್ ತೆರೆಯಿತು.',
-          'ja' => 'アプリを開きました。',
-          'ar' => 'تم فتح التطبيق.',
-          _ => 'App opened.',
-        };
-        await _speakLocalReply(reply);
-        return true;
-      }
-      // Do not swallow a failed fast-path dispatch. Let the full agent loop
-      // inspect the current UI and attempt a safe alternative.
-      _addConversation('I could not open $requestedApp directly. I will check whether another safe way is available.', false);
-      return false;
-    }
-
     final settingsMatch = RegExp(
       r'^(?:(?:open|show|go to|खोलो|खोल|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?|(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+settings?)(?:\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ))?)$',
     ).firstMatch(command);
@@ -1594,6 +1535,60 @@ class AgentController extends ChangeNotifier {
         <String, dynamic>{'page': page},
         reply,
       )) return true;
+    }
+
+    // Resolve installed app labels locally: no AI/network round trip.
+    final appCommand = OfflineAppCommand.parse(text);
+    if (appCommand != null) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
+      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
+        return false;
+      }
+      try {
+        final rawResult = await _phoneActions.execute(
+          'open_app',
+          <String, dynamic>{'appName': appCommand.appName},
+        );
+        final result = rawResult is Map
+            ? Map<dynamic, dynamic>.from(rawResult)
+            : const <dynamic, dynamic>{};
+        if (result['ambiguous'] == true) {
+          final matches = (result['matches'] as List?)
+                  ?.map((item) => item.toString())
+                  .take(4)
+                  .join(', ') ??
+              '';
+          await _speakLocalReply(
+            matches.isEmpty
+                ? 'I found more than one matching app. Please say its full name.'
+                : 'I found more than one matching app: $matches. Which one do you mean?',
+          );
+          return true;
+        }
+        if (result['success'] == true) {
+          final label = result['label']?.toString() ?? appCommand.appName;
+          await _speakLocalReply(switch (_currentLang) {
+            'hi' => '$label खोल दिया।',
+            'kn' => '$label ತೆರೆಯಿತು.',
+            'ja' => '$label を開きました。',
+            'ar' => 'تم فتح $label.',
+            _ => 'Opened $label.',
+          });
+          return true;
+        }
+        await _speakLocalReply(
+          'I could not find an installed app named \${appCommand.appName}.',
+        );
+        return true;
+      } catch (_) {
+        await _speakLocalReply(
+          'Android could not launch \${appCommand.appName}. Please try again.',
+        );
+        return true;
+      }
     }
 
     final timerMatch = RegExp(
