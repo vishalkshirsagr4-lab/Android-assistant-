@@ -609,17 +609,18 @@ class AiService {
                 streamEmitted = true;
                 onSpeakChunk(sentence);
               });
-              await for (final response in _chat!
-                  .sendMessageStream(content)
-                  .timeout(attemptTimeout)) {
-                final delta = response.text ?? '';
-                if (delta.isNotEmpty) {
-                  responseBuffer.write(delta);
-                  extractor.add(delta);
+              final streamRequest = () async {
+                await for (final response in _chat!.sendMessageStream(content)) {
+                  final delta = response.text ?? '';
+                  if (delta.isNotEmpty) {
+                    responseBuffer.write(delta);
+                    extractor.add(delta);
+                  }
                 }
-              }
-              extractor.finish();
-              text = responseBuffer.toString();
+                extractor.finish();
+                return responseBuffer.toString();
+              }();
+              text = await streamRequest.timeout(attemptTimeout);
             } else {
               final response = await _chat!
                   .sendMessage(content)
