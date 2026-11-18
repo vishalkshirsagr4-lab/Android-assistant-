@@ -98,6 +98,7 @@ class GroqService {
     String prompt, {
     required String systemPrompt,
     Uint8List? imageBytes,
+    bool stateless = false,
     Duration timeout = const Duration(seconds: 120),
   }) async {
     final stored = await _storage.read(key: _keyName);
@@ -131,7 +132,7 @@ class GroqService {
     };
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': systemPrompt},
-      ..._history,
+      if (!stateless) ..._history,
       userMessage,
     ];
 
@@ -180,21 +181,23 @@ class GroqService {
       // Retain only compact text context. Never retain screenshots or their
       // base64 payloads: resending old images on every agent step quickly
       // exhausts Groq's input-tokens-per-minute allowance.
-      final historyUserText = prompt.trim();
-      _history
-        ..add({
-          'role': 'user',
-          'content': historyUserText.length > 1800
-              ? historyUserText.substring(0, 1800)
-              : historyUserText,
-        })
-        ..add({
-          'role': 'assistant',
-          'content': text.length > 1200 ? text.substring(0, 1200) : text,
-        });
-      // Keep only the last two text-only exchanges (four messages).
-      if (_history.length > 4) {
-        _history.removeRange(0, _history.length - 4);
+      if (!stateless) {
+        final historyUserText = prompt.trim();
+        _history
+          ..add({
+            'role': 'user',
+            'content': historyUserText.length > 1800
+                ? historyUserText.substring(0, 1800)
+                : historyUserText,
+          })
+          ..add({
+            'role': 'assistant',
+            'content': text.length > 1200 ? text.substring(0, 1200) : text,
+          });
+        // Keep only the last two text-only exchanges (four messages).
+        if (_history.length > 4) {
+          _history.removeRange(0, _history.length - 4);
+        }
       }
       return text;
     } on TimeoutException {
