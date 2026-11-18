@@ -18,8 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integrated Lucy safety, background voice, ScreenWatcher, approved memory, Hindi/Kannada onboarding, performance diagnostics and voice-resilience stages.
+- Restored bundled Amica avatar assets while retaining the permanent-signed in-app updater.
+
+---
+
+## [0.3.1] - 2026-11-18
+
+### Added
+
 - 📲 In-app update checks against GitHub Releases, with an update prompt, APK download and Android package-installer handoff
-- 🔐 Stable release signing is required so future APKs can update the installed app without uninstalling
+- 🔐 Stable release signing using the permanent release keystore for future compatible in-place updates
+
+### Fixed
+
+- 🛠️ Hardened release APK verification and manual build workflow
+- 📦 Published version and Android build number are advanced so Android does not treat this release as a downgrade
 
 ---
 
@@ -121,7 +135,7 @@ from GitHub, everything below is new to you.
 
 ---
 
-[Unreleased]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/tag/v0.3.0
+[Unreleased]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alzin/lucy-screen-agent/releases/tag/v0.1.0
