@@ -65,6 +65,7 @@ void main() {
       expect(OfflineAppCommand.parse('open WhatsApp')?.appName, 'WhatsApp');
       expect(OfflineAppCommand.parse('launch Spotify')?.appName, 'Spotify');
       expect(OfflineAppCommand.parse('start Google Maps')?.appName, 'Google Maps');
+      expect(OfflineAppCommand.parse('open Instagram.')?.appName, 'Instagram');
     });
 
     test('parses Hindi and Kannada app launch requests', () {
