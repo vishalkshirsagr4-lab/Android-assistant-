@@ -1,6 +1,6 @@
-/// Local action-risk policy. Only financial and UPI operations require
-/// Lucy's additional confirmation. Android-owned permission and system dialogs
-/// remain controlled by Android.
+/// Local action-risk policy. Consequential external actions and destructive
+/// UI controls require Lucy's additional confirmation. Android-owned permission
+/// and system dialogs remain controlled by Android.
 class LucyActionApprovalPolicy {
   /// Only explicitly requested local memory operations remain available when
   /// Autopilot is disabled. All phone/UI actions are blocked at the executor.
@@ -47,6 +47,28 @@ class LucyActionApprovalPolicy {
     'purchase',
     'buy now',
     'submit order',
+  };
+
+  static const Set<String> _consequentialTapLabels = {
+    'send',
+    'send message',
+    'send now',
+    'publish',
+    'post',
+    'delete',
+    'delete permanently',
+    'move to trash',
+    'trash',
+    'remove account',
+    'confirm',
+    'submit',
+    'place order',
+    'buy',
+    'install',
+    'uninstall',
+    'change password',
+    'change security',
+    'sign out',
   };
 
   static const Set<String> _financialPackageMarkers = {
@@ -106,12 +128,21 @@ class LucyActionApprovalPolicy {
     // Any interaction inside a recognised bank, wallet or UPI app is gated.
     if (financialPackage) return 'high';
 
-    // Outside financial apps, only an explicit payment/UPI action is gated.
-    if (action == 'tap' && financialLabel) return 'high';
+    // External communication and sharing require review before hand-off.
+    if (const {'place_call', 'send_sms', 'share_text'}.contains(action)) {
+      return 'high';
+    }
 
-    // All other supported actions, including scroll/swipe, delete, send,
-    // share, calling, messaging, reading and password-field typing, do not
-    // trigger Lucy's extra approval prompt.
+    // Password entry and consequential controls are always gated.
+    if (action == 'type' && sensitiveInput) return 'high';
+    if (action == 'tap' &&
+        (financialLabel ||
+            _consequentialTapLabels.any((term) => label.contains(term)))) {
+      return 'high';
+    }
+
+    // Routine navigation, reading, scrolling and reversible device controls
+    // remain hands-free when Autopilot is enabled.
     return 'low';
   }
 
