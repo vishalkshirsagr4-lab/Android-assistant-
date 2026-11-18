@@ -69,11 +69,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.14"
-
       - name: Build debug APK
         run: flutter build apk --debug
 
@@ -85,7 +80,7 @@ jobs:
           # Retry dependency resolution without hiding genuine test failures.
           for attempt in 1 2 3; do
             echo "Android JVM unit-test attempt ${attempt}/3"
-            if gradle testDebugUnitTest --no-daemon; then
+            if ./gradlew testDebugUnitTest --no-daemon; then
               exit 0
             fi
             if [ "${attempt}" -lt 3 ]; then
