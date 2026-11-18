@@ -57,7 +57,7 @@ void main() {
           isNull);
     });
   });
-}
+
 
 
   group('OfflineAppCommand', () {
@@ -82,3 +82,4 @@ void main() {
       expect(OfflineAppCommand.parse('launch   '), isNull);
     });
   });
+}
