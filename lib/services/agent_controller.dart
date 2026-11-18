@@ -1580,12 +1580,12 @@ class AgentController extends ChangeNotifier {
           return true;
         }
         await _speakLocalReply(
-          'I could not find an installed app named \${appCommand.appName}.',
+          'I could not find an installed app named ${appCommand.appName}.',
         );
         return true;
       } catch (_) {
         await _speakLocalReply(
-          'Android could not launch \${appCommand.appName}. Please try again.',
+          'Android could not launch ${appCommand.appName}. Please try again.',
         );
         return true;
       }
