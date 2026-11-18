@@ -37,7 +37,8 @@ class PhoneActionHandler(private val activity: Activity) {
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
         return try {
             when (call.method) {
-                "open_app" -> openApp(call, result)\n                "set_alarm" -> setAlarm(call, result)
+                "open_app" -> openApp(call, result)
+                "set_alarm" -> setAlarm(call, result)
                 "set_timer" -> setTimer(call, result)
                 "place_call" -> placeCall(call, result)
                 "send_sms" -> sendSms(call, result)
