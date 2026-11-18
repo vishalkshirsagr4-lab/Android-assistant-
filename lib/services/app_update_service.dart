@@ -111,7 +111,7 @@ class AppUpdateService {
     UpdateProgressCallback? onProgress,
   }) async {
     _downloadCancelled = false;
-    final directory = await getApplicationSupportDirectory();
+    final directory = await getTemporaryDirectory();
     final apkFile = File('${directory.path}/$_apkName');
 
     if (await apkFile.exists()) await apkFile.delete();
@@ -194,7 +194,7 @@ class AppUpdateService {
   }
 
   Future<void> resumePendingInstall() async {
-    final directory = await getApplicationSupportDirectory();
+    final directory = await getTemporaryDirectory();
     final apk = File('${directory.path}/$_apkName');
     if (await apk.exists() && await apk.length() > 0) {
       _pendingApkPath = apk.path;
