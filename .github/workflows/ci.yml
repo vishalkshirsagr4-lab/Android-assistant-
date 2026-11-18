@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings, fix/lucy-deep-read-stop-coverage, stage2/safety-settings-hardening, stage3/screenwatcher-hardening, stage4/approved-learning-memory, stage5/hindi-kannada-voice-onboarding, stage6/performance-stability, stage7/release-regression-docs, stage8/voice-resilience-entity-understanding]
   pull_request:
-    branches: [main]
+    branches: [main, fix/lucy-main-pr13-integration, phase1/lucy-safe-autopilot-foundation, phase3/lucy-speed-layer, phase4/lucy-screen-intelligence, phase5/lucy-ui-memory-skills, phase6/lucy-personality-memory-settings, fix/lucy-deep-read-stop-coverage, stage2/safety-settings-hardening, stage3/screenwatcher-hardening, stage4/approved-learning-memory, stage5/hindi-kannada-voice-onboarding, stage6/performance-stability, stage7/release-regression-docs, stage8/voice-resilience-entity-understanding]
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +34,6 @@ jobs:
 
       - name: Format Dart files
         run: dart format .
-
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
 
@@ -70,8 +69,31 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+
       - name: Build debug APK
         run: flutter build apk --debug
+
+      - name: Run Android JVM unit tests
+        working-directory: android
+        shell: bash
+        run: |
+          # Maven Central can temporarily return HTTP 429 from its mirror.
+          # Retry dependency resolution without hiding genuine test failures.
+          for attempt in 1 2 3; do
+            echo "Android JVM unit-test attempt ${attempt}/3"
+            if gradle testDebugUnitTest --no-daemon; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "Android JVM unit tests failed after 3 attempts."
+          exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

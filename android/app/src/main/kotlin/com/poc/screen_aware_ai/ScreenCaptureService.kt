@@ -321,29 +321,44 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         Log.d(TAG, "onDestroy: cleaning up")
-        captureHandler?.removeCallbacksAndMessages(null)
-        captureHandler = null
-        captureThread?.quitSafely()
-        captureThread = null
-        // Unregister callback before stopping to prevent it from running during cleanup
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            projectionCallback?.let { cb ->
-                try {
-                    mediaProjection?.unregisterCallback(cb)
-                } catch (e: Exception) {
-                    Log.w(TAG, "onDestroy: failed to unregister callback", e)
+        try {
+            captureHandler?.removeCallbacksAndMessages(null)
+            captureHandler = null
+            captureThread?.quitSafely()
+            captureThread = null
+            // Unregister callback before stopping to prevent it from running during cleanup.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                projectionCallback?.let { cb ->
+                    try {
+                        mediaProjection?.unregisterCallback(cb)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "onDestroy: failed to unregister callback", e)
+                    }
                 }
+                projectionCallback = null
             }
-            projectionCallback = null
+            // Increment generation to invalidate any leaked callbacks.
+            projectionGeneration++
+            try {
+                virtualDisplay?.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "onDestroy: virtual display was already released", e)
+            }
+            try {
+                imageReader?.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "onDestroy: image reader was already closed", e)
+            }
+            try {
+                mediaProjection?.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "onDestroy: projection was already stopped", e)
+            }
+            instance = null
+        } finally {
+            super.onDestroy()
         }
-        // Increment generation to invalidate any leaked callbacks
-        projectionGeneration++
-        virtualDisplay?.release()
-        imageReader?.close()
-        mediaProjection?.stop()
-        instance = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

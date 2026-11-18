@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
+
+import 'agent_reliability.dart';
 
 class ScreenCaptureManager {
   static const _channel = MethodChannel('com.poc.screen_aware_ai/screen');
@@ -29,7 +33,7 @@ class ScreenCaptureManager {
       _hasPermission = result ?? false;
       return _hasPermission;
     } catch (e) {
-      print('Error requesting screen capture: $e');
+      LucyReliabilityLog.event('screen_permission_request_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -51,7 +55,7 @@ class ScreenCaptureManager {
         // Service exists but lost its MediaProjection — wait for
         // reinitialization (MainActivity attempts it automatically)
         // then retry once.
-        print('Screen capture not initialized, waiting and retrying...');
+        LucyReliabilityLog.event('screen_capture_not_initialized', attempt: 1, success: false);
         await Future.delayed(const Duration(milliseconds: 800));
         try {
           final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
@@ -60,7 +64,7 @@ class ScreenCaptureManager {
           if (retryError.code == 'NOT_INITIALIZED' ||
               retryError.code == 'NO_SERVICE') {
             // Reinitialization failed — need fresh permission grant
-            print('Reinitialization failed, re-requesting permission...');
+            LucyReliabilityLog.event('screen_capture_reinitialize_failed', attempt: 2, success: false);
             _hasPermission = false;
             final granted = await requestPermission();
             if (!granted) return null;
@@ -71,16 +75,16 @@ class ScreenCaptureManager {
               );
               return bytes;
             } catch (finalError) {
-              print('Final capture attempt failed: $finalError');
+              LucyReliabilityLog.event('screen_capture_final_attempt_failed', errorType: finalError.runtimeType.toString(), success: false);
               return null;
             }
           }
-          print('Retry capture failed: $retryError');
+          LucyReliabilityLog.event('screen_capture_retry_failed', errorType: retryError.runtimeType.toString(), success: false);
           return null;
         }
       } else if (e.code == 'NO_SERVICE') {
         // Service not running at all — request permission to start it
-        print('Screen capture service not running, requesting permission...');
+        LucyReliabilityLog.event('screen_capture_service_missing', success: false);
         _hasPermission = false;
         final granted = await requestPermission();
         if (!granted) return null;
@@ -88,15 +92,153 @@ class ScreenCaptureManager {
           final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
           return bytes;
         } catch (retryError) {
-          print('Capture after permission re-request failed: $retryError');
+          LucyReliabilityLog.event('screen_capture_after_permission_failed', errorType: retryError.runtimeType.toString(), success: false);
           return null;
         }
       }
-      print('Error capturing screen: $e');
+      LucyReliabilityLog.event('screen_capture_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     } catch (e) {
-      print('Error capturing screen: $e');
+      LucyReliabilityLog.event('screen_capture_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
+    }
+  }
+
+  /// Cancel a running native deep-scroll pass. Safe to call when idle.
+  Future<bool> cancelScreenOperation() async {
+    try {
+      return await _channel.invokeMethod<bool>('cancelScreenOperation').timeout(const Duration(seconds: 2)) ?? false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_scroll_cancel_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return false;
+    }
+  }
+
+  /// Run a bounded native scroll pass. With collect=true, native code
+  /// returns de-duplicated visible text gathered across the entire pass.
+  Future<Map<String, dynamic>?> scrollScreen({
+    required bool forward,
+    int maxScrolls = 80,
+    bool collect = false,
+  }) async {
+    try {
+      final raw = await _channel.invokeMethod<String>(
+        'scrollScreen',
+        <String, dynamic>{
+          'forward': forward,
+          'maxScrolls': maxScrolls.clamp(1, 120).toInt(),
+          'collect': collect,
+        },
+      );
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_scroll_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return null;
+    }
+  }
+
+  /// Execute up to five reversible UI primitives in one native round trip.
+  /// The controller must run its local risk checks before calling this method.
+  Future<Map<String, dynamic>?> performBatch(
+    List<Map<String, dynamic>> actions,
+  ) async {
+    if (actions.isEmpty || actions.length > 5) return null;
+    try {
+      final raw = await _channel.invokeMethod<String>(
+        'performBatch',
+        <String, dynamic>{'actions': actions},
+      );
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'native_batch_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return null;
+    }
+  }
+
+  /// Configure the native ScreenWatcher. Permission dialogs and sensitive
+  /// payment/login surfaces remain excluded in native code even when enabled.
+  Future<bool> configureScreenWatcher({
+    bool enabled = true,
+    bool skipAds = true,
+    bool dismissPopups = true,
+    Set<String> excludedPackages = const {},
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'configureScreenWatcher',
+            <String, dynamic>{
+              'enabled': enabled,
+              'skipAds': skipAds,
+              'dismissPopups': dismissPopups,
+              'excludedPackages': excludedPackages.toList(),
+            },
+          ) ??
+          false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'screen_watcher_config_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return false;
+    }
+  }
+
+  /// Current monotonic accessibility-event sequence for the foreground UI.
+  Future<int> getUiEventSequence() async {
+    try {
+      final value = await _channel.invokeMethod<num>('getUiEventSequence');
+      return value?.toInt() ?? 0;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'ui_event_sequence_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return 0;
+    }
+  }
+
+  /// Wait for an accessibility event, with a bounded timeout. A fresh UI tree
+  /// must still be fetched afterwards; an event is only a wake-up signal.
+  Future<int> waitForUiEvent({
+    required int afterSequence,
+    int timeoutMs = 500,
+  }) async {
+    try {
+      final value = await _channel.invokeMethod<num>(
+        'waitForUiEvent',
+        <String, dynamic>{
+          'afterSequence': afterSequence,
+          'timeoutMs': timeoutMs.clamp(0, 2000).toInt(),
+        },
+      );
+      return value?.toInt() ?? afterSequence;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'ui_event_wait_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      return afterSequence;
     }
   }
 
@@ -107,7 +249,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<String>('getUITree');
       return result;
     } catch (e) {
-      print('Error getting UI tree: $e');
+      LucyReliabilityLog.event('ui_tree_capture_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     }
   }
@@ -129,7 +271,7 @@ class ScreenCaptureManager {
     try {
       await _channel.invokeMethod('openAccessibilitySettings');
     } catch (e) {
-      print('Error opening settings: $e');
+      LucyReliabilityLog.event('accessibility_settings_open_failed', errorType: e.runtimeType.toString(), success: false);
     }
   }
 
@@ -141,7 +283,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error opening app: $e');
+      LucyReliabilityLog.event('open_app_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -155,7 +297,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error performing tap: $e');
+      LucyReliabilityLog.event('tap_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -168,7 +310,7 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error performing type: $e');
+      LucyReliabilityLog.event('type_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -189,7 +331,44 @@ class ScreenCaptureManager {
       });
       return result ?? false;
     } catch (e) {
-      print('Error performing swipe: $e');
+      LucyReliabilityLog.event('swipe_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
+      return false;
+    }
+  }
+
+  /// Read the actual keyguard state. Screen-off alone does not prove that
+  /// the phone is locked.
+  Future<bool> isDeviceLocked() async {
+    try {
+      return await _channel.invokeMethod<bool>('isDeviceLocked') ?? false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'device_lock_state_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
+      // Fail closed for screen automation if lock state cannot be verified.
+      return true;
+    }
+  }
+
+  /// Keep the display awake during an explicitly started task.
+  /// This does not wake or unlock a locked phone.
+  Future<bool> keepScreenAwake(bool enabled) async {
+    try {
+      final result = await _channel
+          .invokeMethod<bool>(
+            'keepScreenAwake',
+            <String, dynamic>{'enabled': enabled},
+          )
+          .timeout(const Duration(seconds: 2));
+      return result ?? false;
+    } catch (error) {
+      LucyReliabilityLog.event(
+        'keep_screen_awake_failed',
+        errorType: error.runtimeType.toString(),
+        success: false,
+      );
       return false;
     }
   }
@@ -200,7 +379,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<bool>('pressBack');
       return result ?? false;
     } catch (e) {
-      print('Error pressing back: $e');
+      LucyReliabilityLog.event('back_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -217,7 +396,7 @@ class ScreenCaptureManager {
       }
       return null;
     } catch (e) {
-      print('Error getting screen size: $e');
+      LucyReliabilityLog.event('screen_size_read_failed', errorType: e.runtimeType.toString(), success: false);
       return null;
     }
   }
@@ -228,7 +407,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<bool>('pressHome');
       return result ?? false;
     } catch (e) {
-      print('Error pressing home: $e');
+      LucyReliabilityLog.event('home_dispatch_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -242,7 +421,7 @@ class ScreenCaptureManager {
       final result = await _channel.invokeMethod<bool>('showStopOverlay');
       return result ?? false;
     } catch (e) {
-      print('Error showing stop controls: $e');
+      LucyReliabilityLog.event('stop_controls_show_failed', errorType: e.runtimeType.toString(), success: false);
       return false;
     }
   }
@@ -252,7 +431,7 @@ class ScreenCaptureManager {
     try {
       await _channel.invokeMethod('hideStopOverlay');
     } catch (e) {
-      print('Error hiding stop controls: $e');
+      LucyReliabilityLog.event('stop_controls_hide_failed', errorType: e.runtimeType.toString(), success: false);
     }
   }
 }

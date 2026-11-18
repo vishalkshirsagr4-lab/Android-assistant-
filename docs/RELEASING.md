@@ -34,7 +34,7 @@ question:
 
 So the **version bump is the trigger, not the merge**. Merging ten PRs that don't
 touch `pubspec.yaml` produces zero releases. Merging one that changes
-`version: 0.1.0+1` to `version: 0.2.0+2` produces exactly one.
+`version: 0.1.0+1` to `version: 0.3.0+3` produces exactly one.
 
 That matters, because it means cutting a release is a reviewable change like any
 other. The release notes, the version, and the code all arrive in the same pull
@@ -74,7 +74,7 @@ flowchart LR
    section headed exactly:
 
    ```markdown
-   ## [0.2.0] - 2026-09-14
+   ## [0.3.0] - 2026-11-17
    ```
 
    The heading format matters — the workflow copies everything under it into the
@@ -83,9 +83,9 @@ flowchart LR
 
 4. **Open a PR, get it reviewed, merge it.**
 
-5. **Watch [Actions](https://github.com/alzin/lucy-screen-agent/actions).** A few
+5. **Watch [Actions](https://github.com/vishalkshirsagr4-lab/Android-assistant-/actions).** A few
    minutes later the release appears under
-   [Releases](https://github.com/alzin/lucy-screen-agent/releases).
+   [Releases](https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases).
 
 You can also trigger the workflow by hand from the Actions tab
 (**Release → Run workflow**) — useful if a run failed for an infrastructure
@@ -136,7 +136,7 @@ Because `lucy-latest.apk` keeps the same file name across releases, this URL
 never changes and always redirects to the newest **stable** build:
 
 ```text
-https://github.com/alzin/lucy-screen-agent/releases/latest/download/lucy-latest.apk
+https://github.com/vishalkshirsagr4-lab/Android-assistant-/releases/latest/download/lucy-latest.apk
 ```
 
 That is the link to put in the repo's **About** panel, in the README, and

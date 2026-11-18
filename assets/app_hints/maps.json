@@ -1,0 +1,14 @@
+{
+  "app": "Google Maps",
+  "strategy": [
+    "Prefer direct navigation intents when destination is clear.",
+    "Distinguish search results from active navigation and verify route start.",
+    "Do not alter saved places or share location without explicit request."
+  ],
+  "targets": [
+    "Search here",
+    "Directions",
+    "Start",
+    "Back"
+  ]
+}

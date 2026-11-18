@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.3.1+4
+version: 0.3.2+5
 
 environment:
   sdk: ^3.11.1
@@ -64,6 +64,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
+    - assets/lucy_system_prompt.txt
     - assets/avatar_viewer/index.html
     - assets/amica/LICENSE
     - assets/amica/vrm/AvatarSample_A.vrm
@@ -71,6 +72,7 @@ flutter:
     - assets/amica/animations/greeting.vrma
     - assets/amica/animations/dance.vrma
     - assets/amica/animations/peaceSign.vrma
+    - assets/app_hints/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

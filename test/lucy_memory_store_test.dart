@@ -1,0 +1,221 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:screen_aware_ai/services/lucy_memory_store.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  test(
+    'migrates legacy explicitly saved memories into structured records',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'lucy_user_approved_memories_v1': [
+          'I prefer simple English explanations',
+          'My goal is to learn Flutter',
+        ],
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final store = LucyMemoryStore(prefs);
+
+      await store.initialize();
+
+      expect(store.items, hasLength(2));
+      expect(store.items.first.category, 'fact');
+      expect(store.items.first.userApproved, isTrue);
+      expect(store.summary, contains('I prefer simple English explanations'));
+      expect(prefs.getStringList('lucy_user_approved_memories_v1'), isNull);
+    },
+  );
+
+  test('stores structured categories and avoids duplicate records', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember(
+      'I prefer Kannada explanations',
+      category: 'preference',
+    );
+    await store.remember(
+      'I prefer Kannada explanations',
+      category: 'preference',
+    );
+
+    expect(store.items, hasLength(1));
+    expect(store.items.single.category, 'preference');
+    expect(store.items.single.confidence, 1);
+    expect(store.items.single.userApproved, isTrue);
+  });
+
+  test('retrieves only memories relevant to the current request', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember(
+      'The user is learning Flutter and Dart',
+      category: 'goal',
+    );
+    await store.remember(
+      'The user prefers short Kannada explanations',
+      category: 'preference',
+    );
+    await store.remember(
+      'The user studies database management',
+      category: 'routine',
+    );
+
+    final context = store.relevantContext('Help me with Flutter widgets');
+
+    expect(context, contains('Flutter and Dart'));
+    expect(context, isNot(contains('database management')));
+  });
+
+  test('forgets matching memories and clears all stored data', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember('I prefer short answers', category: 'preference');
+    await store.remember('I am learning Python', category: 'goal');
+
+    expect(await store.forgetMatching('short answers'), 1);
+    expect(store.items, hasLength(1));
+
+    await store.clear();
+    expect(store.items, isEmpty);
+    expect(prefs.getString('lucy_structured_memories_v2'), isNull);
+  });
+
+  test('stores contact category, confidence and timestamps', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    final before = DateTime.now();
+    await store.remember(
+      'Mom contact number is saved with approval',
+      category: 'contact',
+      confidence: 0.85,
+    );
+
+    final item = store.items.single;
+    expect(item.category, 'contact');
+    expect(item.confidence, 0.85);
+    expect(item.userApproved, isTrue);
+    expect(item.createdAt.isAfter(before.subtract(const Duration(seconds: 1))), isTrue);
+    expect(item.updatedAt, item.createdAt);
+  });
+
+  test('retrieves Japanese memories by overlapping phrase fragments', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember(
+      '私は日本語での説明が好きです',
+      category: 'preference',
+    );
+
+    expect(
+      store.relevantContext('日本語の説明'),
+      contains('日本語での説明'),
+    );
+  });
+
+  test('serializes concurrent memory writes without losing entries', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await Future.wait([
+      for (var index = 0; index < 30; index++)
+        store.remember('Concurrent approved memory $index'),
+    ]);
+
+    final reloaded = LucyMemoryStore(prefs);
+    await reloaded.initialize();
+    expect(reloaded.items, hasLength(30));
+  });
+
+  test('stores more than fifty typed memories without truncation', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    for (var index = 0; index < 75; index++) {
+      await store.remember('Approved fact number $index');
+    }
+
+    expect(store.items, hasLength(75));
+    expect(store.items.first.type, 'fact');
+    expect(store.items.first.text, 'Approved fact number 74');
+    expect(store.items.first.source, 'user_approved');
+    expect(store.items.first.lastUsedAt, store.items.first.createdAt);
+  });
+
+  test('matches Unicode memory text for Hindi and Kannada queries', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember(
+      'ನಾನು ಕನ್ನಡದಲ್ಲಿ ಸರಳ ವಿವರಣೆಗಳನ್ನು ಇಷ್ಟಪಡುತ್ತೇನೆ',
+      category: 'preference',
+    );
+    await store.remember(
+      'मुझे हिंदी में आसान उदाहरण पसंद हैं',
+      category: 'preference',
+    );
+
+    expect(store.relevantContext('ಕನ್ನಡ ವಿವರಣೆ'), contains('ಕನ್ನಡದಲ್ಲಿ'));
+    expect(store.relevantContext('हिंदी उदाहरण'), contains('हिंदी में'));
+  });
+
+
+  test('preserves all supported structured memory types', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    for (final type in ['fact', 'preference', 'routine', 'person', 'place']) {
+      await store.remember('Approved $type detail', type: type);
+    }
+
+    expect(
+      store.items.map((item) => item.type).toSet(),
+      {'fact', 'preference', 'routine', 'person', 'place'},
+    );
+  });
+
+  test('does not store blank or oversized memory values', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember('   ');
+    await store.remember(List<String>.filled(241, 'x').join());
+
+    expect(store.items, isEmpty);
+  });
+
+  test('memory summaries contain real line breaks', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final store = LucyMemoryStore(prefs);
+    await store.initialize();
+
+    await store.remember('First saved detail');
+    await store.remember('Second saved detail');
+
+    expect(store.summary, contains('\n'));
+    expect(store.summary, isNot(contains(r'\n')));
+    final relevant = store.relevantContext('First Second saved detail');
+    expect(relevant, contains('\n'));
+    expect(relevant, isNot(contains(r'\n')));
+  });
+
+}

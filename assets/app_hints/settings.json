@@ -1,0 +1,12 @@
+{
+  "app": "Android Settings",
+  "strategy": [
+    "Identify the settings category and exact visible toggle state.",
+    "Avoid security, account, permission and reset settings in automatic skills.",
+    "Use stable labels; verify the resulting setting state."
+  ],
+  "targets": [
+    "Search settings",
+    "Back"
+  ]
+}

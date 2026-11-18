@@ -1,0 +1,15 @@
+{
+  "app": "YouTube",
+  "strategy": [
+    "Use explicit visible search and playback controls.",
+    "Only skip an ad when a labelled Skip control is exposed.",
+    "Do not infer playback from opening a result; verify player state."
+  ],
+  "targets": [
+    "Search",
+    "Skip ad",
+    "Play",
+    "Pause",
+    "Back"
+  ]
+}

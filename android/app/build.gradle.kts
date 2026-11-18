@@ -8,6 +8,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
+    testImplementation("junit:junit:4.13.2")
+}
 
 // A release keystore is optional. `android/key.properties` is gitignored, so a
 // fresh clone (and CI without the signing secrets configured) has no keystore.

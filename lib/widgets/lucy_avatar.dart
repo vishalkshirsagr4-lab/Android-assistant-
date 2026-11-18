@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/agent_controller.dart';
 
-/// Renders Lucy's bundled Amica VRM character in a lightweight WebView.
-/// The model and VRMA clips are local assets; Three.js/three-vrm are loaded
-/// from a CDN, so the first avatar load requires an internet connection.
+/// Renders Lucy's procedural 3D character in a lightweight Android WebView.
+/// The character geometry, materials, lighting and animations are generated
+/// locally by the bundled avatar viewer; no external model assets are needed.
 class LucyAvatar extends StatefulWidget {
   final AgentState state;
 
@@ -77,7 +77,7 @@ class _LucyAvatarState extends State<LucyAvatar> {
               color: Color(0xFF10121D),
               child: Center(
                 child: Text(
-                  '3D avatar is available on Android. Check your internet connection if it does not load.',
+                  '3D avatar is available on Android. Check that Android System WebView is enabled, then reopen Lucy.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70),
                 ),

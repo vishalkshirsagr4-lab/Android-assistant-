@@ -1,0 +1,14 @@
+{
+  "app": "Chrome",
+  "strategy": [
+    "Prefer the main WebView scroll container and page accessibility text.",
+    "Use read_all for long pages and report if content is hidden or truncated.",
+    "Distinguish page controls from browser toolbar controls."
+  ],
+  "targets": [
+    "Address bar",
+    "Search",
+    "Back",
+    "Tabs"
+  ]
+}
