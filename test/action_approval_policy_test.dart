@@ -20,11 +20,21 @@ void main() {
       for (final label in [
         'Send', 'Send message', 'Delete', 'Delete permanently', 'Remove',
         'Share', 'Post', 'Publish', 'Install', 'Uninstall', 'Call',
-        'Video call', 'Confirm', 'Submit',
+        'Video call',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
           isTrue,
+          reason: label,
+        );
+      }
+    });
+
+    test('does not block generic confirmation or submission controls', () {
+      for (final label in ['Continue', 'Confirm', 'Submit', 'OK', 'Next']) {
+        expect(
+          LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
+          isFalse,
           reason: label,
         );
       }
