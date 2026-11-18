@@ -101,6 +101,7 @@ class HmsService {
   Future<String> complete(
     String prompt, {
     required String systemPrompt,
+    bool stateless = false,
     Duration timeout = const Duration(seconds: 90),
   }) async {
     final stored = await _storage.read(key: _keyName);
@@ -112,7 +113,7 @@ class HmsService {
 
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': systemPrompt},
-      ..._history,
+      if (!stateless) ..._history,
       {'role': 'user', 'content': prompt.trim()},
     ];
     final client = http.Client();
@@ -159,11 +160,13 @@ class HmsService {
         );
       }
 
-      _history
-        ..add({'role': 'user', 'content': _trim(prompt.trim(), 1800)})
-        ..add({'role': 'assistant', 'content': _trim(answer, 1800)});
-      if (_history.length > 4) {
-        _history.removeRange(0, _history.length - 4);
+      if (!stateless) {
+        _history
+          ..add({'role': 'user', 'content': _trim(prompt.trim(), 1800)})
+          ..add({'role': 'assistant', 'content': _trim(answer, 1800)});
+        if (_history.length > 4) {
+          _history.removeRange(0, _history.length - 4);
+        }
       }
       return answer;
     } on TimeoutException {

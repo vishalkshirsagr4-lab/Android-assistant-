@@ -21,6 +21,7 @@ import 'reading_mode_planner.dart';
 import 'lucy_settings_store.dart';
 import 'lucy_learning_store.dart';
 import 'lucy_app_hint_catalog.dart';
+import 'offline_command_parser.dart';
 
 enum AgentState {
   idle,
@@ -241,25 +242,104 @@ class AgentController extends ChangeNotifier {
     String event, {
     String context = '',
   }) async {
-    final speechStopwatch = Stopwatch()..start();
-    final response = await _aiService.agentChat(
-      '[EVENT: $event]\n'
-      'User language: $_currentLang\n'
-      'App status: $context\n'
-      'Return one short natural sentence. Do not perform an action.',
-    );
-    if (response.isError || response.speak.trim().isEmpty) {
-      _statusMessage = 'Lucy · $event';
-      notifyListeners();
-      return;
-    }
-    _addConversation(response.speak, false);
-    if (!_textOnlyMode) {
-      _setState(AgentState.speaking);
-      await _voiceService.speak(response.speak, lang: _currentLang);
-    }
-    speechStopwatch.stop();
-    _performanceMonitor.recordTiming('tts', speechStopwatch.elapsed);
+    // Status events are fixed, known phrases. Calling a cloud model merely to
+    // rephrase them adds a full network round-trip to an otherwise local action.
+    const recalledPrefix =
+        'The user asked what is remembered. Summarize these saved details: ';
+    final recalled = event == 'memory_recalled' &&
+            context.startsWith(recalledPrefix)
+        ? context.substring(recalledPrefix.length).trim()
+        : '';
+    String localized(
+      String english,
+      String hindi,
+      String kannada,
+      String japanese,
+      String arabic,
+    ) =>
+        switch (_currentLang) {
+          'hi' => hindi,
+          'kn' => kannada,
+          'ja' => japanese,
+          'ar' => arabic,
+          _ => english,
+        };
+    final reply = switch (event) {
+      'device_locked' => localized(
+          'Your phone is locked. Please unlock it so I can continue.',
+          'फोन लॉक है। आगे बढ़ने के लिए कृपया इसे अनलॉक करें।',
+          'ಫೋನ್ ಲಾಕ್ ಆಗಿದೆ. ಮುಂದುವರಿಯಲು ದಯವಿಟ್ಟು ಅನ್ಲಾಕ್ ಮಾಡಿ.',
+          'スマートフォンがロックされています。続行するにはロックを解除してください。',
+          'الهاتف مقفل. يرجى إلغاء قفله للمتابعة.',
+        ),
+      'skill_replayed' => localized(
+          'I used a previously learned safe shortcut and verified it.',
+          'मैंने पहले सीखा हुआ सुरक्षित शॉर्टकट इस्तेमाल करके जाँच लिया।',
+          'ಹಿಂದೆ ಕಲಿತ ಸುರಕ್ಷಿತ ಶಾರ್ಟ್‌ಕಟ್ ಬಳಸಿ ಪರಿಶೀಲಿಸಿದೆ.',
+          '以前学習した安全なショートカットを使い、確認しました。',
+          'استخدمت اختصاراً آمناً تعلمته سابقاً وتحققت من نجاحه.',
+        ),
+      'permission_needed' => localized(
+          'Android is asking for permission. Please review the prompt and choose.',
+          'Android अनुमति माँग रहा है। कृपया स्क्रीन पर देखकर चुनें।',
+          'Android ಅನುಮತಿ ಕೇಳುತ್ತಿದೆ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ ಆಯ್ಕೆಮಾಡಿ.',
+          'Android が権限を求めています。内容を確認して選択してください。',
+          'يطلب Android إذناً. يرجى مراجعة الطلب واختيار ما يناسبك.',
+        ),
+      'ui_layout_forgotten' || 'app_layout_forgotten' => localized(
+          'I cleared the saved layout for this app.',
+          'मैंने इस ऐप का सेव किया हुआ लेआउट हटा दिया।',
+          'ಈ ಆ್ಯಪ್‌ನ ಉಳಿಸಿದ ವಿನ್ಯಾಸವನ್ನು ಅಳಿಸಿದೆ.',
+          'このアプリの保存済みレイアウトを削除しました。',
+          'مسحت تخطيط الشاشة المحفوظ لهذا التطبيق.',
+        ),
+      'skill_forgotten' => localized(
+          'I removed that learned shortcut.',
+          'मैंने वह सीखा हुआ शॉर्टकट हटा दिया।',
+          'ಆ ಕಲಿತ ಶಾರ್ಟ್‌ಕಟ್ ಅನ್ನು ತೆಗೆದುಹಾಕಿದೆ.',
+          '学習したショートカットを削除しました。',
+          'أزلت ذلك الاختصار المتعلم.',
+        ),
+      'memory_saved' => localized(
+          'I saved that to your approved memories.',
+          'मैंने इसे आपकी स्वीकृत यादों में सेव कर दिया।',
+          'ಅದನ್ನು ನಿಮ್ಮ ಅನುಮೋದಿತ ನೆನಪುಗಳಲ್ಲಿ ಉಳಿಸಿದೆ.',
+          '承認されたメモリーに保存しました。',
+          'حفظت ذلك ضمن ذكرياتك التي وافقت عليها.',
+        ),
+      'memory_cleared' => localized(
+          'I cleared your saved memories.',
+          'मैंने आपकी सेव की हुई यादें हटा दीं।',
+          'ನಿಮ್ಮ ಉಳಿಸಿದ ನೆನಪುಗಳನ್ನು ಅಳಿಸಿದೆ.',
+          '保存されていたメモリーを削除しました。',
+          'مسحت ذكرياتك المحفوظة.',
+        ),
+      'memory_forgotten' => localized(
+          'I updated your saved memories.',
+          'मैंने आपकी सेव की हुई यादें अपडेट कर दीं।',
+          'ನಿಮ್ಮ ಉಳಿಸಿದ ನೆನಪುಗಳನ್ನು ನವೀಕರಿಸಿದೆ.',
+          '保存済みメモリーを更新しました。',
+          'حدّثت ذكرياتك المحفوظة.',
+        ),
+      'memory_recalled' => recalled.isEmpty
+          ? localized(
+              'I do not have any saved memories to show.',
+              'दिखाने के लिए कोई सेव की हुई याद नहीं है।',
+              'ತೋರಿಸಲು ಉಳಿಸಿದ ನೆನಪುಗಳಿಲ್ಲ.',
+              '表示できる保存済みメモリーはありません。',
+              'لا توجد ذكريات محفوظة لعرضها.',
+            )
+          : recalled,
+      'clarification_needed' => localized(
+          'What detail would you like me to remember?',
+          'आप कौन-सी बात याद रखने के लिए कहना चाहते हैं?',
+          'ನಾನು ಯಾವ ವಿಷಯವನ್ನು ನೆನಪಿಟ್ಟುಕೊಳ್ಳಬೇಕು?',
+          '何を覚えておけばよいですか？',
+          'ما المعلومة التي تريد مني تذكرها؟',
+        ),
+      _ => context.trim().isEmpty ? 'Lucy · $event' : context.trim(),
+    };
+    await _speakLocalReply(reply);
   }
 
 
@@ -1278,12 +1358,109 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<bool> _handleOfflineCommand(String text) async {
+    final stopwatch = Stopwatch()..start();
+    var completedNormally = false;
+    try {
+      final handled = await _handleOfflineCommandInternal(text);
+      completedNormally = true;
+      return handled;
+    } finally {
+      stopwatch.stop();
+      _performanceMonitor.recordTiming(
+        'offline_command',
+        stopwatch.elapsed,
+        success: completedNormally,
+      );
+      LucyReliabilityLog.event(
+        'offline_command_timing',
+        elapsedMs: stopwatch.elapsedMilliseconds,
+        success: completedNormally,
+      );
+    }
+  }
+
+  Future<bool> _handleOfflineCommandInternal(String text) async {
     final command = text.toLowerCase().trim();
+
+    // Resolve simple call/SMS requests locally before the AI loop. Named
+    // recipients are matched by Android's on-device contacts matcher; an
+    // ambiguous name is never silently resolved to the first result.
+    final communication = OfflineCommunicationCommand.parse(text);
+    if (communication != null) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
+      if (!await _settingsStore.isEnabled(LucySettingsStore.directPhoneActions)) {
+        return false;
+      }
+      try {
+        final digits = communication.target.replaceAll(RegExp(r'\D'), '');
+        String? phoneNumber =
+            digits.length >= 7 ? communication.target.trim() : null;
+        String? contactName;
+        if (phoneNumber == null) {
+          final lookup = await _phoneActions.execute(
+            'read_contact',
+            <String, dynamic>{'name': communication.target},
+          );
+          final contact = lookup is Map
+              ? Map<dynamic, dynamic>.from(lookup)
+              : const <dynamic, dynamic>{};
+          if (contact['ambiguous'] == true) {
+            await _speakLocalReply(
+              'I found more than one matching contact. Please say the full contact name.',
+            );
+            return true;
+          }
+          if (contact['found'] != true ||
+              contact['phoneNumber']?.toString().trim().isEmpty != false) {
+            await _speakLocalReply(
+              'I could not find one matching phone contact. Check the name or Contacts permission.',
+            );
+            return true;
+          }
+          phoneNumber = contact['phoneNumber'].toString();
+          contactName = contact['name']?.toString();
+        }
+
+        final params = <String, dynamic>{'phoneNumber': phoneNumber};
+        if (communication.action == 'send_sms') {
+          params['message'] = communication.message!;
+        }
+        final result = await _phoneActions.execute(
+          communication.action,
+          params,
+        );
+        final succeeded = result == true ||
+            (result is Map && result['success'] == true);
+        if (!succeeded) {
+          await _speakLocalReply(
+            communication.action == 'place_call'
+                ? 'I could not open the dialer for that contact.'
+                : 'I could not open the SMS composer for that contact.',
+          );
+          return true;
+        }
+        final label = contactName ?? communication.target;
+        await _speakLocalReply(
+          communication.action == 'place_call'
+              ? 'Dialer opened for $label. Review the number and tap Call when ready.'
+              : 'SMS composer opened for $label. Review the message and tap Send when ready.',
+        );
+        return true;
+      } catch (_) {
+        await _speakLocalReply(
+          'I could not complete that phone action. Check Contacts permission and try again.',
+        );
+        return true;
+      }
+    }
     final asksTime = RegExp(
       r"(what.?s the time|what time is it|tell me the time|current time|\btime\b|\bclock\b|समय|कितने बजे|ಸಮಯ|ಗಂಟೆ|時刻|時間|الوقت)",
     ).hasMatch(command);
     final asksBattery = RegExp(
-      r"(battery|charge level|battery status|बैटरी|ಚಾರ್ಜ್|ಬ್ಯಾಟರಿ|電池|بطارية|شحن)",
+      r"(battery|charge level|battery status|device status|phone status|storage status|बैटरी|चार्ज|डिवाइस स्टेटस|फोन की स्थिति|ಚಾರ್ಜ್|ಬ್ಯಾಟರಿ|ಸಾಧನದ ಸ್ಥಿತಿ|ಫೋನ್ ಸ್ಥಿತಿ|電池|بطارية|شحن)",
     ).hasMatch(command);
     final asksFlashlight = RegExp(
       r"(flashlight|torch|टॉर्च|ಟಾರ್ಚ್|懐中電灯|مصباح)",
@@ -1430,69 +1607,11 @@ class AgentController extends ChangeNotifier {
       return true;
     }
 
-    const appPackages = <String, String>{
-      'whatsapp': 'com.whatsapp',
-      'व्हाट्सऐप': 'com.whatsapp',
-      'वाट्सऐप': 'com.whatsapp',
-      'ವಾಟ್ಸಾಪ್': 'com.whatsapp',
-      'telegram': 'org.telegram.messenger',
-      'टेलीग्राम': 'org.telegram.messenger',
-      'ಟೆಲಿಗ್ರಾಂ': 'org.telegram.messenger',
-      'youtube': 'com.google.android.youtube',
-      'यूट्यूब': 'com.google.android.youtube',
-      'ಯೂಟ್ಯೂಬ್': 'com.google.android.youtube',
-      'gmail': 'com.google.android.gm',
-      'जीमेल': 'com.google.android.gm',
-      'ಜಿಮೇಲ್': 'com.google.android.gm',
-      'chrome': 'com.android.chrome',
-      'क्रोम': 'com.android.chrome',
-      'क्रोम ब्राउज़र': 'com.android.chrome',
-      'instagram': 'com.instagram.android',
-      'इंस्टाग्राम': 'com.instagram.android',
-      'ಇನ್‌ಸ್ಟಾಗ್ರಾಮ್': 'com.instagram.android',
-      'maps': 'com.google.android.apps.maps',
-      'google maps': 'com.google.android.apps.maps',
-      'मैप्स': 'com.google.android.apps.maps',
-      'ಸೆಟ್ಟಿಂಗ್ಸ್': 'com.android.settings',
-      'settings': 'com.android.settings',
-      'सेटिंग्स': 'com.android.settings',
-    };
-    final openPrefix = RegExp(
-      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$',
-    ).firstMatch(command);
-    final requestedApp = openPrefix?.group(1)?.trim();
-    final packageName = requestedApp == null ? null : appPackages[requestedApp];
-    if (packageName != null) {
-      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
-        _showAutopilotDisabledStatus();
-        return true;
-      }
-      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
-        return false;
-      }
-      final opened = await _screenCapture.openApp(packageName);
-      if (opened) {
-        final reply = switch (_currentLang) {
-          'hi' => 'ऐप खोल दिया।',
-          'kn' => 'ಆ್ಯಪ್ ತೆರೆಯಿತು.',
-          'ja' => 'アプリを開きました。',
-          'ar' => 'تم فتح التطبيق.',
-          _ => 'App opened.',
-        };
-        await _speakLocalReply(reply);
-        return true;
-      }
-      // Do not swallow a failed fast-path dispatch. Let the full agent loop
-      // inspect the current UI and attempt a safe alternative.
-      _addConversation('I could not open $requestedApp directly. I will check whether another safe way is available.', false);
-      return false;
-    }
-
     final settingsMatch = RegExp(
-      r'^(?:open|show|go to|खोलो|ತೆರೆ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?$',
+      r'^(?:(?:open|show|go to|खोलो|खोल|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?|(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+settings?)(?:\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ))?)$',
     ).firstMatch(command);
     if (settingsMatch != null) {
-      final requestedPage = settingsMatch.group(1);
+      final requestedPage = settingsMatch.group(1) ?? settingsMatch.group(2);
       final page = switch (requestedPage) {
         'wifi' || 'wi-fi' => 'wifi',
         'bluetooth' => 'bluetooth',
@@ -1519,15 +1638,74 @@ class AgentController extends ChangeNotifier {
       )) return true;
     }
 
+    // Resolve installed app labels locally: no AI/network round trip.
+    final appCommand = OfflineAppCommand.parse(text);
+    if (appCommand != null) {
+      if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
+        _showAutopilotDisabledStatus();
+        return true;
+      }
+      if (!await _settingsStore.isEnabled(LucySettingsStore.screenAutomation)) {
+        return false;
+      }
+      try {
+        final rawResult = await _phoneActions.execute(
+          'open_app',
+          <String, dynamic>{'appName': appCommand.appName},
+        );
+        final result = rawResult is Map
+            ? Map<dynamic, dynamic>.from(rawResult)
+            : const <dynamic, dynamic>{};
+        if (result['ambiguous'] == true) {
+          final matches = (result['matches'] as List?)
+                  ?.map((item) => item.toString())
+                  .take(4)
+                  .join(', ') ??
+              '';
+          await _speakLocalReply(
+            matches.isEmpty
+                ? 'I found more than one matching app. Please say its full name.'
+                : 'I found more than one matching app: $matches. Which one do you mean?',
+          );
+          return true;
+        }
+        if (result['success'] == true) {
+          final label = result['label']?.toString() ?? appCommand.appName;
+          await _speakLocalReply(switch (_currentLang) {
+            'hi' => '$label खोल दिया।',
+            'kn' => '$label ತೆರೆಯಿತು.',
+            'ja' => '$label を開きました。',
+            'ar' => 'تم فتح $label.',
+            _ => 'Opened $label.',
+          });
+          return true;
+        }
+        await _speakLocalReply(
+          'I could not find an installed app named ${appCommand.appName}.',
+        );
+        return true;
+      } catch (_) {
+        await _speakLocalReply(
+          'Android could not launch ${appCommand.appName}. Please try again.',
+        );
+        return true;
+      }
+    }
+
     final timerMatch = RegExp(
       r'^(?:set\s+)?(?:a\s+)?timer(?:\s+for)?\s+(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)$',
-    ).firstMatch(command);
+      caseSensitive: false,
+    ).firstMatch(command) ??
+        RegExp(
+          r'^(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|सेकंड|मिनट|घंटे|घंटा)\s*(?:ka|का)?\s*(?:timer|टाइमर)\s*(?:lagao|लगाओ|set karo|सेट करो)?$',
+          caseSensitive: false,
+        ).firstMatch(command);
     if (timerMatch != null) {
       final amount = int.tryParse(timerMatch.group(1) ?? '') ?? 0;
       final unit = timerMatch.group(2) ?? '';
-      final multiplier = unit.startsWith('h')
+      final multiplier = unit.startsWith('h') || unit.startsWith('घंट')
           ? 3600
-          : unit.startsWith('m')
+          : unit.startsWith('m') || unit.startsWith('मिनट')
               ? 60
               : 1;
       final seconds = amount * multiplier;
@@ -1549,13 +1727,22 @@ class AgentController extends ChangeNotifier {
 
     final alarmMatch = RegExp(
       r'^(?:set\s+)?(?:an?\s+)?alarm(?:\s+(?:for|at))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$',
-    ).firstMatch(command);
+      caseSensitive: false,
+    ).firstMatch(command) ??
+        RegExp(
+          r'^(\d{1,2})(?::(\d{2}))?\s*(?:baje|बजे)\s*(?:ka|का)?\s*(?:alarm|अलार्म)\s*(?:lagao|लगाओ|set karo|सेट करो)?$',
+          caseSensitive: false,
+        ).firstMatch(command);
     if (alarmMatch != null) {
       var hour = int.tryParse(alarmMatch.group(1) ?? '') ?? -1;
       final minute = int.tryParse(alarmMatch.group(2) ?? '0') ?? -1;
       final meridiem = alarmMatch.group(3);
       if (meridiem == 'pm' && hour < 12) hour += 12;
       if (meridiem == 'am' && hour == 12) hour = 0;
+      if (meridiem == null && hour >= 1 && hour <= 11) {
+        final now = DateTime.now();
+        if (hour <= now.hour && hour + 12 > now.hour) hour += 12;
+      }
       if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
         final reply = switch (_currentLang) {
           'hi' => 'अलार्म सेट करने के लिए क्लॉक ऐप खोल दिया।',
@@ -1573,9 +1760,10 @@ class AgentController extends ChangeNotifier {
     }
 
     final navigationMatch = RegExp(
-      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
+      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|mujhe)\s+(.+?)(?:\s+le chalo)?$|^(?:ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
     ).firstMatch(command);
-    final destination = navigationMatch?.group(1)?.trim();
+    final destination =
+        (navigationMatch?.group(1) ?? navigationMatch?.group(2))?.trim();
     if (destination != null && destination.isNotEmpty) {
       final reply = switch (_currentLang) {
         'hi' => 'मैप्स में रास्ता खोल दिया।',
@@ -1614,7 +1802,8 @@ class AgentController extends ChangeNotifier {
     }
 
     final musicMatch = RegExp(
-      r'^(?:play music|search song|find song|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
+      r'^(?:play music|search song|find song|gaana chalao|gana chalao|gaana search karo|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
+      caseSensitive: false,
     ).firstMatch(command);
     final musicQuery = musicMatch?.group(1)?.trim();
     if (musicQuery != null && musicQuery.isNotEmpty) {
@@ -1634,7 +1823,12 @@ class AgentController extends ChangeNotifier {
 
     final brightnessMatch = RegExp(
       r'^(?:set )?brightness(?: to)?\s+(\d{1,3})\s*(?:%|percent)?$',
-    ).firstMatch(command);
+      caseSensitive: false,
+    ).firstMatch(command) ??
+        RegExp(
+          r'^(?:brightness|ब्राइटनेस)\s*(?:to|को)?\s*(\d{1,3})\s*(?:%|percent|प्रतिशत)?\s*(?:karo|kar do|करो|कर दो|ಹೊಂದಿಸು)?$',
+          caseSensitive: false,
+        ).firstMatch(command);
     if (brightnessMatch != null) {
       final level = int.tryParse(brightnessMatch.group(1) ?? '') ?? 0;
       if (level >= 1 && level <= 100) {
@@ -1915,6 +2109,7 @@ class AgentController extends ChangeNotifier {
         memoryContext: allowMemory
             ? (_memoryStore?.relevantContext(userMessage) ?? '')
             : '',
+        stateless: true,
         onSpeakChunk: _textOnlyMode ? null : (sentence) {
           streamedSpeech = true;
           _voiceService.addStreamingSpeechText(sentence);
@@ -2080,7 +2275,7 @@ class AgentController extends ChangeNotifier {
             'screen_changed': changed,
           };
           taskActionHistory.add(actionRecord);
-          if (taskActionHistory.length > 20) {
+          if (taskActionHistory.length > 8) {
             taskActionHistory.removeAt(0);
           }
           lastActionResult = actionVerified

@@ -484,6 +484,7 @@ class AiService {
     Map<String, int>? screenSize,
     String? uiTree,
     String memoryContext = '',
+    bool stateless = false,
     void Function(String sentence)? onSpeakChunk,
     void Function()? onSpeakReset,
   }) async {
@@ -578,6 +579,7 @@ class AiService {
             text = await _hmsService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
+              stateless: stateless,
             ).timeout(attemptTimeout);
           } else if (provider == 'groq') {
             if (!await _groqService.isConfigured()) continue;
@@ -585,6 +587,7 @@ class AiService {
               fullMessage,
               systemPrompt: systemPrompt,
               imageBytes: imageBytes,
+              stateless: stateless,
             ).timeout(attemptTimeout);
           } else if (provider == 'grok') {
             if (!await _grokService.isConfigured()) continue;
@@ -594,7 +597,7 @@ class AiService {
               imageBytes: imageBytes,
             ).timeout(attemptTimeout);
           } else {
-            if (_chat == null) continue;
+            if (_model == null || (!stateless && _chat == null)) continue;
             Content content;
             if (imageBytes != null) {
               content = Content.multi([
@@ -611,9 +614,10 @@ class AiService {
                 onSpeakChunk(sentence);
               });
               final streamWatch = Stopwatch()..start();
-              final iterator = StreamIterator(
-                _chat!.sendMessageStream(content),
-              );
+              final responseStream = stateless
+                  ? _model!.generateContentStream([content])
+                  : _chat!.sendMessageStream(content);
+              final iterator = StreamIterator(responseStream);
               try {
                 while (true) {
                   final remaining = attemptTimeout - streamWatch.elapsed;
@@ -636,9 +640,9 @@ class AiService {
                 await iterator.cancel();
               }
             } else {
-              final response = await _chat!
-                  .sendMessage(content)
-                  .timeout(attemptTimeout);
+              final response = stateless
+                  ? await _model!.generateContent([content]).timeout(attemptTimeout)
+                  : await _chat!.sendMessage(content).timeout(attemptTimeout);
               text = response.text ?? '{}';
             }
           }

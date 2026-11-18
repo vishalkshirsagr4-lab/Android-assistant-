@@ -7,6 +7,7 @@ class PhoneActionService {
   );
 
   static const Set<String> supportedActions = {
+    'open_app',
     'set_alarm',
     'set_timer',
     'place_call',

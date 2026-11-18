@@ -30,6 +30,9 @@ import java.util.Locale
  * SMS composer. Lucy never silently places a call or sends an SMS.
  */
 class PhoneActionHandler(private val activity: Activity) {
+    private var launcherAppsCache: List<Triple<String, String, Intent>>? = null
+    private var launcherAppsCacheAtMs = 0L
+
     companion object {
         private const val TAG = "LucyPhoneActions"
     }
@@ -37,6 +40,7 @@ class PhoneActionHandler(private val activity: Activity) {
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
         return try {
             when (call.method) {
+                "open_app" -> openApp(call, result)
                 "set_alarm" -> setAlarm(call, result)
                 "set_timer" -> setTimer(call, result)
                 "place_call" -> placeCall(call, result)
@@ -76,6 +80,70 @@ class PhoneActionHandler(private val activity: Activity) {
         if (intent.resolveActivity(activity.packageManager) == null) return false
         activity.startActivity(intent)
         return true
+    }
+
+    private fun openApp(call: MethodCall, result: MethodChannel.Result) {
+        val requested = call.argument<String>("appName")?.trim().orEmpty()
+        if (requested.isBlank()) {
+            result.error("INVALID_ARGUMENT", "An app name is required.", null)
+            return
+        }
+
+        val packageManager = activity.packageManager
+        val now = android.os.SystemClock.elapsedRealtime()
+        val cached = launcherAppsCache
+        val candidates = if (cached != null && now - launcherAppsCacheAtMs < 30_000L) {
+            cached
+        } else {
+            // PackageManager enumeration is relatively expensive on devices with
+            // many installed apps. Reuse the launcher index briefly between calls.
+            packageManager.getInstalledApplications(0).mapNotNull { info ->
+                val intent = packageManager.getLaunchIntentForPackage(info.packageName)
+                    ?: return@mapNotNull null
+                val label = packageManager.getApplicationLabel(info).toString().trim()
+                if (label.isBlank()) null else Triple(label, info.packageName, intent)
+            }.also {
+                launcherAppsCache = it
+                launcherAppsCacheAtMs = now
+            }
+        }
+        val query = requested.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        val ranked = candidates.mapNotNull { candidate ->
+            val label = candidate.first.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+            val score = when {
+                label == query -> 3
+                label.startsWith(query) -> 2
+                label.contains(query) -> 1
+                else -> 0
+            }
+            if (score == 0) null else candidate to score
+        }
+        val bestScore = ranked.maxOfOrNull { it.second } ?: 0
+        if (bestScore == 0) {
+            result.success(mapOf("success" to false, "notFound" to true))
+            return
+        }
+
+        val matches = ranked.filter { it.second == bestScore }.map { it.first }
+        if (matches.size > 1) {
+            result.success(
+                mapOf(
+                    "success" to false,
+                    "ambiguous" to true,
+                    "matches" to matches.take(6).map { it.first }
+                )
+            )
+            return
+        }
+
+        val match = matches.single()
+        result.success(
+            mapOf(
+                "success" to launch(match.third),
+                "label" to match.first,
+                "packageName" to match.second
+            )
+        )
     }
 
     private fun setAlarm(call: MethodCall, result: MethodChannel.Result) {
