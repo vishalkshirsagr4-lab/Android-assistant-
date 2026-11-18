@@ -96,11 +96,11 @@ class OfflineAppCommand {
   final String appName;
 
   static OfflineAppCommand? parse(String input) {
-    final text = input.trim().replaceAll(RegExp(r'\\s+'), ' ');
+    final text = input.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (text.isEmpty) return null;
 
     final match = RegExp(
-      r'^(?:please\\s+)?(?:open|launch|start|खोलो|खोल|शुरू\\s*करो|ಶುರುಮಾಡು|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\\s+(.+?)$|^(.+?)\\s+(?:kholo|khol\\s+do|खोलो|खोल\\s+दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
+      r'^(?:please\s+)?(?:open|launch|start|खोलो|खोल|शुरू\s*करो|ಶುರುಮಾಡು|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(.+?)$|^(.+?)\s+(?:kholo|khol\s+do|खोलो|खोल\s+दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
       caseSensitive: false,
     ).firstMatch(text);
     final appName = (match?.group(1) ?? match?.group(2))?.trim();
