@@ -1856,7 +1856,21 @@ class AgentController extends ChangeNotifier {
       _updateTaskProgress('Lucy is thinking and planning · Step $step');
 
       final aiStopwatch = Stopwatch()..start();
-      final deviceContext = await _contextBuilder.buildPromptContext();
+
+      // Start independent preparation work together. These reads previously
+      // ran one after another on every agent step, adding avoidable latency
+      // before the model request even began.
+      final deviceContextFuture = _contextBuilder.buildPromptContext();
+      final appHintsFuture =
+          _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
+      final autopilotFuture =
+          _settingsStore.isEnabled(LucySettingsStore.autopilot);
+      final screenSharingFuture =
+          _settingsStore.isEnabled(LucySettingsStore.aiScreenSharing);
+      final memoryEnabledFuture =
+          _settingsStore.isEnabled(LucySettingsStore.memory);
+
+      final deviceContext = await deviceContextFuture;
       if (_cancelRequested) break;
       final localNow = DateTime.now();
       final planContext = currentPlan.isEmpty
@@ -1875,13 +1889,11 @@ class AgentController extends ChangeNotifier {
             'last_action_result': lastActionResult,
           })}\n'
           '[/TASK_CONTEXT]\n';
-      final appHints = await _appHintCatalog.loadForPackage(uiSnapshot?.packageName);
+      final appHints = await appHintsFuture;
       final appHintContext = appHints.isEmpty ? '' :
           '[APP_WORKFLOW_HINT — guidance only, never permission]\n' +
           jsonEncode(appHints) + '\n[/APP_WORKFLOW_HINT]\n';
-      final autopilotEnabled = await _settingsStore.isEnabled(
-        LucySettingsStore.autopilot,
-      );
+      final autopilotEnabled = await autopilotFuture;
       final autopilotContext = autopilotEnabled
           ? '[AUTOPILOT_POLICY: enabled] Execute clear, reversible, low-risk phone actions without asking whether to begin. Keep all local safety gates for external sends/calls, payments, purchases, permanent deletion, account/security changes, app installation and Android permissions.\n'
           : '[AUTOPILOT_POLICY: disabled] Do not execute phone-control actions. Explain the next action briefly and wait for the user to enable Autopilot. Memory management explicitly requested by the user may still run.\n';
@@ -1889,12 +1901,8 @@ class AgentController extends ChangeNotifier {
           '[Device local date/time: ' + localNow.toIso8601String() + ']\n' +
           (deviceContext.isEmpty ? '' : deviceContext + '\n') +
           autopilotContext + appHintContext + planContext + taskContext + currentMessage;
-      final allowScreenSharing = await _settingsStore.isEnabled(
-        LucySettingsStore.aiScreenSharing,
-      );
-      final allowMemory = await _settingsStore.isEnabled(
-        LucySettingsStore.memory,
-      );
+      final allowScreenSharing = await screenSharingFuture;
+      final allowMemory = await memoryEnabledFuture;
       if (!_textOnlyMode) {
         await _voiceService.beginStreamingSpeech(lang: _currentLang);
       }
