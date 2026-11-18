@@ -250,23 +250,93 @@ class AgentController extends ChangeNotifier {
             context.startsWith(recalledPrefix)
         ? context.substring(recalledPrefix.length).trim()
         : '';
+    String localized(
+      String english,
+      String hindi,
+      String kannada,
+      String japanese,
+      String arabic,
+    ) =>
+        switch (_currentLang) {
+          'hi' => hindi,
+          'kn' => kannada,
+          'ja' => japanese,
+          'ar' => arabic,
+          _ => english,
+        };
     final reply = switch (event) {
-      'device_locked' => switch (_currentLang) {
-          'hi' => 'फोन लॉक है। आगे बढ़ने के लिए कृपया इसे अनलॉक करें।',
-          'kn' => 'ಫೋನ್ ಲಾಕ್ ಆಗಿದೆ. ಮುಂದುವರಿಯಲು ದಯವಿಟ್ಟು ಅನ್ಲಾಕ್ ಮಾಡಿ.',
-          'ja' => 'スマートフォンがロックされています。続行するにはロックを解除してください。',
-          'ar' => 'الهاتف مقفل. يرجى إلغاء قفله للمتابعة.',
-          _ => 'Your phone is locked. Please unlock it so I can continue.',
-        },
-      'skill_replayed' => 'I used a previously learned safe shortcut and verified it.',
-      'permission_needed' => 'Android is asking for permission. Please review the prompt and choose.',
-      'ui_layout_forgotten' || 'app_layout_forgotten' => 'I cleared the saved layout for this app.',
-      'skill_forgotten' => 'I removed that learned shortcut.',
-      'memory_saved' => 'I saved that to your approved memories.',
-      'memory_cleared' => 'I cleared your saved memories.',
-      'memory_forgotten' => 'I updated your saved memories.',
-      'memory_recalled' => recalled.isEmpty ? 'I do not have any saved memories to show.' : recalled,
-      'clarification_needed' => 'What detail would you like me to remember?',
+      'device_locked' => localized(
+          'Your phone is locked. Please unlock it so I can continue.',
+          'फोन लॉक है। आगे बढ़ने के लिए कृपया इसे अनलॉक करें।',
+          'ಫೋನ್ ಲಾಕ್ ಆಗಿದೆ. ಮುಂದುವರಿಯಲು ದಯವಿಟ್ಟು ಅನ್ಲಾಕ್ ಮಾಡಿ.',
+          'スマートフォンがロックされています。続行するにはロックを解除してください。',
+          'الهاتف مقفل. يرجى إلغاء قفله للمتابعة.',
+        ),
+      'skill_replayed' => localized(
+          'I used a previously learned safe shortcut and verified it.',
+          'मैंने पहले सीखा हुआ सुरक्षित शॉर्टकट इस्तेमाल करके जाँच लिया।',
+          'ಹಿಂದೆ ಕಲಿತ ಸುರಕ್ಷಿತ ಶಾರ್ಟ್‌ಕಟ್ ಬಳಸಿ ಪರಿಶೀಲಿಸಿದೆ.',
+          '以前学習した安全なショートカットを使い、確認しました。',
+          'استخدمت اختصاراً آمناً تعلمته سابقاً وتحققت من نجاحه.',
+        ),
+      'permission_needed' => localized(
+          'Android is asking for permission. Please review the prompt and choose.',
+          'Android अनुमति माँग रहा है। कृपया स्क्रीन पर देखकर चुनें।',
+          'Android ಅನುಮತಿ ಕೇಳುತ್ತಿದೆ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ ಆಯ್ಕೆಮಾಡಿ.',
+          'Android が権限を求めています。内容を確認して選択してください。',
+          'يطلب Android إذناً. يرجى مراجعة الطلب واختيار ما يناسبك.',
+        ),
+      'ui_layout_forgotten' || 'app_layout_forgotten' => localized(
+          'I cleared the saved layout for this app.',
+          'मैंने इस ऐप का सेव किया हुआ लेआउट हटा दिया।',
+          'ಈ ಆ್ಯಪ್‌ನ ಉಳಿಸಿದ ವಿನ್ಯಾಸವನ್ನು ಅಳಿಸಿದೆ.',
+          'このアプリの保存済みレイアウトを削除しました。',
+          'مسحت تخطيط الشاشة المحفوظ لهذا التطبيق.',
+        ),
+      'skill_forgotten' => localized(
+          'I removed that learned shortcut.',
+          'मैंने वह सीखा हुआ शॉर्टकट हटा दिया।',
+          'ಆ ಕಲಿತ ಶಾರ್ಟ್‌ಕಟ್ ಅನ್ನು ತೆಗೆದುಹಾಕಿದೆ.',
+          '学習したショートカットを削除しました。',
+          'أزلت ذلك الاختصار المتعلم.',
+        ),
+      'memory_saved' => localized(
+          'I saved that to your approved memories.',
+          'मैंने इसे आपकी स्वीकृत यादों में सेव कर दिया।',
+          'ಅದನ್ನು ನಿಮ್ಮ ಅನುಮೋದಿತ ನೆನಪುಗಳಲ್ಲಿ ಉಳಿಸಿದೆ.',
+          '承認されたメモリーに保存しました。',
+          'حفظت ذلك ضمن ذكرياتك التي وافقت عليها.',
+        ),
+      'memory_cleared' => localized(
+          'I cleared your saved memories.',
+          'मैंने आपकी सेव की हुई यादें हटा दीं।',
+          'ನಿಮ್ಮ ಉಳಿಸಿದ ನೆನಪುಗಳನ್ನು ಅಳಿಸಿದೆ.',
+          '保存されていたメモリーを削除しました。',
+          'مسحت ذكرياتك المحفوظة.',
+        ),
+      'memory_forgotten' => localized(
+          'I updated your saved memories.',
+          'मैंने आपकी सेव की हुई यादें अपडेट कर दीं।',
+          'ನಿಮ್ಮ ಉಳಿಸಿದ ನೆನಪುಗಳನ್ನು ನವೀಕರಿಸಿದೆ.',
+          '保存済みメモリーを更新しました。',
+          'حدّثت ذكرياتك المحفوظة.',
+        ),
+      'memory_recalled' => recalled.isEmpty
+          ? localized(
+              'I do not have any saved memories to show.',
+              'दिखाने के लिए कोई सेव की हुई याद नहीं है।',
+              'ತೋರಿಸಲು ಉಳಿಸಿದ ನೆನಪುಗಳಿಲ್ಲ.',
+              '表示できる保存済みメモリーはありません。',
+              'لا توجد ذكريات محفوظة لعرضها.',
+            )
+          : recalled,
+      'clarification_needed' => localized(
+          'What detail would you like me to remember?',
+          'आप कौन-सी बात याद रखने के लिए कहना चाहते हैं?',
+          'ನಾನು ಯಾವ ವಿಷಯವನ್ನು ನೆನಪಿಟ್ಟುಕೊಳ್ಳಬೇಕು?',
+          '何を覚えておけばよいですか？',
+          'ما المعلومة التي تريد مني تذكرها؟',
+        ),
       _ => context.trim().isEmpty ? 'Lucy · $event' : context.trim(),
     };
     await _speakLocalReply(reply);
