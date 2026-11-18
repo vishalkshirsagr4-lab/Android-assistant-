@@ -3,21 +3,20 @@ import 'package:screen_aware_ai/services/action_approval_policy.dart';
 
 void main() {
   group('LucyActionApprovalPolicy', () {
-    test('allows routine navigation, communication and content actions', () {
+    test('allows routine navigation and reversible device actions', () {
       for (final action in [
         'open_app', 'type', 'swipe', 'back', 'home', 'wait',
         'set_flashlight', 'set_volume', 'schedule_reminder',
         'read_contact', 'create_calendar_event', 'take_photo', 'open_url',
         'set_alarm', 'set_timer', 'scroll_to_end', 'scroll_to_top',
-        'read_all', 'open_each', 'batch', 'place_call', 'send_sms',
-        'share_text', 'open_settings',
+        'read_all', 'open_each', 'batch', 'open_settings',
       ]) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
             reason: action);
       }
     });
 
-    test('does not ask approval for delete, send, share, install or call taps', () {
+    test('requires approval for destructive and external hand-off taps', () {
       for (final label in [
         'Send', 'Send message', 'Delete', 'Delete permanently', 'Remove',
         'Share', 'Post', 'Publish', 'Install', 'Uninstall', 'Call',
@@ -25,7 +24,7 @@ void main() {
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
-          isFalse,
+          isTrue,
           reason: label,
         );
       }
@@ -67,7 +66,7 @@ void main() {
       }
     });
 
-    test('does not gate ordinary mail swipes or password typing outside finance apps', () {
+    test('allows ordinary mail swipes but gates password-field typing', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval(
           'swipe',
@@ -88,11 +87,11 @@ void main() {
           sensitiveInput: true,
           packageName: 'com.example.app',
         ),
-        isFalse,
+        isTrue,
       );
     });
 
-    test('model risk metadata does not add prompts to routine actions', () {
+    test('model risk cannot bypass local destructive-action approval', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval(
           'open_app',
@@ -105,11 +104,18 @@ void main() {
         LucyActionApprovalPolicy.requiresApproval(
           'tap',
           targetLabel: 'Delete permanently',
-          modelRisk: 'high',
-          confidence: 0.1,
+          modelRisk: 'low',
+          confidence: 1,
         ),
-        isFalse,
+        isTrue,
       );
+    });
+
+    test('external communication actions require explicit approval', () {
+      for (final action in ['place_call', 'send_sms', 'share_text']) {
+        expect(LucyActionApprovalPolicy.requiresApproval(action), isTrue,
+            reason: action);
+      }
     });
 
     test('financial app protection cannot be downgraded by model metadata', () {
