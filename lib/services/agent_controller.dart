@@ -1358,6 +1358,28 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<bool> _handleOfflineCommand(String text) async {
+    final stopwatch = Stopwatch()..start();
+    var completedNormally = false;
+    try {
+      final handled = await _handleOfflineCommandInternal(text);
+      completedNormally = true;
+      return handled;
+    } finally {
+      stopwatch.stop();
+      _performanceMonitor.recordTiming(
+        'offline_command',
+        stopwatch.elapsed,
+        success: completedNormally,
+      );
+      LucyReliabilityLog.event(
+        'offline_command_timing',
+        elapsedMs: stopwatch.elapsedMilliseconds,
+        success: completedNormally,
+      );
+    }
+  }
+
+  Future<bool> _handleOfflineCommandInternal(String text) async {
     final command = text.toLowerCase().trim();
 
     // Resolve simple call/SMS requests locally before the AI loop. Named
