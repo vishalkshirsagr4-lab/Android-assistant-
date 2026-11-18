@@ -1359,7 +1359,7 @@ class AgentController extends ChangeNotifier {
       r"(what.?s the time|what time is it|tell me the time|current time|\btime\b|\bclock\b|समय|कितने बजे|ಸಮಯ|ಗಂಟೆ|時刻|時間|الوقت)",
     ).hasMatch(command);
     final asksBattery = RegExp(
-      r"(battery|charge level|battery status|बैटरी|ಚಾರ್ಜ್|ಬ್ಯಾಟರಿ|電池|بطارية|شحن)",
+      r"(battery|charge level|battery status|device status|phone status|storage status|बैटरी|चार्ज|डिवाइस स्टेटस|फोन की स्थिति|ಚಾರ್ಜ್|ಬ್ಯಾಟರಿ|ಸಾಧನದ ಸ್ಥಿತಿ|ಫೋನ್ ಸ್ಥಿತಿ|電池|بطارية|شحن)",
     ).hasMatch(command);
     final asksFlashlight = RegExp(
       r"(flashlight|torch|टॉर्च|ಟಾರ್ಚ್|懐中電灯|مصباح)",
@@ -1534,9 +1534,10 @@ class AgentController extends ChangeNotifier {
       'सेटिंग्स': 'com.android.settings',
     };
     final openPrefix = RegExp(
-      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$',
+      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$|^(.+?)\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
     ).firstMatch(command);
-    final requestedApp = openPrefix?.group(1)?.trim();
+    final requestedApp =
+        (openPrefix?.group(1) ?? openPrefix?.group(2))?.trim();
     final packageName = requestedApp == null ? null : appPackages[requestedApp];
     if (packageName != null) {
       if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
@@ -1565,10 +1566,10 @@ class AgentController extends ChangeNotifier {
     }
 
     final settingsMatch = RegExp(
-      r'^(?:open|show|go to|खोलो|ತೆರೆ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?$',
+      r'^(?:(?:open|show|go to|खोलो|खोल|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?|(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+settings?)(?:\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ))?)$',
     ).firstMatch(command);
     if (settingsMatch != null) {
-      final requestedPage = settingsMatch.group(1);
+      final requestedPage = settingsMatch.group(1) ?? settingsMatch.group(2);
       final page = switch (requestedPage) {
         'wifi' || 'wi-fi' => 'wifi',
         'bluetooth' => 'bluetooth',
@@ -1597,13 +1598,18 @@ class AgentController extends ChangeNotifier {
 
     final timerMatch = RegExp(
       r'^(?:set\s+)?(?:a\s+)?timer(?:\s+for)?\s+(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)$',
-    ).firstMatch(command);
+      caseSensitive: false,
+    ).firstMatch(command) ??
+        RegExp(
+          r'^(\d{1,4})\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|सेकंड|मिनट|घंटे|घंटा)\s*(?:ka|का)?\s*(?:timer|टाइमर)\s*(?:lagao|लगाओ|set karo|सेट करो)?$',
+          caseSensitive: false,
+        ).firstMatch(command);
     if (timerMatch != null) {
       final amount = int.tryParse(timerMatch.group(1) ?? '') ?? 0;
       final unit = timerMatch.group(2) ?? '';
-      final multiplier = unit.startsWith('h')
+      final multiplier = unit.startsWith('h') || unit.startsWith('घंट')
           ? 3600
-          : unit.startsWith('m')
+          : unit.startsWith('m') || unit.startsWith('मिनट')
               ? 60
               : 1;
       final seconds = amount * multiplier;
@@ -1625,13 +1631,22 @@ class AgentController extends ChangeNotifier {
 
     final alarmMatch = RegExp(
       r'^(?:set\s+)?(?:an?\s+)?alarm(?:\s+(?:for|at))?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$',
-    ).firstMatch(command);
+      caseSensitive: false,
+    ).firstMatch(command) ??
+        RegExp(
+          r'^(\d{1,2})(?::(\d{2}))?\s*(?:baje|बजे)\s*(?:ka|का)?\s*(?:alarm|अलार्म)\s*(?:lagao|लगाओ|set karo|सेट करो)?$',
+          caseSensitive: false,
+        ).firstMatch(command);
     if (alarmMatch != null) {
       var hour = int.tryParse(alarmMatch.group(1) ?? '') ?? -1;
       final minute = int.tryParse(alarmMatch.group(2) ?? '0') ?? -1;
       final meridiem = alarmMatch.group(3);
       if (meridiem == 'pm' && hour < 12) hour += 12;
       if (meridiem == 'am' && hour == 12) hour = 0;
+      if (meridiem == null && hour >= 1 && hour <= 11) {
+        final now = DateTime.now();
+        if (hour <= now.hour && hour + 12 > now.hour) hour += 12;
+      }
       if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
         final reply = switch (_currentLang) {
           'hi' => 'अलार्म सेट करने के लिए क्लॉक ऐप खोल दिया।',
@@ -1649,8 +1664,10 @@ class AgentController extends ChangeNotifier {
     }
 
     final navigationMatch = RegExp(
-      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
+      r'^(?:navigate to|directions to|take me to|मार्ग दिखाओ|मुझे ले चलो|mujhe)\s+(.+?)(?:\s+le chalo)?$|^(?:ದಾರಿ ತೋರಿಸು|道案内して|وجّهني إلى)\s+(.+)$',
     ).firstMatch(command);
+    final destination =
+        (navigationMatch?.group(1) ?? navigationMatch?.group(2))?.trim();
     final destination = navigationMatch?.group(1)?.trim();
     if (destination != null && destination.isNotEmpty) {
       final reply = switch (_currentLang) {
@@ -1690,7 +1707,8 @@ class AgentController extends ChangeNotifier {
     }
 
     final musicMatch = RegExp(
-      r'^(?:play music|search song|find song|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
+      r'^(?:play music|search song|find song|gaana chalao|gana chalao|gaana search karo|गाना चलाओ|ಹಾಡು ಹುಡುಕು|曲を探して|ابحث عن أغنية)\s+(.+)$',
+      caseSensitive: false,
     ).firstMatch(command);
     final musicQuery = musicMatch?.group(1)?.trim();
     if (musicQuery != null && musicQuery.isNotEmpty) {
@@ -1710,7 +1728,12 @@ class AgentController extends ChangeNotifier {
 
     final brightnessMatch = RegExp(
       r'^(?:set )?brightness(?: to)?\s+(\d{1,3})\s*(?:%|percent)?$',
-    ).firstMatch(command);
+      caseSensitive: false,
+    ).firstMatch(command) ??
+        RegExp(
+          r'^(?:brightness|ब्राइटनेस)\s*(?:to|को)?\s*(\d{1,3})\s*(?:%|percent|प्रतिशत)?\s*(?:karo|kar do|करो|कर दो|ಹೊಂದಿಸು)?$',
+          caseSensitive: false,
+        ).firstMatch(command);
     if (brightnessMatch != null) {
       final level = int.tryParse(brightnessMatch.group(1) ?? '') ?? 0;
       if (level >= 1 && level <= 100) {
