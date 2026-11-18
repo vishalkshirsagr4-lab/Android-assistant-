@@ -1668,7 +1668,6 @@ class AgentController extends ChangeNotifier {
     ).firstMatch(command);
     final destination =
         (navigationMatch?.group(1) ?? navigationMatch?.group(2))?.trim();
-    final destination = navigationMatch?.group(1)?.trim();
     if (destination != null && destination.isNotEmpty) {
       final reply = switch (_currentLang) {
         'hi' => 'मैप्स में रास्ता खोल दिया।',
