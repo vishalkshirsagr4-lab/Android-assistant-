@@ -2008,6 +2008,7 @@ class AgentController extends ChangeNotifier {
         memoryContext: allowMemory
             ? (_memoryStore?.relevantContext(userMessage) ?? '')
             : '',
+        stateless: true,
         onSpeakChunk: _textOnlyMode ? null : (sentence) {
           streamedSpeech = true;
           _voiceService.addStreamingSpeechText(sentence);
