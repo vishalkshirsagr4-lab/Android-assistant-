@@ -201,9 +201,21 @@ void main() {
     });
 
     test('model cannot downgrade a locally sensitive action', () {
+      // Calls and SMS are intentionally excluded from Lucy's extra prompt.
+      // Other consequential actions must remain protected even if the model
+      // reports low risk and maximum confidence.
       expect(
         LucyActionApprovalPolicy.effectiveRisk(
-          'send_sms',
+          'tap',
+          targetLabel: 'Delete permanently',
+          modelRisk: 'low',
+          confidence: 1,
+        ),
+        'high',
+      );
+      expect(
+        LucyActionApprovalPolicy.effectiveRisk(
+          'share_text',
           modelRisk: 'low',
           confidence: 1,
         ),
