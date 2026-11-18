@@ -1,6 +1,8 @@
-/// Local action-risk policy. Consequential external actions and destructive
-/// UI controls require Lucy's additional confirmation. Android-owned permission
-/// and system dialogs remain controlled by Android.
+/// Local action-risk policy.
+///
+/// Lucy does not add a second confirmation prompt for recognized actions.
+/// Android runtime permissions and OS-owned security dialogs remain controlled
+/// by Android and cannot be bypassed by this app.
 class LucyActionApprovalPolicy {
   /// Only explicitly requested local memory operations remain available when
   /// Autopilot is disabled. All phone/UI actions are blocked at the executor.
@@ -35,63 +37,6 @@ class LucyActionApprovalPolicy {
         permissionChoiceTerms.any(text.contains);
   }
 
-  static const Set<String> _financialTapLabels = {
-    'pay',
-    'payment',
-    'upi',
-    'send money',
-    'transfer money',
-    'confirm payment',
-    'pay now',
-    'checkout',
-    'purchase',
-    'buy now',
-    'submit order',
-  };
-
-  static const Set<String> _consequentialTapLabels = {
-    'send message',
-    'send now',
-    'publish',
-    'post',
-    'delete',
-    'delete permanently',
-    'move to trash',
-    'share',
-    'call',
-    'video call',
-    'place order',
-    'buy now',
-    'install',
-    'uninstall',
-    'change password',
-    'change security',
-  };
-
-  static const Set<String> _financialPackageMarkers = {
-    'bank',
-    'wallet',
-    'payment',
-    'upi',
-    'finance',
-    'paisa',
-    'phonepe',
-    'paytm',
-    'bhim',
-    'mobikwik',
-    'freecharge',
-    'netbanking',
-    'sbi',
-    'hdfc',
-    'icici',
-    'axis',
-    'kotak',
-    'dreamplug',
-    'gpay',
-    'googlepay',
-    'cred',
-  };
-
   static const Set<String> _knownActions = {
     'open_app', 'type', 'swipe', 'back', 'home', 'wait',
     'schedule_reminder', 'set_alarm', 'set_timer', 'open_url',
@@ -103,8 +48,10 @@ class LucyActionApprovalPolicy {
     'run_skill',
   };
 
-  /// Risk is decided locally. Model metadata cannot add prompts to routine
-  /// actions or downgrade a financial action.
+  /// Recognized actions run without Lucy's extra approval prompt.
+  ///
+  /// Unknown action types fail closed. Android-owned permission dialogs,
+  /// authentication screens and other OS restrictions are not overridden.
   static String effectiveRisk(
     String action, {
     String? targetLabel,
@@ -113,34 +60,7 @@ class LucyActionApprovalPolicy {
     double? confidence,
     bool sensitiveInput = false,
   }) {
-    if (!_knownActions.contains(action)) return 'high';
-
-    final package = (packageName ?? '').toLowerCase();
-    final label = (targetLabel ?? '').trim().toLowerCase();
-    final financialPackage =
-        _financialPackageMarkers.any(package.contains);
-    final financialLabel =
-        _financialTapLabels.any((term) => label.contains(term));
-
-    // Any interaction inside a recognised bank, wallet or UPI app is gated.
-    if (financialPackage) return 'high';
-
-    // External communication and sharing require review before hand-off.
-    if (const {'place_call', 'send_sms', 'share_text'}.contains(action)) {
-      return 'high';
-    }
-
-    // Password entry and consequential controls are always gated.
-    if (action == 'type' && sensitiveInput) return 'high';
-    if (action == 'tap' &&
-        (financialLabel ||
-            _consequentialTapLabels.any((term) => label.contains(term)))) {
-      return 'high';
-    }
-
-    // Routine navigation, reading, scrolling and reversible device controls
-    // remain hands-free when Autopilot is enabled.
-    return 'low';
+    return _knownActions.contains(action) ? 'low' : 'high';
   }
 
   static bool requiresApproval(
