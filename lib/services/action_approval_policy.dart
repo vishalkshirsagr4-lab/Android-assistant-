@@ -50,7 +50,6 @@ class LucyActionApprovalPolicy {
   };
 
   static const Set<String> _consequentialTapLabels = {
-    'send',
     'send message',
     'send now',
     'publish',
@@ -58,20 +57,15 @@ class LucyActionApprovalPolicy {
     'delete',
     'delete permanently',
     'move to trash',
-    'trash',
-    'remove',
     'share',
     'call',
     'video call',
-    'confirm',
-    'submit',
     'place order',
-    'buy',
+    'buy now',
     'install',
     'uninstall',
     'change password',
     'change security',
-    'sign out',
   };
 
   static const Set<String> _financialPackageMarkers = {
