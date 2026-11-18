@@ -1294,7 +1294,7 @@ class AgentController extends ChangeNotifier {
         return false;
       }
       try {
-        final digits = communication.target.replaceAll(RegExp(r'\\D'), '');
+        final digits = communication.target.replaceAll(RegExp(r'\D'), '');
         String? phoneNumber =
             digits.length >= 7 ? communication.target.trim() : null;
         String? contactName;
