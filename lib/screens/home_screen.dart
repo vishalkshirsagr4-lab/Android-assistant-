@@ -103,11 +103,6 @@ class _HomeScreenState extends State<HomeScreen>
                     update,
                     onProgress: (received, total) {
                       if (!mounted) return;
-                      setState(() {
-                        _updateDownloadProgress = total != null && total > 0
-                            ? (received / total).clamp(0.0, 1.0)
-                            : null;
-                      });
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           duration: const Duration(seconds: 2),
