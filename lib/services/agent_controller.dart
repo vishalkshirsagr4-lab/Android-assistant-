@@ -2964,8 +2964,8 @@ class AgentController extends ChangeNotifier {
       _addConversation('Scheduled reminders are disabled in Privacy & settings.', false);
       return beforeSnapshot;
     }
-    // Ordinary navigation is hands-free. Consequential actions pause the
-    // task, ask for spoken approval, and resume the same agent loop on approval.
+    // Recognized actions are hands-free under the local approval policy.
+    // Unknown or newly introduced action types fail closed until classified.
     String? targetLabel;
     if (action.type == 'place_call' || action.type == 'send_sms') {
       targetLabel = action.params['contactName']?.toString() ??
@@ -2976,8 +2976,8 @@ class AgentController extends ChangeNotifier {
     }
     var sensitiveInput = false;
     if (beforeSnapshot != null && action.type == 'type') {
-      // Password fields are marked by Android's accessibility tree. Never
-      // type into them without a separate spoken approval.
+      // Password fields are identified for task-skill safety classification.
+      // Lucy does not add a separate confirmation prompt for recognized actions.
       final focusedElement = beforeSnapshot.elements.cast<Map<String, dynamic>?>().firstWhere(
             (element) =>
                 element != null &&
@@ -3019,8 +3019,8 @@ class AgentController extends ChangeNotifier {
       confidence: modelConfidence,
       sensitiveInput: sensitiveInput,
     );
-    // Pause only for locally identified consequential actions. Model risk
-    // metadata cannot add approval prompts to routine tasks.
+    // Only action types not recognized by the local policy reach this gate;
+    // they fail closed rather than being executed automatically.
     if (requiredRisk != 'low') {
       final approved = await _requestVoiceApproval(
         action,
