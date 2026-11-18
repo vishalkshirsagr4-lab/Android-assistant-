@@ -30,6 +30,9 @@ import java.util.Locale
  * SMS composer. Lucy never silently places a call or sends an SMS.
  */
 class PhoneActionHandler(private val activity: Activity) {
+    private var launcherAppsCache: List<Triple<String, String, Intent>>? = null
+    private var launcherAppsCacheAtMs = 0L
+
     companion object {
         private const val TAG = "LucyPhoneActions"
     }
@@ -87,11 +90,22 @@ class PhoneActionHandler(private val activity: Activity) {
         }
 
         val packageManager = activity.packageManager
-        val candidates = packageManager.getInstalledApplications(0).mapNotNull { info ->
-            val intent = packageManager.getLaunchIntentForPackage(info.packageName)
-                ?: return@mapNotNull null
-            val label = packageManager.getApplicationLabel(info).toString().trim()
-            if (label.isBlank()) null else Triple(label, info.packageName, intent)
+        val now = android.os.SystemClock.elapsedRealtime()
+        val cached = launcherAppsCache
+        val candidates = if (cached != null && now - launcherAppsCacheAtMs < 30_000L) {
+            cached
+        } else {
+            // PackageManager enumeration is relatively expensive on devices with
+            // many installed apps. Reuse the launcher index briefly between calls.
+            packageManager.getInstalledApplications(0).mapNotNull { info ->
+                val intent = packageManager.getLaunchIntentForPackage(info.packageName)
+                    ?: return@mapNotNull null
+                val label = packageManager.getApplicationLabel(info).toString().trim()
+                if (label.isBlank()) null else Triple(label, info.packageName, intent)
+            }.also {
+                launcherAppsCache = it
+                launcherAppsCacheAtMs = now
+            }
         }
         val query = requested.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         val ranked = candidates.mapNotNull { candidate ->
