@@ -3,25 +3,25 @@ import 'package:screen_aware_ai/services/action_approval_policy.dart';
 
 void main() {
   group('LucyActionApprovalPolicy', () {
-    test('allows routine navigation, communication and content actions', () {
+    test('runs all recognized actions without extra approval', () {
       for (final action in [
         'open_app', 'type', 'swipe', 'back', 'home', 'wait',
         'set_flashlight', 'set_volume', 'schedule_reminder',
         'read_contact', 'create_calendar_event', 'take_photo', 'open_url',
         'set_alarm', 'set_timer', 'scroll_to_end', 'scroll_to_top',
-        'read_all', 'open_each', 'batch', 'place_call', 'send_sms',
-        'share_text', 'open_settings',
+        'read_all', 'open_each', 'batch', 'open_settings', 'run_skill',
+        'place_call', 'send_sms', 'share_text',
       ]) {
         expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
             reason: action);
       }
     });
 
-    test('does not ask approval for delete, send, share, install or call taps', () {
+    test('does not add approval for communication or destructive controls', () {
       for (final label in [
-        'Send', 'Send message', 'Delete', 'Delete permanently', 'Remove',
-        'Share', 'Post', 'Publish', 'Install', 'Uninstall', 'Call',
-        'Video call', 'Confirm', 'Submit',
+        'Send', 'Send message', 'Send now', 'Delete', 'Delete permanently',
+        'Remove', 'Share', 'Post', 'Publish', 'Install', 'Uninstall',
+        'Call', 'Video call', 'Place order',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
@@ -31,20 +31,18 @@ void main() {
       }
     });
 
-    test('requires approval for explicit payment and UPI actions', () {
+    test('does not add approval for payment labels or financial apps', () {
       for (final label in [
         'Pay', 'Payment', 'UPI', 'Send money', 'Transfer money',
         'Confirm payment', 'Pay now', 'Checkout', 'Purchase', 'Buy now',
       ]) {
         expect(
           LucyActionApprovalPolicy.requiresApproval('tap', targetLabel: label),
-          isTrue,
+          isFalse,
           reason: label,
         );
       }
-    });
 
-    test('requires approval for interactions inside Indian financial apps', () {
       for (final package in [
         'com.google.android.apps.nbu.paisa.user',
         'com.phonepe.app',
@@ -60,28 +58,18 @@ void main() {
               targetLabel: 'Continue',
               packageName: package,
             ),
-            isTrue,
+            isFalse,
             reason: '$package / $action',
           );
         }
       }
     });
 
-    test('does not gate ordinary mail swipes or password typing outside finance apps', () {
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'swipe',
-          packageName: 'com.google.android.gm',
-        ),
-        isFalse,
-      );
-      expect(
-        LucyActionApprovalPolicy.requiresApproval(
-          'swipe',
-          packageName: 'com.microsoft.office.outlook',
-        ),
-        isFalse,
-      );
+    test('sensitive typing and external hand-offs have no extra approval', () {
+      for (final action in ['place_call', 'send_sms', 'share_text']) {
+        expect(LucyActionApprovalPolicy.requiresApproval(action), isFalse,
+            reason: action);
+      }
       expect(
         LucyActionApprovalPolicy.requiresApproval(
           'type',
@@ -92,7 +80,7 @@ void main() {
       );
     });
 
-    test('model risk metadata does not add prompts to routine actions', () {
+    test('model metadata does not create prompts for recognized actions', () {
       expect(
         LucyActionApprovalPolicy.requiresApproval(
           'open_app',
@@ -106,22 +94,9 @@ void main() {
           'tap',
           targetLabel: 'Delete permanently',
           modelRisk: 'high',
-          confidence: 0.1,
+          confidence: 0,
         ),
         isFalse,
-      );
-    });
-
-    test('financial app protection cannot be downgraded by model metadata', () {
-      expect(
-        LucyActionApprovalPolicy.effectiveRisk(
-          'tap',
-          targetLabel: 'Continue',
-          packageName: 'com.phonepe.app',
-          modelRisk: 'low',
-          confidence: 1,
-        ),
-        'high',
       );
     });
 

@@ -14,7 +14,7 @@ void main() {
     expect(prompt, contains('MULTI-STEP TASK COMPLETION'));
     expect(prompt, contains('STRICT ACTION-TURN CONTRACT'));
     expect(prompt, contains('[TASK_CONTEXT]'));
-    expect(prompt, contains('Do not use "batch" in model planning'));
+    expect(prompt, contains('Use "batch" only for safe, reversible UI micro-steps'));
     expect(prompt, contains('Completion requires the done_when condition'));
     expect(prompt, contains('wait for explicit approval of the exact selected messages'));
     expect(prompt, isNot(contains(r'\n')));

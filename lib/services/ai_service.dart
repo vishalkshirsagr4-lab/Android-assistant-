@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
@@ -81,6 +82,7 @@ class AgentResponse {
         'read_contact', 'create_calendar_event', 'open_settings', 'take_photo',
         'share_text', 'remember', 'forget', 'recall_memories', 'forget_skill', 'forget_app_layout',
         'scroll_to_end', 'scroll_to_top', 'read_all', 'open_each', 'run_skill',
+        'batch',
       };
       if (!supportedActions.contains(type)) {
         throw FormatException('Unsupported Lucy action type: $type');
@@ -95,13 +97,61 @@ class AgentResponse {
           'Lucy action is missing valid confidence, risk or reason metadata.',
         );
       }
+      if (type == 'batch') {
+        final batch = action['actions'];
+        if (batch is! List || batch.isEmpty || batch.length > 5) {
+          throw const FormatException(
+            'A batch must contain between one and five safe UI actions.',
+          );
+        }
+        for (final rawStep in batch) {
+          if (rawStep is! Map) {
+            throw const FormatException('Every batch step must be an object.');
+          }
+          final step = Map<String, dynamic>.from(rawStep);
+          final stepType = step['type']?.toString() ?? '';
+          if (!const {'tap', 'type', 'swipe', 'back', 'wait'}
+              .contains(stepType)) {
+            throw FormatException(
+              'Unsupported or consequential batch step: $stepType',
+            );
+          }
+          if (stepType == 'tap' && step['element'] is! num) {
+            throw const FormatException(
+              'A batch tap needs a current UI element id.',
+            );
+          }
+          if (stepType == 'type' &&
+              (step['text'] is! String || (step['text'] as String).isEmpty)) {
+            throw const FormatException(
+              'A batch type step needs non-empty text.',
+            );
+          }
+          if (stepType == 'swipe' &&
+              !['startX', 'startY', 'endX', 'endY']
+                  .every((key) => step[key] is num)) {
+            throw const FormatException(
+              'A batch swipe needs all four coordinates.',
+            );
+          }
+          if (stepType == 'wait' &&
+              step['ms'] != null &&
+              step['ms'] is! num) {
+            throw const FormatException(
+              'A batch wait duration must be numeric.',
+            );
+          }
+        }
+      }
       return AgentAction(type: type, params: action);
     }).toList(growable: false);
     if (actionsList.length > 1) {
-      throw const FormatException('Return one batch action when grouping multiple UI operations.');
+      throw const FormatException(
+        'Return one action object; group safe UI micro-steps inside batch.',
+      );
     }
-    // One model turn may request only one primitive action. This guarantees
-    // the controller can re-observe the screen before every next decision.
+    // One model turn may request one action object. Safe batches are executed
+    // natively and followed by a fresh observation before the next decision.
     final rawPlan = json['plan'];
     String goal = '';
     String doneWhen = '';
@@ -303,7 +353,11 @@ class AiService {
   final HmsService _hmsService = HmsService();
   final Map<String, _CachedAgentResponse> _readOnlyCache =
       <String, _CachedAgentResponse>{};
+  final Map<String, DateTime> _providerCooldownUntil = <String, DateTime>{};
   static const Duration _readOnlyCacheTtl = Duration(seconds: 20);
+  static const Duration _providerCooldown = Duration(seconds: 30);
+  static const Duration _providerAttemptTimeout = Duration(seconds: 14);
+  static const Duration _providerFallbackBudget = Duration(seconds: 24);
 
   bool get isConfigured =>
       _useGrok ||
@@ -494,8 +548,25 @@ class AiService {
           ? <String>[preferred, 'gemini', 'groq', 'grok', 'hms'].toSet().toList()
           : <String>[preferred];
       final failures = <String>[];
+      final fallbackStopwatch = Stopwatch()..start();
 
       for (final provider in order) {
+        if (fallbackStopwatch.elapsed >= _providerFallbackBudget) {
+          failures.add('fallback budget exhausted');
+          break;
+        }
+        final cooldownUntil = _providerCooldownUntil[provider];
+        if (cooldownUntil != null && cooldownUntil.isAfter(DateTime.now())) {
+          failures.add('$provider: temporarily cooling down');
+          continue;
+        }
+        final remainingBudget =
+            _providerFallbackBudget - fallbackStopwatch.elapsed;
+        final attemptTimeout = remainingBudget < _providerAttemptTimeout
+            ? remainingBudget
+            : _providerAttemptTimeout;
+        if (attemptTimeout <= Duration.zero) break;
+
         final providerStopwatch = Stopwatch()..start();
         LucyReliabilityLog.event('provider_attempt', provider: provider);
         var streamEmitted = false;
@@ -507,21 +578,21 @@ class AiService {
             text = await _hmsService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
-            ).timeout(const Duration(seconds: 25));
+            ).timeout(attemptTimeout);
           } else if (provider == 'groq') {
             if (!await _groqService.isConfigured()) continue;
             text = await _groqService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
               imageBytes: imageBytes,
-            ).timeout(const Duration(seconds: 25));
+            ).timeout(attemptTimeout);
           } else if (provider == 'grok') {
             if (!await _grokService.isConfigured()) continue;
             text = await _grokService.complete(
               fullMessage,
               systemPrompt: systemPrompt,
               imageBytes: imageBytes,
-            ).timeout(const Duration(seconds: 25));
+            ).timeout(attemptTimeout);
           } else {
             if (_chat == null) continue;
             Content content;
@@ -539,21 +610,35 @@ class AiService {
                 streamEmitted = true;
                 onSpeakChunk(sentence);
               });
-              await for (final response in _chat!
-                  .sendMessageStream(content)
-                  .timeout(const Duration(seconds: 25))) {
-                final delta = response.text ?? '';
-                if (delta.isNotEmpty) {
-                  responseBuffer.write(delta);
-                  extractor.add(delta);
+              final streamWatch = Stopwatch()..start();
+              final iterator = StreamIterator(
+                _chat!.sendMessageStream(content),
+              );
+              try {
+                while (true) {
+                  final remaining = attemptTimeout - streamWatch.elapsed;
+                  if (remaining <= Duration.zero) {
+                    throw TimeoutException(
+                      'AI provider exceeded its request budget.',
+                    );
+                  }
+                  final hasNext = await iterator.moveNext().timeout(remaining);
+                  if (!hasNext) break;
+                  final delta = iterator.current.text ?? '';
+                  if (delta.isNotEmpty) {
+                    responseBuffer.write(delta);
+                    extractor.add(delta);
+                  }
                 }
+                extractor.finish();
+                text = responseBuffer.toString();
+              } finally {
+                await iterator.cancel();
               }
-              extractor.finish();
-              text = responseBuffer.toString();
             } else {
               final response = await _chat!
                   .sendMessage(content)
-                  .timeout(const Duration(seconds: 25));
+                  .timeout(attemptTimeout);
               text = response.text ?? '{}';
             }
           }
@@ -566,6 +651,7 @@ class AiService {
           // trigger fallback rather than being presented as a successful reply.
           final parsed = _parseAgentResponse(text, provider: provider);
           providerStopwatch.stop();
+          _providerCooldownUntil.remove(provider);
           LucyReliabilityLog.event(
             'provider_success',
             provider: provider,
@@ -592,6 +678,8 @@ class AiService {
             success: false,
             errorType: error.runtimeType.toString(),
           );
+          _providerCooldownUntil[provider] =
+              DateTime.now().add(_providerCooldown);
           // Keep diagnostics private and terse; do not copy provider response
           // bodies, prompt content or credentials into structured logs.
           failures.add('$provider: ${error.runtimeType}');

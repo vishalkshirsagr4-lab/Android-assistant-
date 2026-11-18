@@ -1,6 +1,8 @@
-/// Local action-risk policy. Only financial and UPI operations require
-/// Lucy's additional confirmation. Android-owned permission and system dialogs
-/// remain controlled by Android.
+/// Local action-risk policy.
+///
+/// Lucy does not add a second confirmation prompt for recognized actions.
+/// Android runtime permissions and OS-owned security dialogs remain controlled
+/// by Android and cannot be bypassed by this app.
 class LucyActionApprovalPolicy {
   /// Only explicitly requested local memory operations remain available when
   /// Autopilot is disabled. All phone/UI actions are blocked at the executor.
@@ -35,44 +37,6 @@ class LucyActionApprovalPolicy {
         permissionChoiceTerms.any(text.contains);
   }
 
-  static const Set<String> _financialTapLabels = {
-    'pay',
-    'payment',
-    'upi',
-    'send money',
-    'transfer money',
-    'confirm payment',
-    'pay now',
-    'checkout',
-    'purchase',
-    'buy now',
-    'submit order',
-  };
-
-  static const Set<String> _financialPackageMarkers = {
-    'bank',
-    'wallet',
-    'payment',
-    'upi',
-    'finance',
-    'paisa',
-    'phonepe',
-    'paytm',
-    'bhim',
-    'mobikwik',
-    'freecharge',
-    'netbanking',
-    'sbi',
-    'hdfc',
-    'icici',
-    'axis',
-    'kotak',
-    'dreamplug',
-    'gpay',
-    'googlepay',
-    'cred',
-  };
-
   static const Set<String> _knownActions = {
     'open_app', 'type', 'swipe', 'back', 'home', 'wait',
     'schedule_reminder', 'set_alarm', 'set_timer', 'open_url',
@@ -84,8 +48,10 @@ class LucyActionApprovalPolicy {
     'run_skill',
   };
 
-  /// Risk is decided locally. Model metadata cannot add prompts to routine
-  /// actions or downgrade a financial action.
+  /// Recognized actions run without Lucy's extra approval prompt.
+  ///
+  /// Unknown action types fail closed. Android-owned permission dialogs,
+  /// authentication screens and other OS restrictions are not overridden.
   static String effectiveRisk(
     String action, {
     String? targetLabel,
@@ -94,25 +60,7 @@ class LucyActionApprovalPolicy {
     double? confidence,
     bool sensitiveInput = false,
   }) {
-    if (!_knownActions.contains(action)) return 'high';
-
-    final package = (packageName ?? '').toLowerCase();
-    final label = (targetLabel ?? '').trim().toLowerCase();
-    final financialPackage =
-        _financialPackageMarkers.any(package.contains);
-    final financialLabel =
-        _financialTapLabels.any((term) => label.contains(term));
-
-    // Any interaction inside a recognised bank, wallet or UPI app is gated.
-    if (financialPackage) return 'high';
-
-    // Outside financial apps, only an explicit payment/UPI action is gated.
-    if (action == 'tap' && financialLabel) return 'high';
-
-    // All other supported actions, including scroll/swipe, delete, send,
-    // share, calling, messaging, reading and password-field typing, do not
-    // trigger Lucy's extra approval prompt.
-    return 'low';
+    return _knownActions.contains(action) ? 'low' : 'high';
   }
 
   static bool requiresApproval(
