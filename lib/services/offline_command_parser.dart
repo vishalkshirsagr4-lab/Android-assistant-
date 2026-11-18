@@ -57,7 +57,7 @@ class OfflineCommunicationCommand {
         caseSensitive: false,
       ),
       RegExp(
-        r'^(.+?)\s+(?:ko|को)\s+(?:call|कॉल|phone|फोन)\s*(?:karo|करो|लगाओ|ಮಾಡು)?$',
+        r'^(.+?)\s+(?:ko|को)\s+(?:call|कॉल|phone|फोन)\s*(?:karo|करो|lagao|लगाओ|ಮಾಡು)?$',
         caseSensitive: false,
       ),
       RegExp(
