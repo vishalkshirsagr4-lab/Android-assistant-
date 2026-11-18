@@ -242,25 +242,34 @@ class AgentController extends ChangeNotifier {
     String event, {
     String context = '',
   }) async {
-    final speechStopwatch = Stopwatch()..start();
-    final response = await _aiService.agentChat(
-      '[EVENT: $event]\n'
-      'User language: $_currentLang\n'
-      'App status: $context\n'
-      'Return one short natural sentence. Do not perform an action.',
-    );
-    if (response.isError || response.speak.trim().isEmpty) {
-      _statusMessage = 'Lucy · $event';
-      notifyListeners();
-      return;
-    }
-    _addConversation(response.speak, false);
-    if (!_textOnlyMode) {
-      _setState(AgentState.speaking);
-      await _voiceService.speak(response.speak, lang: _currentLang);
-    }
-    speechStopwatch.stop();
-    _performanceMonitor.recordTiming('tts', speechStopwatch.elapsed);
+    // Status events are fixed, known phrases. Calling a cloud model merely to
+    // rephrase them adds a full network round-trip to an otherwise local action.
+    const recalledPrefix =
+        'The user asked what is remembered. Summarize these saved details: ';
+    final recalled = event == 'memory_recalled' &&
+            context.startsWith(recalledPrefix)
+        ? context.substring(recalledPrefix.length).trim()
+        : '';
+    final reply = switch (event) {
+      'device_locked' => switch (_currentLang) {
+          'hi' => 'फोन लॉक है। आगे बढ़ने के लिए कृपया इसे अनलॉक करें।',
+          'kn' => 'ಫೋನ್ ಲಾಕ್ ಆಗಿದೆ. ಮುಂದುವರಿಯಲು ದಯವಿಟ್ಟು ಅನ್ಲಾಕ್ ಮಾಡಿ.',
+          'ja' => 'スマートフォンがロックされています。続行するにはロックを解除してください。',
+          'ar' => 'الهاتف مقفل. يرجى إلغاء قفله للمتابعة.',
+          _ => 'Your phone is locked. Please unlock it so I can continue.',
+        },
+      'skill_replayed' => 'I used a previously learned safe shortcut and verified it.',
+      'permission_needed' => 'Android is asking for permission. Please review the prompt and choose.',
+      'ui_layout_forgotten' || 'app_layout_forgotten' => 'I cleared the saved layout for this app.',
+      'skill_forgotten' => 'I removed that learned shortcut.',
+      'memory_saved' => 'I saved that to your approved memories.',
+      'memory_cleared' => 'I cleared your saved memories.',
+      'memory_forgotten' => 'I updated your saved memories.',
+      'memory_recalled' => recalled.isEmpty ? 'I do not have any saved memories to show.' : recalled,
+      'clarification_needed' => 'What detail would you like me to remember?',
+      _ => context.trim().isEmpty ? 'Lucy · $event' : context.trim(),
+    };
+    await _speakLocalReply(reply);
   }
 
 
