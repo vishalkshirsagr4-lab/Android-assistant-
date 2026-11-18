@@ -278,36 +278,71 @@ void main() {
         throwsFormatException,
       );
     });
-    test('rejects batch actions so every model turn contains one primitive action', () {
-      expect(
-        () => AgentResponse.fromJson(
-          <String, dynamic>{
-            'route': 'phone',
-            'needs_screen': true,
-            'plan': <String, dynamic>{
-              'goal': 'Search within the current app',
-              'done_when': 'The results screen is visible',
-            },
-            'actions': <dynamic>[
-              <String, dynamic>{
-                'type': 'batch',
-                'actions': <dynamic>[
-                  <String, dynamic>{'type': 'tap', 'element': 3},
-                  <String, dynamic>{'type': 'wait', 'ms': 200},
-                ],
-                'confidence': 0.98,
-                'risk': 'low',
-                'reason': 'This must be split into separate observed turns.',
-              },
-            ],
-            'speak': '',
-            'done': false,
-            'lang': 'en',
+    test('accepts a validated safe UI batch as one action object', () {
+      final response = AgentResponse.fromJson(
+        <String, dynamic>{
+          'route': 'phone',
+          'needs_screen': true,
+          'plan': <String, dynamic>{
+            'goal': 'Enter a search query',
+            'done_when': 'The search field contains the requested query',
           },
-          '{}',
-        ),
-        throwsFormatException,
+          'actions': <dynamic>[
+            <String, dynamic>{
+              'type': 'batch',
+              'actions': <dynamic>[
+                <String, dynamic>{'type': 'tap', 'element': 3},
+                <String, dynamic>{'type': 'type', 'text': 'weather'},
+                <String, dynamic>{'type': 'wait', 'ms': 200},
+              ],
+              'confidence': 0.98,
+              'risk': 'low',
+              'reason': 'These are reversible UI preparation steps.',
+            },
+          ],
+          'speak': '',
+          'done': false,
+          'lang': 'en',
+        },
+        '{}',
       );
+      expect(response.actions, hasLength(1));
+      expect(response.actions.single.type, 'batch');
+    });
+
+    test('rejects consequential or malformed steps inside a batch', () {
+      for (final batchStep in [
+        <String, dynamic>{'type': 'send_sms', 'message': 'hello'},
+        <String, dynamic>{'type': 'tap'},
+        <String, dynamic>{'type': 'type', 'text': ''},
+      ]) {
+        expect(
+          () => AgentResponse.fromJson(
+            <String, dynamic>{
+              'route': 'phone',
+              'needs_screen': true,
+              'plan': <String, dynamic>{
+                'goal': 'Run a safe UI sequence',
+                'done_when': 'The sequence is verified',
+              },
+              'actions': <dynamic>[
+                <String, dynamic>{
+                  'type': 'batch',
+                  'actions': <dynamic>[batchStep],
+                  'confidence': 0.98,
+                  'risk': 'low',
+                  'reason': 'The batch is locally validated.',
+                },
+              ],
+              'speak': '',
+              'done': false,
+              'lang': 'en',
+            },
+            '{}',
+          ),
+          throwsFormatException,
+        );
+      }
     });
 
   });
