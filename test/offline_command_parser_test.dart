@@ -58,3 +58,27 @@ void main() {
     });
   });
 }
+
+
+  group('OfflineAppCommand', () {
+    test('parses English app launch requests', () {
+      expect(OfflineAppCommand.parse('open WhatsApp')?.appName, 'WhatsApp');
+      expect(OfflineAppCommand.parse('launch Spotify')?.appName, 'Spotify');
+      expect(OfflineAppCommand.parse('start Google Maps')?.appName, 'Google Maps');
+    });
+
+    test('parses Hindi and Kannada app launch requests', () {
+      expect(OfflineAppCommand.parse('व्हाट्सऐप खोलो')?.appName, 'व्हाट्सऐप');
+      expect(OfflineAppCommand.parse('ಟೆಲಿಗ್ರಾಂ ತೆರೆ')?.appName, 'ಟೆಲಿಗ್ರಾಂ');
+    });
+
+    test('leaves settings commands to the settings fast path', () {
+      expect(OfflineAppCommand.parse('open settings'), isNull);
+      expect(OfflineAppCommand.parse('open wifi settings'), isNull);
+    });
+
+    test('does not parse incomplete app launch requests', () {
+      expect(OfflineAppCommand.parse('open'), isNull);
+      expect(OfflineAppCommand.parse('launch   '), isNull);
+    });
+  });
