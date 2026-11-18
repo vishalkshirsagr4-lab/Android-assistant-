@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
@@ -609,18 +610,31 @@ class AiService {
                 streamEmitted = true;
                 onSpeakChunk(sentence);
               });
-              final streamRequest = () async {
-                await for (final response in _chat!.sendMessageStream(content)) {
-                  final delta = response.text ?? '';
+              final streamWatch = Stopwatch()..start();
+              final iterator = StreamIterator(
+                _chat!.sendMessageStream(content),
+              );
+              try {
+                while (true) {
+                  final remaining = attemptTimeout - streamWatch.elapsed;
+                  if (remaining <= Duration.zero) {
+                    throw TimeoutException(
+                      'AI provider exceeded its request budget.',
+                    );
+                  }
+                  final hasNext = await iterator.moveNext().timeout(remaining);
+                  if (!hasNext) break;
+                  final delta = iterator.current.text ?? '';
                   if (delta.isNotEmpty) {
                     responseBuffer.write(delta);
                     extractor.add(delta);
                   }
                 }
                 extractor.finish();
-                return responseBuffer.toString();
-              }();
-              text = await streamRequest.timeout(attemptTimeout);
+                text = responseBuffer.toString();
+              } finally {
+                await iterator.cancel();
+              }
             } else {
               final response = await _chat!
                   .sendMessage(content)
