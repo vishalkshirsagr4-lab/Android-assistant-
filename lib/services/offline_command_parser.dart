@@ -20,7 +20,7 @@ class OfflineCommunicationCommand {
 
     final smsPatterns = <RegExp>[
       RegExp(
-        r'^(?:please\s+)?send\s+(?:an?\s+)?(?:sms|text|message)\s+to\s+(.+?)\s*[:,]\s*(.+),
+        r'^(?:please\s+)?send\s+(?:an?\s+)?(?:sms|text|message)\s+to\s+(.+?)\s*[:,]\s*(.+)$'
         caseSensitive: false,
       ),
       RegExp(
