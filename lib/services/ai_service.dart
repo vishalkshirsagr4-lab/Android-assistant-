@@ -150,8 +150,8 @@ class AgentResponse {
         'Return one action object; group safe UI micro-steps inside batch.',
       );
     }
-    // One model turn may request only one primitive action. This guarantees
-    // the controller can re-observe the screen before every next decision.
+    // One model turn may request one action object. Safe batches are executed
+    // natively and followed by a fresh observation before the next decision.
     final rawPlan = json['plan'];
     String goal = '';
     String doneWhen = '';
