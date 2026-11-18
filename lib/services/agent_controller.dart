@@ -1534,7 +1534,10 @@ class AgentController extends ChangeNotifier {
       'सेटिंग्स': 'com.android.settings',
     };
     final openPrefix = RegExp(
-      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$|^(.+?)\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ)
+      r'^(?:open|launch|start|खोलो|खोल|ಶುರುಮಾಡು|ತೆರೆ|開いて|افتح)\s+(.+)$|^(.+?)\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
+    ).firstMatch(command);
+    final requestedApp =
+        (openPrefix?.group(1) ?? openPrefix?.group(2))?.trim();
     final packageName = requestedApp == null ? null : appPackages[requestedApp];
     if (packageName != null) {
       if (!await _settingsStore.isEnabled(LucySettingsStore.autopilot)) {
@@ -1563,7 +1566,10 @@ class AgentController extends ChangeNotifier {
     }
 
     final settingsMatch = RegExp(
-      r'^(?:(?:open|show|go to|खोलो|खोल|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?|(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+settings?)\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ))
+      r'^(?:(?:open|show|go to|खोलो|खोल|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+)?settings?|(?:(wifi|wi-fi|bluetooth|display|sound|apps|accessibility|location|battery|wireless)\s+settings?)\s+(?:kholo|khol do|खोलो|खोल दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
+    ).firstMatch(command);
+    if (settingsMatch != null) {
+      final requestedPage = settingsMatch.group(1) ?? settingsMatch.group(2);
       final page = switch (requestedPage) {
         'wifi' || 'wi-fi' => 'wifi',
         'bluetooth' => 'bluetooth',
