@@ -103,7 +103,21 @@ class OfflineAppCommand {
       r'^(?:please\s+)?(?:open|launch|start|खोलो|खोल|शुरू\s*करो|ಶುರುಮಾಡು|ತೆರೆ|ತೆರೆಯಿರಿ|開いて|افتح)\s+(.+?)$|^(.+?)\s+(?:kholo|khol\s+do|खोलो|खोल\s+दो|ತೆರೆ|ತೆರೆಯಿರಿ)$',
       caseSensitive: false,
     ).firstMatch(text);
-    final appName = (match?.group(1) ?? match?.group(2))?.trim();
+    final appName = (match?.group(1) ?? match?.group(2))\n        ?.replaceAll(RegExp(r'[.!?,।]+
+    if (appName == null || appName.isEmpty) return null;
+
+    final normalized = appName.toLowerCase();
+    const settingsNames = {
+      'settings', 'setting', 'ಸೆಟ್ಟಿಂಗ್ಸ್', 'ಸೆಟ್ಟಿಂಗ್', 'सेटिंग्स',
+      'सेटिंग', 'wifi settings', 'wi-fi settings', 'bluetooth settings',
+      'display settings', 'sound settings', 'accessibility settings',
+      'location settings', 'battery settings', 'wireless settings',
+    };
+    if (settingsNames.contains(normalized)) return null;
+    return OfflineAppCommand(appName: appName);
+  }
+}
+), '')\n        .trim();
     if (appName == null || appName.isEmpty) return null;
 
     final normalized = appName.toLowerCase();
