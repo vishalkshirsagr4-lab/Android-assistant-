@@ -27,7 +27,6 @@ class _HomeScreenState extends State<HomeScreen>
   final AppUpdateService _appUpdateService = AppUpdateService();
   final GrokService _grokService = GrokService();
   bool _isCheckingUpdate = false;
-  double? _updateDownloadProgress;
   DateTime? _lastAutomaticUpdateCheck;
 
   bool _isAccessibilityEnabled = false;
