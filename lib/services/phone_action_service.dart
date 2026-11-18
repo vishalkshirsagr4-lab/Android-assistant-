@@ -6,7 +6,7 @@ class PhoneActionService {
     'com.poc.screen_aware_ai/phone_actions',
   );
 
-  static const Set<String> supportedActions = {
+  static const Set<String> supportedActions = {\n    'open_app',
     'set_alarm',
     'set_timer',
     'place_call',
