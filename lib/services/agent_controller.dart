@@ -2275,7 +2275,7 @@ class AgentController extends ChangeNotifier {
             'screen_changed': changed,
           };
           taskActionHistory.add(actionRecord);
-          if (taskActionHistory.length > 20) {
+          if (taskActionHistory.length > 8) {
             taskActionHistory.removeAt(0);
           }
           lastActionResult = actionVerified
