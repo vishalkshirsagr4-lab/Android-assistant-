@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen>
   final AppUpdateService _appUpdateService = AppUpdateService();
   final GrokService _grokService = GrokService();
   bool _isCheckingUpdate = false;
+  double? _updateDownloadProgress;
   DateTime? _lastAutomaticUpdateCheck;
 
   bool _isAccessibilityEnabled = false;
@@ -99,7 +100,37 @@ class _HomeScreenState extends State<HomeScreen>
                 );
                 try {
                   final installerOpened =
-                      await _appUpdateService.downloadAndInstall(update);
+                      await _appUpdateService.downloadAndInstall(
+                    update,
+                    onProgress: (received, total) {
+                      if (!mounted) return;
+                      setState(() {
+                        _updateDownloadProgress = total != null && total > 0
+                            ? (received / total).clamp(0.0, 1.0)
+                            : null;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          duration: const Duration(seconds: 2),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(total == null || total <= 0
+                                  ? 'Downloading Lucy update… ${(received / 1024 / 1024).toStringAsFixed(1)} MB'
+                                  : 'Downloading Lucy update… ${(received / 1024 / 1024).toStringAsFixed(1)} / ${(total / 1024 / 1024).toStringAsFixed(1)} MB'),
+                              const SizedBox(height: 8),
+                              LinearProgressIndicator(
+                                value: total != null && total > 0
+                                    ? (received / total).clamp(0.0, 1.0)
+                                    : null,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
                   if (!mounted) return;
                   if (!installerOpened) {
                     ScaffoldMessenger.of(context).showSnackBar(
